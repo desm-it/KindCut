@@ -7,7 +7,7 @@ Local-first Cricut companion app for grandma-easy craft design, AI-generated Cri
 This is a project foundation, not a finished cutter app yet. The first scaffold includes:
 
 - npm workspaces monorepo
-- React/Vite desktop prototype shell
+- React/Vite desktop UI prototype with an Electron shell
 - shared craft project model
 - mat/material/tool recipes for Cricut Joy-oriented MVP work
 - SVG preflight package stub
@@ -24,6 +24,31 @@ npm install
 npm run check
 npm run dev
 ```
+
+Run the packaged desktop shell from source:
+
+```bash
+# Terminal 1: renderer dev server
+npm run dev
+
+# Terminal 2: Electron shell pointing at the dev server
+npm run desktop:shell
+```
+
+Build an unpacked macOS app bundle for smoke testing:
+
+```bash
+npm run package:desktop:dir
+open "apps/desktop/release/mac-arm64/Cricut Companion.app"
+```
+
+Create distributable macOS artifacts:
+
+```bash
+npm run package:desktop:mac
+```
+
+The generated app is unsigned for now; add a real app icon and signing/notarization before sharing it outside this Mac.
 
 ## Workspace layout
 
