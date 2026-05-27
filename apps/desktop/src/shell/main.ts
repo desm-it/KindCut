@@ -35,7 +35,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 
 Menu.setApplicationMenu(null);
 
-app.setName("Cricut Companion");
+app.setName("KindCut");
 
 ipcMain.handle("slicebug:get-status", async () => getSlicebugStatus());
 ipcMain.handle("slicebug:generate-sample-plan", async () => generateSampleSlicebugPlan());

@@ -5,7 +5,7 @@ describe("desktop shell window config", () => {
   it("creates a grandma-friendly macOS desktop window", () => {
     const options = createMainWindowOptions({ preloadPath: "/app/preload.js" });
 
-    expect(options.title).toBe("Cricut Companion");
+    expect(options.title).toBe("KindCut");
     expect(options.width).toBeGreaterThanOrEqual(1180);
     expect(options.height).toBeGreaterThanOrEqual(760);
     expect(options.minWidth).toBeGreaterThanOrEqual(960);

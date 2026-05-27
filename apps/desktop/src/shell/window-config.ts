@@ -25,7 +25,7 @@ export interface MainWindowOptionsInput {
 
 export function createMainWindowOptions(input: MainWindowOptionsInput): BrowserWindowConstructorOptions {
   return {
-    title: "Cricut Companion",
+    title: "KindCut",
     width: 1280,
     height: 820,
     minWidth: 960,

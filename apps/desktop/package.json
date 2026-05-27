@@ -31,7 +31,7 @@
   "main": "dist/main/main.js",
   "build": {
     "appId": "nl.joeldesmit.cricut-companion",
-    "productName": "Cricut Companion",
+    "productName": "KindCut",
     "directories": {
       "output": "release"
     },

@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { buildBeginnerProject, joyStandardMat, validateProject } from "@cricut-companion/craft-core";
 import { createDesignPrompt } from "@cricut-companion/ai-designer";
 import { buildPlanCommand } from "@cricut-companion/slicebug-bridge";
 import { preflightSvg } from "@cricut-companion/svg-preflight";
+import {
+  APP_NAME,
+  formatToolName,
+  getFriendlyPlanResultCopy,
+  getFriendlySlicebugStatusCopy,
+} from "./onboarding-copy";
 
 type SlicebugStatus = {
   ok: boolean;
@@ -55,6 +61,11 @@ export function App() {
   const [slicebugLoading, setSlicebugLoading] = useState(false);
   const [samplePlan, setSamplePlan] = useState<SlicebugPlanResult | null>(null);
   const [samplePlanLoading, setSamplePlanLoading] = useState(false);
+
+  const statusCopy = useMemo(
+    () => getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading),
+    [slicebugLoading, slicebugStatus],
+  );
 
   async function refreshSlicebugStatus() {
     if (!window.cricutCompanion?.slicebug) {
@@ -122,88 +133,165 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <section className="hero">
-        <p className="eyebrow">Local-first Cricut companion</p>
-        <h1>Make Cricut projects without learning Cricut jargon.</h1>
-        <p>
-          Start with a plain-language idea, generate a craft-ready SVG, preview draw/cut layers, save it locally,
-          then send it through SliceBug when ready.
-        </p>
+      <section className="welcome">
+        <div className="welcome-copy">
+          <p className="eyebrow">Local craft helper</p>
+          <h1>{APP_NAME}</h1>
+          <p className="lede">
+            Describe a card or simple Cricut Joy project, preview what will draw and cut, then save it on this
+            computer for later.
+          </p>
+          <div className="welcome-actions">
+            <button type="button" onClick={() => void generateSamplePlan()} disabled={samplePlanLoading}>
+              {samplePlanLoading ? "Preparing preview..." : "Try the birthday card"}
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => void refreshSlicebugStatus()}
+              disabled={slicebugLoading}
+            >
+              {slicebugLoading ? "Checking..." : "Check setup again"}
+            </button>
+          </div>
+        </div>
+
+        <aside className={`setup-panel setup-panel--${statusCopy.tone}`} aria-live="polite">
+          <span className="status-dot" aria-hidden="true" />
+          <p className="panel-label">Cricut handoff</p>
+          <h2>{statusCopy.title}</h2>
+          <p>{statusCopy.message}</p>
+          {statusCopy.details.length > 0 ? (
+            <details>
+              <summary>Advanced details</summary>
+              <pre>{statusCopy.details.join("\n")}</pre>
+            </details>
+          ) : null}
+        </aside>
       </section>
 
-      <section className="grid">
-        <article className="card">
-          <h2>Starter recipe</h2>
-          <dl>
-            <dt>Project</dt>
-            <dd>{sampleProject.name}</dd>
+      <section className="workflow-strip" aria-label="KindCut workflow">
+        <span>Describe it</span>
+        <span>Preview layers</span>
+        <span>Save locally</span>
+        <span>Send when ready</span>
+      </section>
+
+      <section className="content-grid">
+        <article className="panel starter-panel">
+          <p className="panel-label">Starter project</p>
+          <h2>{sampleProject.name}</h2>
+          <p className="soft-copy">
+            A small card recipe with pen details and one simple cut border, sized for a beginner-friendly Cricut Joy
+            practice run.
+          </p>
+          <dl className="friendly-list">
             <dt>Machine</dt>
             <dd>{sampleProject.machine.displayName}</dd>
             <dt>Mat</dt>
-            <dd>{sampleProject.mat.name} — {sampleProject.mat.widthIn}×{sampleProject.mat.heightIn} in</dd>
+            <dd>
+              {sampleProject.mat.name}, {sampleProject.mat.widthIn} x {sampleProject.mat.heightIn} in
+            </dd>
             <dt>Material</dt>
             <dd>{sampleProject.material.name}</dd>
           </dl>
         </article>
 
-        <article className="card">
-          <h2>AI craft prompt</h2>
-          <pre>{prompt.system.slice(0, 520)}…</pre>
-        </article>
-
-        <article className="card">
-          <h2>Validation</h2>
-          <p className={validation.ok ? "ok" : "warn"}>{validation.ok ? "Ready for prototype" : "Needs attention"}</p>
-          <ul>{validation.messages.map((message) => <li key={message}>{message}</li>)}</ul>
-        </article>
-
-        <article className="card">
-          <h2>SliceBug desktop bridge</h2>
-          <p className={slicebugStatus?.ok ? "ok" : "warn"}>
-            {slicebugLoading ? "Checking SliceBug…" : slicebugStatus?.message ?? "SliceBug has not been checked yet."}
+        <article className="panel">
+          <p className="panel-label">Project check</p>
+          <h2>{validation.ok && preflight.ok ? "Looks ready to preview" : "Needs a quick look"}</h2>
+          <p className={validation.ok && preflight.ok ? "ok" : "warn"}>
+            {validation.ok && preflight.ok
+              ? "The sample recipe has the basic size and layer checks it needs."
+              : "One part of the sample recipe needs attention."}
           </p>
-          {slicebugStatus?.executable ? <p className="muted">Executable: {slicebugStatus.executable}</p> : null}
-          <button type="button" onClick={() => void refreshSlicebugStatus()} disabled={slicebugLoading}>
-            {slicebugLoading ? "Checking…" : "Call slicebug --version"}
-          </button>
-        </article>
-
-        <article className="card wide-card">
-          <h2>Generate a sample SliceBug plan</h2>
-          <p>
-            Runs a non-cutting <code>slicebug plan</code> command for a tiny Joy card SVG and writes the JSON plan to a temp folder.
-          </p>
-          <button type="button" onClick={() => void generateSamplePlan()} disabled={samplePlanLoading}>
-            {samplePlanLoading ? "Generating plan…" : "Generate sample plan"}
-          </button>
-          {samplePlan ? (
-            <div className="result-block">
-              <p className={samplePlan.ok ? "ok" : "warn"}>{samplePlan.message}</p>
-              {samplePlan.outputPlanPath ? <p className="muted">Plan: {samplePlan.outputPlanPath}</p> : null}
-              {samplePlan.plan ? (
-                <dl>
-                  <dt>Mat</dt>
-                  <dd>{samplePlan.plan.mat.width}×{samplePlan.plan.mat.height} in</dd>
-                  <dt>Material</dt>
-                  <dd>{samplePlan.plan.material.width}×{samplePlan.plan.material.height} in, material {samplePlan.plan.material.type}</dd>
-                  <dt>Tools</dt>
-                  <dd>{samplePlan.plan.tools.join(", ")}</dd>
-                </dl>
-              ) : null}
-              <details>
-                <summary>SliceBug output</summary>
-                <pre>{samplePlan.stdout || samplePlan.stderr || "No output."}</pre>
-              </details>
-            </div>
+          {validation.messages.length > 0 ? (
+            <ul className="plain-list">
+              {validation.messages.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
           ) : null}
         </article>
 
-        <article className="card">
-          <h2>SliceBug command preview</h2>
-          <pre>{planCommand.command} {planCommand.args.join(" ")}</pre>
-          <p>{preflight.ok ? "SVG preflight passed." : preflight.issues.join(", ")}</p>
+        <article className="panel wide-panel">
+          <div className="split-heading">
+            <div>
+              <p className="panel-label">Practice preview</p>
+              <h2>Prepare the sample card</h2>
+            </div>
+            <button type="button" onClick={() => void generateSamplePlan()} disabled={samplePlanLoading}>
+              {samplePlanLoading ? "Preparing..." : "Prepare preview"}
+            </button>
+          </div>
+          <p className="soft-copy">
+            This only prepares a preview file for the sample card. It will not send anything to a Cricut machine.
+          </p>
+
+          {samplePlan ? <SamplePlanResult result={samplePlan} /> : <EmptyPreviewState />}
+        </article>
+
+        <article className="panel wide-panel quiet-panel">
+          <p className="panel-label">For later</p>
+          <h2>Recipe notes are tucked away</h2>
+          <p className="soft-copy">
+            Beginner screens stay simple, while the app still keeps the prompt and handoff notes available when someone
+            needs to troubleshoot.
+          </p>
+          <div className="details-grid">
+            <details>
+              <summary>Design prompt details</summary>
+              <pre>{prompt.system}</pre>
+            </details>
+            <details>
+              <summary>Handoff command details</summary>
+              <pre>
+                {planCommand.command} {planCommand.args.join(" ")}
+              </pre>
+            </details>
+          </div>
         </article>
       </section>
     </main>
+  );
+}
+
+function EmptyPreviewState() {
+  return (
+    <div className="empty-preview">
+      <div className="mat-preview" aria-hidden="true">
+        <div className="card-preview">
+          <span className="cut-line" />
+          <span className="pen-line pen-line--short" />
+          <span className="pen-line" />
+        </div>
+      </div>
+      <p>Start with the birthday card to see a friendly layer summary here.</p>
+    </div>
+  );
+}
+
+function SamplePlanResult({ result }: { result: SlicebugPlanResult }) {
+  const copy = getFriendlyPlanResultCopy(result);
+
+  return (
+    <div className={`sample-result sample-result--${copy.tone}`}>
+      <h3>{copy.title}</h3>
+      <p>{copy.message}</p>
+      {result.plan ? (
+        <dl className="friendly-list compact-list">
+          <dt>Layers</dt>
+          <dd>{result.plan.pathCount}</dd>
+          <dt>Tools</dt>
+          <dd>{result.plan.tools.map(formatToolName).join(", ") || "No tools listed"}</dd>
+        </dl>
+      ) : null}
+      {copy.details.length > 0 ? (
+        <details>
+          <summary>Advanced details</summary>
+          <pre>{copy.details.join("\n\n")}</pre>
+        </details>
+      ) : null}
+    </div>
   );
 }
