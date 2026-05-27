@@ -1,6 +1,6 @@
 import path from "node:path";
 import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
-import { getSlicebugStatus } from "./slicebug-service";
+import { getSlicebugStatus, generateSampleSlicebugPlan } from "./slicebug-service";
 import { createMainWindowOptions, resolveRendererEntry } from "./window-config";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -38,12 +38,19 @@ Menu.setApplicationMenu(null);
 app.setName("Cricut Companion");
 
 ipcMain.handle("slicebug:get-status", async () => getSlicebugStatus());
+ipcMain.handle("slicebug:generate-sample-plan", async () => generateSampleSlicebugPlan());
 
 app.whenReady().then(async () => {
   await createMainWindow();
 
   if (process.env.CRICUT_COMPANION_SMOKE_SLICEBUG === "1") {
     console.log(JSON.stringify({ slicebug: await getSlicebugStatus() }));
+    app.quit();
+    return;
+  }
+
+  if (process.env.CRICUT_COMPANION_SMOKE_PLAN === "1") {
+    console.log(JSON.stringify({ plan: await generateSampleSlicebugPlan() }));
     app.quit();
     return;
   }

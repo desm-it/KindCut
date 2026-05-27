@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { SlicebugStatus } from "./slicebug-service";
+import type { SlicebugPlanResult, SlicebugStatus } from "./slicebug-service";
 
 const desktopApi = {
   platform: process.platform,
@@ -8,10 +8,11 @@ const desktopApi = {
   },
   slicebug: {
     getStatus: (): Promise<SlicebugStatus> => ipcRenderer.invoke("slicebug:get-status"),
+    generateSamplePlan: (): Promise<SlicebugPlanResult> => ipcRenderer.invoke("slicebug:generate-sample-plan"),
   },
 };
 
 contextBridge.exposeInMainWorld("cricutCompanion", desktopApi);
 
 export type CricutCompanionDesktopApi = typeof desktopApi;
-export type { SlicebugStatus };
+export type { SlicebugPlanResult, SlicebugStatus };

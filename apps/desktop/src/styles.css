@@ -14,5 +14,9 @@ pre { white-space: pre-wrap; word-break: break-word; background: #241a14; color:
 .ok { color: #137a3f; font-weight: 700; }
 .warn { color: #b55c2d; font-weight: 700; }
 .muted { color: #7c6a5b; font-size: 0.9rem; }
+.wide-card { grid-column: 1 / -1; }
+.result-block { margin-top: 16px; }
+code { background: #f3e6d4; border-radius: 8px; padding: 2px 6px; }
+summary { cursor: pointer; font-weight: 800; margin-top: 12px; }
 button { border: 0; border-radius: 999px; background: #b55c2d; color: #fffdf8; cursor: pointer; font-weight: 800; padding: 12px 18px; }
 button:disabled { cursor: wait; opacity: 0.65; }

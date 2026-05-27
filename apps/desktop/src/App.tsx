@@ -11,6 +11,22 @@ type SlicebugStatus = {
   message: string;
 };
 
+type SlicebugPlanResult = {
+  ok: boolean;
+  executable: string;
+  inputSvgPath: string;
+  outputPlanPath: string;
+  stdout: string;
+  stderr: string;
+  message: string;
+  plan: null | {
+    mat: { width: number; height: number };
+    material: { width: number; height: number; type: number };
+    pathCount: number;
+    tools: string[];
+  };
+};
+
 const sampleProject = buildBeginnerProject({
   name: "Dog birthday card",
   machine: "cricut_joy",
@@ -37,6 +53,8 @@ const planCommand = buildPlanCommand({
 export function App() {
   const [slicebugStatus, setSlicebugStatus] = useState<SlicebugStatus | null>(null);
   const [slicebugLoading, setSlicebugLoading] = useState(false);
+  const [samplePlan, setSamplePlan] = useState<SlicebugPlanResult | null>(null);
+  const [samplePlanLoading, setSamplePlanLoading] = useState(false);
 
   async function refreshSlicebugStatus() {
     if (!window.cricutCompanion?.slicebug) {
@@ -61,6 +79,40 @@ export function App() {
       });
     } finally {
       setSlicebugLoading(false);
+    }
+  }
+
+  async function generateSamplePlan() {
+    if (!window.cricutCompanion?.slicebug) {
+      setSamplePlan({
+        ok: false,
+        executable: "",
+        inputSvgPath: "",
+        outputPlanPath: "",
+        stdout: "",
+        stderr: "",
+        message: "Open this screen in the Electron desktop shell to generate a SliceBug plan.",
+        plan: null,
+      });
+      return;
+    }
+
+    setSamplePlanLoading(true);
+    try {
+      setSamplePlan(await window.cricutCompanion.slicebug.generateSamplePlan());
+    } catch (error) {
+      setSamplePlan({
+        ok: false,
+        executable: "",
+        inputSvgPath: "",
+        outputPlanPath: "",
+        stdout: "",
+        stderr: "",
+        message: error instanceof Error ? error.message : "Unknown SliceBug plan error.",
+        plan: null,
+      });
+    } finally {
+      setSamplePlanLoading(false);
     }
   }
 
@@ -114,6 +166,36 @@ export function App() {
           <button type="button" onClick={() => void refreshSlicebugStatus()} disabled={slicebugLoading}>
             {slicebugLoading ? "Checking…" : "Call slicebug --version"}
           </button>
+        </article>
+
+        <article className="card wide-card">
+          <h2>Generate a sample SliceBug plan</h2>
+          <p>
+            Runs a non-cutting <code>slicebug plan</code> command for a tiny Joy card SVG and writes the JSON plan to a temp folder.
+          </p>
+          <button type="button" onClick={() => void generateSamplePlan()} disabled={samplePlanLoading}>
+            {samplePlanLoading ? "Generating plan…" : "Generate sample plan"}
+          </button>
+          {samplePlan ? (
+            <div className="result-block">
+              <p className={samplePlan.ok ? "ok" : "warn"}>{samplePlan.message}</p>
+              {samplePlan.outputPlanPath ? <p className="muted">Plan: {samplePlan.outputPlanPath}</p> : null}
+              {samplePlan.plan ? (
+                <dl>
+                  <dt>Mat</dt>
+                  <dd>{samplePlan.plan.mat.width}×{samplePlan.plan.mat.height} in</dd>
+                  <dt>Material</dt>
+                  <dd>{samplePlan.plan.material.width}×{samplePlan.plan.material.height} in, material {samplePlan.plan.material.type}</dd>
+                  <dt>Tools</dt>
+                  <dd>{samplePlan.plan.tools.join(", ")}</dd>
+                </dl>
+              ) : null}
+              <details>
+                <summary>SliceBug output</summary>
+                <pre>{samplePlan.stdout || samplePlan.stderr || "No output."}</pre>
+              </details>
+            </div>
+          ) : null}
         </article>
 
         <article className="card">
