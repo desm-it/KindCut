@@ -1,0 +1,24 @@
+{
+  "name": "@cricut-companion/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cricut-companion/craft-core": "*",
+    "@cricut-companion/ai-designer": "*",
+    "@cricut-companion/slicebug-bridge": "*",
+    "@cricut-companion/svg-preflight": "*",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest"
+  }
+}
