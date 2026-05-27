@@ -14,5 +14,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["src/shell/main.ts", "src/shell/preload.ts", "src/shell/window-config.ts"]
+  "include": ["src/shell/**/*.ts"],
+  "exclude": ["src/shell/**/*.test.ts"]
 }

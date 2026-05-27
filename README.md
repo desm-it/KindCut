@@ -48,6 +48,14 @@ Create distributable macOS artifacts:
 npm run package:desktop:mac
 ```
 
+The desktop shell includes a safe SliceBug status bridge. It currently calls only:
+
+```bash
+/Users/joeldesmit/Cricut/SlicebugMac/.venv/bin/slicebug --version
+```
+
+from the Electron main process and exposes the result to the renderer. It does **not** run `slicebug cut` yet.
+
 The generated app is unsigned for now; add a real app icon and signing/notarization before sharing it outside this Mac.
 
 ## Workspace layout

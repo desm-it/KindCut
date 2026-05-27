@@ -1,7 +1,15 @@
+import { useEffect, useState } from "react";
 import { buildBeginnerProject, joyStandardMat, validateProject } from "@cricut-companion/craft-core";
 import { createDesignPrompt } from "@cricut-companion/ai-designer";
 import { buildPlanCommand } from "@cricut-companion/slicebug-bridge";
 import { preflightSvg } from "@cricut-companion/svg-preflight";
+
+type SlicebugStatus = {
+  ok: boolean;
+  executable: string | null;
+  version: string | null;
+  message: string;
+};
 
 const sampleProject = buildBeginnerProject({
   name: "Dog birthday card",
@@ -27,6 +35,39 @@ const planCommand = buildPlanCommand({
 });
 
 export function App() {
+  const [slicebugStatus, setSlicebugStatus] = useState<SlicebugStatus | null>(null);
+  const [slicebugLoading, setSlicebugLoading] = useState(false);
+
+  async function refreshSlicebugStatus() {
+    if (!window.cricutCompanion?.slicebug) {
+      setSlicebugStatus({
+        ok: false,
+        executable: null,
+        version: null,
+        message: "Open this screen in the Electron desktop shell to call SliceBug.",
+      });
+      return;
+    }
+
+    setSlicebugLoading(true);
+    try {
+      setSlicebugStatus(await window.cricutCompanion.slicebug.getStatus());
+    } catch (error) {
+      setSlicebugStatus({
+        ok: false,
+        executable: null,
+        version: null,
+        message: error instanceof Error ? error.message : "Unknown SliceBug error.",
+      });
+    } finally {
+      setSlicebugLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshSlicebugStatus();
+  }, []);
+
   return (
     <main className="app-shell">
       <section className="hero">
@@ -62,6 +103,17 @@ export function App() {
           <h2>Validation</h2>
           <p className={validation.ok ? "ok" : "warn"}>{validation.ok ? "Ready for prototype" : "Needs attention"}</p>
           <ul>{validation.messages.map((message) => <li key={message}>{message}</li>)}</ul>
+        </article>
+
+        <article className="card">
+          <h2>SliceBug desktop bridge</h2>
+          <p className={slicebugStatus?.ok ? "ok" : "warn"}>
+            {slicebugLoading ? "Checking SliceBug…" : slicebugStatus?.message ?? "SliceBug has not been checked yet."}
+          </p>
+          {slicebugStatus?.executable ? <p className="muted">Executable: {slicebugStatus.executable}</p> : null}
+          <button type="button" onClick={() => void refreshSlicebugStatus()} disabled={slicebugLoading}>
+            {slicebugLoading ? "Checking…" : "Call slicebug --version"}
+          </button>
         </article>
 
         <article className="card">

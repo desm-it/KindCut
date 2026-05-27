@@ -13,3 +13,6 @@ dd { margin-left: 0; color: #5a4639; }
 pre { white-space: pre-wrap; word-break: break-word; background: #241a14; color: #ffe8cc; padding: 16px; border-radius: 16px; font-size: 0.86rem; }
 .ok { color: #137a3f; font-weight: 700; }
 .warn { color: #b55c2d; font-weight: 700; }
+.muted { color: #7c6a5b; font-size: 0.9rem; }
+button { border: 0; border-radius: 999px; background: #b55c2d; color: #fffdf8; cursor: pointer; font-weight: 800; padding: 12px 18px; }
+button:disabled { cursor: wait; opacity: 0.65; }
