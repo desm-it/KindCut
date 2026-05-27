@@ -1,4 +1,6 @@
-export const APP_NAME = "KindCut";
+import { APP_NAME, type Language, createTranslator } from "./i18n";
+
+export { APP_NAME };
 
 export type SlicebugStatusLike = {
   ok: boolean;
@@ -35,12 +37,15 @@ export type FriendlyStatusCopy = {
 export function getFriendlySlicebugStatusCopy(
   status: SlicebugStatusLike | null,
   loading: boolean,
+  language: Language = "nl",
 ): FriendlyStatusCopy {
+  const { t } = createTranslator(language);
+
   if (loading) {
     return {
       tone: "checking",
-      title: "Checking your cutter helper",
-      message: "KindCut is making sure it can prepare projects for your Cricut later.",
+      title: t("status.loadingTitle"),
+      message: t("status.loadingMessage"),
       details: [],
     };
   }
@@ -48,8 +53,8 @@ export function getFriendlySlicebugStatusCopy(
   if (!status) {
     return {
       tone: "checking",
-      title: "Getting your craft table ready",
-      message: "KindCut will check the helper it needs before you start.",
+      title: t("status.initialTitle"),
+      message: t("status.initialMessage"),
       details: [],
     };
   }
@@ -63,22 +68,22 @@ export function getFriendlySlicebugStatusCopy(
   if (status.ok) {
     return {
       tone: "ready",
-      title: "Ready for Cricut projects",
-      message: "Everything KindCut needs is available. You can start with a simple card and save your work locally.",
+      title: t("status.readyTitle"),
+      message: t("status.readyMessage"),
       details,
     };
   }
 
   return {
     tone: "warning",
-    title: "One helper needs attention",
-    message:
-      "KindCut can still show the sample project, but it cannot prepare a Cricut handoff until the helper app is set up.",
+    title: t("status.warningTitle"),
+    message: t("status.warningMessage"),
     details,
   };
 }
 
-export function getFriendlyPlanResultCopy(result: PlanResultLike): FriendlyStatusCopy {
+export function getFriendlyPlanResultCopy(result: PlanResultLike, language: Language = "nl"): FriendlyStatusCopy {
+  const { t } = createTranslator(language);
   const details = [
     `SliceBug message: ${result.message}`,
     result.executable ? `Executable: ${result.executable}` : null,
@@ -91,26 +96,32 @@ export function getFriendlyPlanResultCopy(result: PlanResultLike): FriendlyStatu
   if (result.ok && result.plan) {
     return {
       tone: "ready",
-      title: "Practice preview is ready",
-      message: `KindCut prepared ${result.plan.pathCount} layer${result.plan.pathCount === 1 ? "" : "s"} for a ${formatSize(
-        result.plan.material,
-      )} card on a ${formatSize(result.plan.mat)} mat.`,
+      title: t("plan.readyTitle"),
+      message:
+        language === "nl"
+          ? `KindCut heeft ${result.plan.pathCount} ${result.plan.pathCount === 1 ? "laag" : "lagen"} voorbereid voor een kaart van ${formatSize(
+              result.plan.material,
+            )} op een mat van ${formatSize(result.plan.mat)}.`
+          : `KindCut prepared ${result.plan.pathCount} layer${result.plan.pathCount === 1 ? "" : "s"} for a ${formatSize(
+              result.plan.material,
+            )} card on a ${formatSize(result.plan.mat)} mat.`,
       details,
     };
   }
 
   return {
     tone: "warning",
-    title: "The practice preview could not be prepared",
-    message: "The sample project is still here. The Cricut handoff helper needs attention before KindCut can preview it.",
+    title: t("plan.warningTitle"),
+    message: t("plan.warningMessage"),
     details,
   };
 }
 
-export function formatToolName(tool: string): string {
+export function formatToolName(tool: string, language: Language = "nl"): string {
+  const { t } = createTranslator(language);
   const knownTools: Record<string, string> = {
-    fine_point_blade: "Fine-point blade",
-    pen: "Pen",
+    fine_point_blade: t("tool.fine_point_blade"),
+    pen: t("tool.pen"),
   };
 
   return knownTools[tool] ?? titleCase(tool.replaceAll("_", " "));

@@ -131,6 +131,30 @@ button:disabled {
   padding: 56px;
 }
 
+.welcome-topline {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.language-selector {
+  min-width: 160px;
+  display: grid;
+  gap: 6px;
+  color: #7b5638;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.language-selector select {
+  min-height: 38px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  text-transform: none;
+}
+
 .eyebrow,
 .panel-label {
   margin: 0 0 12px;
@@ -725,6 +749,10 @@ pre {
     flex-direction: column;
   }
 
+  .welcome-topline {
+    flex-direction: column;
+  }
+
   .mat-preview {
     width: min(100%, 220px);
   }
@@ -755,6 +783,8 @@ pre {
 
   .welcome-actions,
   .welcome-actions button,
+  .welcome-topline,
+  .language-selector,
   .file-button,
   .split-heading button,
   .prepare-row button,

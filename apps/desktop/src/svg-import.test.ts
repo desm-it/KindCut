@@ -11,7 +11,8 @@ describe("svg import helpers", () => {
       unit: "in",
       source: "width-height",
     });
-    expect(getSvgSizeCopy(size)).toBe("About 4.3 x 5.5 in");
+    expect(getSvgSizeCopy(size)).toBe("Ongeveer 4.3 x 5.5 in");
+    expect(getSvgSizeCopy(size, "en")).toBe("About 4.3 x 5.5 in");
   });
 
   it("falls back to the viewBox artwork area", () => {
@@ -23,12 +24,12 @@ describe("svg import helpers", () => {
       unit: "artwork units",
       source: "viewBox",
     });
-    expect(getSvgSizeCopy(size)).toBe("About 288 x 240 artwork units");
+    expect(getSvgSizeCopy(size)).toBe("Ongeveer 288 x 240 tekeneenheden");
   });
 
   it("keeps unknown sizes calm", () => {
     expect(getSvgSizeInfo("<svg><path /></svg>")).toBeNull();
-    expect(getSvgSizeCopy(null)).toBe("Size is not listed in this file yet.");
+    expect(getSvgSizeCopy(null)).toBe("De afmeting staat nog niet in dit bestand.");
   });
 
   it("formats file sizes for the import card", () => {
@@ -44,8 +45,8 @@ describe("svg import helpers", () => {
       warnings: ["SVG contains text. Convert text to outlines before sending to Cricut."],
     });
 
-    expect(messages[0]).toContain("does not look like an SVG file");
-    expect(messages[1]).toContain("turn the words into shapes");
+    expect(messages[0]).toContain("lijkt geen SVG-bestand");
+    expect(messages[1]).toContain("zet de woorden om naar vormen");
     expect(messages.join(" ")).not.toMatch(/preflight|path elements|clipPath|stderr|stdout/i);
   });
 });

@@ -1,4 +1,6 @@
 import type { SvgPreflightResult } from "@cricut-companion/svg-preflight";
+import type { Language } from "./i18n";
+import { createTranslator } from "./i18n";
 
 export type SvgSizeInfo = {
   width: number;
@@ -60,12 +62,15 @@ export function getSvgSizeInfo(svg: string): SvgSizeInfo | null {
   };
 }
 
-export function getSvgSizeCopy(size: SvgSizeInfo | null): string {
+export function getSvgSizeCopy(size: SvgSizeInfo | null, language: Language = "nl"): string {
+  const { t } = createTranslator(language);
+
   if (!size) {
-    return "Size is not listed in this file yet.";
+    return t("size.unknown");
   }
 
-  return `About ${formatNumber(size.width)} x ${formatNumber(size.height)} ${size.unit}`;
+  const unit = size.unit === "artwork units" ? t("size.artworkUnits") : size.unit;
+  return t("size.about", { width: formatNumber(size.width), height: formatNumber(size.height), unit });
 }
 
 export function formatFileSize(bytes: number): string {
@@ -81,8 +86,11 @@ export function formatFileSize(bytes: number): string {
   return `${formatNumber(kilobytes / 1024)} MB`;
 }
 
-export function getFriendlySvgMessages(result: SvgPreflightResult): string[] {
-  return [...result.issues.map(getFriendlySvgIssue), ...result.warnings.map(getFriendlySvgWarning)];
+export function getFriendlySvgMessages(result: SvgPreflightResult, language: Language = "nl"): string[] {
+  return [
+    ...result.issues.map((issue) => getFriendlySvgIssue(issue, language)),
+    ...result.warnings.map((warning) => getFriendlySvgWarning(warning, language)),
+  ];
 }
 
 function parseLengthAttribute(svgTag: string, name: string): ParsedLength | null {
@@ -113,28 +121,32 @@ function getAttributeValue(svgTag: string, name: string): string | null {
   return match?.[1] ?? null;
 }
 
-function getFriendlySvgIssue(issue: string): string {
+function getFriendlySvgIssue(issue: string, language: Language): string {
+  const { t } = createTranslator(language);
+
   if (/does not look like an SVG/i.test(issue)) {
-    return "This does not look like an SVG file. Choose an .svg exported from your design app.";
+    return t("svg.issue.notSvg");
   }
 
-  return "KindCut could not read this SVG yet. Try exporting it again as a plain SVG.";
+  return t("svg.issue.generic");
 }
 
-function getFriendlySvgWarning(warning: string): string {
+function getFriendlySvgWarning(warning: string, language: Language): string {
+  const { t } = createTranslator(language);
+
   if (/filters, masks, or clipping paths/i.test(warning)) {
-    return "Some visual effects may not come through exactly when this becomes a cutter project.";
+    return t("svg.warning.effects");
   }
 
   if (/contains text/i.test(warning)) {
-    return "It includes editable text. For best results, turn the words into shapes before cutting.";
+    return t("svg.warning.text");
   }
 
   if (/no path elements/i.test(warning)) {
-    return "KindCut sees artwork, but it may need shape outlines before cut lines can be prepared.";
+    return t("svg.warning.noPaths");
   }
 
-  return "This file may need a quick look before it is ready for a cutter project.";
+  return t("svg.warning.generic");
 }
 
 function formatNumber(value: number): string {

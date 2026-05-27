@@ -11,6 +11,18 @@ import {
   getFriendlySlicebugStatusCopy,
 } from "./onboarding-copy";
 import { formatFileSize, getFriendlySvgMessages, getSvgSizeCopy, getSvgSizeInfo } from "./svg-import";
+import {
+  LANGUAGES,
+  type Language,
+  createTranslator,
+  getMatBeginnerCopy,
+  getMatName,
+  getMaterialBeginnerCopy,
+  getMaterialName,
+  loadLanguagePreference,
+  saveLanguagePreference,
+  translateValidationMessage,
+} from "./i18n";
 
 type SlicebugStatus = {
   ok: boolean;
@@ -85,6 +97,7 @@ const planCommand = buildPlanCommand({
 });
 
 export function App() {
+  const [language, setLanguage] = useState<Language>(() => loadLanguagePreference());
   const [slicebugStatus, setSlicebugStatus] = useState<SlicebugStatus | null>(null);
   const [slicebugLoading, setSlicebugLoading] = useState(false);
   const [samplePlan, setSamplePlan] = useState<SlicebugPlanResult | null>(null);
@@ -97,11 +110,17 @@ export function App() {
   const [importedPlanLoading, setImportedPlanLoading] = useState(false);
   const [cutSession, setCutSession] = useState<CutSessionSnapshot | null>(null);
   const [cutBusy, setCutBusy] = useState(false);
+  const { t } = useMemo(() => createTranslator(language), [language]);
 
   const statusCopy = useMemo(
-    () => getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading),
-    [slicebugLoading, slicebugStatus],
+    () => getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading, language),
+    [language, slicebugLoading, slicebugStatus],
   );
+
+  function handleLanguageChange(nextLanguage: Language) {
+    setLanguage(nextLanguage);
+    saveLanguagePreference(window.localStorage, nextLanguage);
+  }
 
   async function refreshSlicebugStatus() {
     if (!window.cricutCompanion?.slicebug) {
@@ -109,7 +128,10 @@ export function App() {
         ok: false,
         executable: null,
         version: null,
-        message: "Open this screen in the Electron desktop shell to call SliceBug.",
+        message:
+          language === "nl"
+            ? "Open dit scherm in de Electron-desktopapp om SliceBug te gebruiken."
+            : "Open this screen in the Electron desktop shell to call SliceBug.",
       });
       return;
     }
@@ -122,7 +144,12 @@ export function App() {
         ok: false,
         executable: null,
         version: null,
-        message: error instanceof Error ? error.message : "Unknown SliceBug error.",
+        message:
+          error instanceof Error
+            ? error.message
+            : language === "nl"
+              ? "Onbekende SliceBug-fout."
+              : "Unknown SliceBug error.",
       });
     } finally {
       setSlicebugLoading(false);
@@ -138,7 +165,10 @@ export function App() {
         outputPlanPath: "",
         stdout: "",
         stderr: "",
-        message: "Open this screen in the Electron desktop shell to generate a SliceBug plan.",
+        message:
+          language === "nl"
+            ? "Open dit scherm in de Electron-desktopapp om een SliceBug-plan te maken."
+            : "Open this screen in the Electron desktop shell to generate a SliceBug plan.",
         plan: null,
       });
       return;
@@ -160,7 +190,12 @@ export function App() {
         outputPlanPath: "",
         stdout: "",
         stderr: "",
-        message: error instanceof Error ? error.message : "Unknown SliceBug plan error.",
+        message:
+          error instanceof Error
+            ? error.message
+            : language === "nl"
+              ? "Onbekende SliceBug-planfout."
+              : "Unknown SliceBug plan error.",
         plan: null,
       });
     } finally {
@@ -170,7 +205,7 @@ export function App() {
 
   async function prepareImportedPlan() {
     if (!importedSvg) {
-      setImportMessage("Choose an SVG first, then KindCut can prepare it.");
+      setImportMessage(t("import.chooseSvgFile"));
       return;
     }
 
@@ -182,7 +217,7 @@ export function App() {
         outputPlanPath: "",
         stdout: "",
         stderr: "",
-        message: "Open this screen in the Electron desktop shell to prepare a Cricut handoff.",
+        message: t("import.openInShellPlan"),
         plan: null,
       });
       return;
@@ -208,7 +243,7 @@ export function App() {
         outputPlanPath: "",
         stdout: "",
         stderr: "",
-        message: error instanceof Error ? error.message : "KindCut could not prepare that SVG yet.",
+        message: error instanceof Error ? error.message : t("import.planError"),
         plan: null,
       });
     } finally {
@@ -262,7 +297,7 @@ export function App() {
 
     if (!file.name.toLowerCase().endsWith(".svg")) {
       setImportedSvg(null);
-      setImportMessage("Choose a file that ends in .svg so KindCut can preview it.");
+      setImportMessage(t("import.invalidSvg"));
       return;
     }
 
@@ -273,7 +308,7 @@ export function App() {
         fileName: file.name,
         fileSize: formatFileSize(file.size),
         svg,
-        sizeCopy: getSvgSizeCopy(getSvgSizeInfo(svg)),
+        sizeCopy: getSvgSizeCopy(getSvgSizeInfo(svg), language),
         previewHtml: getSandboxedSvgPreview(svg),
         preflight: filePreflight,
       });
@@ -281,13 +316,18 @@ export function App() {
       setCutSession(null);
     } catch (error) {
       setImportedSvg(null);
-      setImportMessage(error instanceof Error ? error.message : "KindCut could not open that file yet.");
+      setImportMessage(error instanceof Error ? error.message : t("import.openError"));
     }
   }
 
   useEffect(() => {
     void refreshSlicebugStatus();
   }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+    document.title = APP_NAME;
+  }, [language]);
 
   useEffect(() => {
     if (!window.cricutCompanion?.slicebug || !cutSession || !["running", "waiting"].includes(cutSession.status)) {
@@ -309,15 +349,15 @@ export function App() {
     <main className="app-shell">
       <section className="welcome">
         <div className="welcome-copy">
-          <p className="eyebrow">Local craft helper</p>
+          <div className="welcome-topline">
+            <p className="eyebrow">{t("welcome.eyebrow")}</p>
+            <LanguageSelector language={language} onLanguageChange={handleLanguageChange} />
+          </div>
           <h1>{APP_NAME}</h1>
-          <p className="lede">
-            Describe a card or simple Cricut Joy project, preview what will draw and cut, then save it on this
-            computer for later.
-          </p>
+          <p className="lede">{t("welcome.lede")}</p>
           <div className="welcome-actions">
             <button type="button" onClick={() => void generateSamplePlan()} disabled={samplePlanLoading}>
-              {samplePlanLoading ? "Preparing preview..." : "Try the birthday card"}
+              {samplePlanLoading ? t("buttons.preparingPreview") : t("buttons.tryBirthdayCard")}
             </button>
             <button
               className="secondary-button"
@@ -325,52 +365,55 @@ export function App() {
               onClick={() => void refreshSlicebugStatus()}
               disabled={slicebugLoading}
             >
-              {slicebugLoading ? "Checking..." : "Check setup again"}
+              {slicebugLoading ? t("buttons.checking") : t("buttons.checkSetupAgain")}
             </button>
           </div>
         </div>
 
         <aside className={`setup-panel setup-panel--${statusCopy.tone}`} aria-live="polite">
           <span className="status-dot" aria-hidden="true" />
-          <p className="panel-label">Cricut handoff</p>
+          <p className="panel-label">{t("status.panelLabel")}</p>
           <h2>{statusCopy.title}</h2>
           <p>{statusCopy.message}</p>
           {statusCopy.details.length > 0 ? (
             <details>
-              <summary>Advanced details</summary>
+              <summary>{t("details.advanced")}</summary>
               <pre>{statusCopy.details.join("\n")}</pre>
             </details>
           ) : null}
         </aside>
       </section>
 
-      <section className="workflow-strip" aria-label="KindCut workflow">
-        <span>Describe it</span>
-        <span>Preview layers</span>
-        <span>Save locally</span>
-        <span>Send when ready</span>
+      <section className="workflow-strip" aria-label={t("workflow.label")}>
+        <span>{t("workflow.describe")}</span>
+        <span>{t("workflow.preview")}</span>
+        <span>{t("workflow.save")}</span>
+        <span>{t("workflow.send")}</span>
       </section>
 
       <section className="content-grid">
         <article className="panel starter-panel">
-          <p className="panel-label">Starter project</p>
-          <h2>{sampleProject.name}</h2>
-          <p className="soft-copy">
-            A small card recipe with pen details and one simple cut border, sized for a beginner-friendly Cricut Joy
-            practice run.
-          </p>
+          <p className="panel-label">{t("starter.panelLabel")}</p>
+          <h2>{t("starter.sampleName")}</h2>
+          <p className="soft-copy">{t("starter.description")}</p>
           <dl className="friendly-list">
-            <dt>Machine</dt>
+            <dt>{t("starter.machine")}</dt>
             <dd>{sampleProject.machine.displayName}</dd>
-            <dt>Mat</dt>
+            <dt>{t("starter.mat")}</dt>
             <dd>
-              {sampleProject.mat.name}, {sampleProject.mat.widthIn} x {sampleProject.mat.heightIn} in
+              {getMatName("joy-standard", language) ?? sampleProject.mat.name}, {sampleProject.mat.widthIn} x{" "}
+              {sampleProject.mat.heightIn} in
             </dd>
-            <dt>Material</dt>
-            <dd>{MATERIAL_OPTIONS.find((material) => material.id === selectedMaterialId)?.name ?? sampleProject.material.name}</dd>
+            <dt>{t("starter.material")}</dt>
+            <dd>
+              {getMaterialName(selectedMaterialId, language) ??
+                MATERIAL_OPTIONS.find((material) => material.id === selectedMaterialId)?.name ??
+                sampleProject.material.name}
+            </dd>
           </dl>
-          <p className="choice-kicker">Adjust these choices before preparing a preview or starting a watched cut.</p>
+          <p className="choice-kicker">{t("starter.choiceKicker")}</p>
           <MaterialMatChooser
+            language={language}
             selectedMaterialId={selectedMaterialId}
             selectedMatPreset={selectedMatPreset}
             onMaterialChange={setSelectedMaterialId}
@@ -379,17 +422,17 @@ export function App() {
         </article>
 
         <article className="panel">
-          <p className="panel-label">Project check</p>
-          <h2>{validation.ok && preflight.ok ? "Looks ready to preview" : "Needs a quick look"}</h2>
+          <p className="panel-label">{t("projectCheck.panelLabel")}</p>
+          <h2>{validation.ok && preflight.ok ? t("projectCheck.readyTitle") : t("projectCheck.warningTitle")}</h2>
           <p className={validation.ok && preflight.ok ? "ok" : "warn"}>
             {validation.ok && preflight.ok
-              ? "The sample recipe has the basic size and layer checks it needs."
-              : "One part of the sample recipe needs attention."}
+              ? t("projectCheck.readyMessage")
+              : t("projectCheck.warningMessage")}
           </p>
           {validation.messages.length > 0 ? (
             <ul className="plain-list">
               {validation.messages.map((message) => (
-                <li key={message}>{message}</li>
+                <li key={message}>{translateValidationMessage(message, language)}</li>
               ))}
             </ul>
           ) : null}
@@ -398,33 +441,31 @@ export function App() {
         <article className="panel wide-panel import-panel">
           <div className="split-heading">
             <div>
-              <p className="panel-label">Your design</p>
-              <h2>Bring in an SVG design file</h2>
+              <p className="panel-label">{t("import.panelLabel")}</p>
+              <h2>{t("import.title")}</h2>
             </div>
             <label className="file-button">
-              Choose SVG
+              {t("buttons.chooseSvg")}
               <input type="file" accept=".svg,image/svg+xml" onChange={(event) => void handleSvgFileChange(event)} />
             </label>
           </div>
-          <p className="soft-copy">
-            Pick an SVG design file from this computer. KindCut will show a gentle preview and a plain-English check before
-            anything is prepared for a cutter.
-          </p>
+          <p className="soft-copy">{t("import.description")}</p>
 
           {importMessage ? <p className="warn import-message">{importMessage}</p> : null}
-          {importedSvg ? <ImportedSvgPreview importedSvg={importedSvg} /> : <EmptyImportState />}
+          {importedSvg ? <ImportedSvgPreview importedSvg={importedSvg} language={language} /> : <EmptyImportState language={language} />}
           {importedSvg ? (
             <div className="prepare-row">
               <button type="button" onClick={() => void prepareImportedPlan()} disabled={importedPlanLoading}>
-                {importedPlanLoading ? "Preparing..." : "Prepare Cricut handoff"}
+                {importedPlanLoading ? t("buttons.preparing") : t("buttons.prepareHandoff")}
               </button>
-              <p>This makes a local plan only. Cutting starts later, after you press Start cut.</p>
+              <p>{t("import.prepareNote")}</p>
             </div>
           ) : null}
           {importedPlan ? (
             <PlanAndCutMonitor
               result={importedPlan}
-              planLabel={importedSvg?.fileName ?? "Imported design"}
+              planLabel={importedSvg?.fileName ?? (language === "nl" ? "Geimporteerd ontwerp" : "Imported design")}
+              language={language}
               cutSession={cutSession}
               cutBusy={cutBusy}
               onStart={() => void startCutSession(importedPlan.outputPlanPath)}
@@ -437,35 +478,29 @@ export function App() {
         <article className="panel wide-panel">
           <div className="split-heading">
             <div>
-              <p className="panel-label">Practice preview</p>
-              <h2>Prepare the sample card</h2>
+              <p className="panel-label">{t("practice.panelLabel")}</p>
+              <h2>{t("practice.title")}</h2>
             </div>
             <button type="button" onClick={() => void generateSamplePlan()} disabled={samplePlanLoading}>
-              {samplePlanLoading ? "Preparing..." : "Prepare preview"}
+              {samplePlanLoading ? t("buttons.preparing") : t("buttons.preparePreview")}
             </button>
           </div>
-          <p className="soft-copy">
-            This only prepares a preview file for the sample card with the material and mat you chose. It will not send
-            anything to a Cricut machine.
-          </p>
+          <p className="soft-copy">{t("practice.description")}</p>
 
-          {samplePlan ? <SamplePlanResult result={samplePlan} /> : <EmptyPreviewState />}
+          {samplePlan ? <SamplePlanResult result={samplePlan} language={language} /> : <EmptyPreviewState language={language} />}
         </article>
 
         <article className="panel wide-panel quiet-panel">
-          <p className="panel-label">For later</p>
-          <h2>Recipe notes are tucked away</h2>
-          <p className="soft-copy">
-            Beginner screens stay simple, while the app still keeps the prompt and handoff notes available when someone
-            needs to troubleshoot.
-          </p>
+          <p className="panel-label">{t("later.panelLabel")}</p>
+          <h2>{t("later.title")}</h2>
+          <p className="soft-copy">{t("later.description")}</p>
           <div className="details-grid">
             <details>
-              <summary>Design prompt details</summary>
+              <summary>{t("details.designPrompt")}</summary>
               <pre>{prompt.system}</pre>
             </details>
             <details>
-              <summary>Handoff command details</summary>
+              <summary>{t("details.handoffCommand")}</summary>
               <pre>
                 {planCommand.command} {planCommand.args.join(" ")}
               </pre>
@@ -509,7 +544,32 @@ function getSandboxedSvgPreview(svg: string): string {
 </html>`;
 }
 
-function EmptyImportState() {
+function LanguageSelector({
+  language,
+  onLanguageChange,
+}: {
+  language: Language;
+  onLanguageChange: (language: Language) => void;
+}) {
+  const { t } = createTranslator(language);
+
+  return (
+    <label className="language-selector">
+      <span>{t("language.label")}</span>
+      <select value={language} onChange={(event) => onLanguageChange(event.target.value as Language)}>
+        {LANGUAGES.map((candidate) => (
+          <option key={candidate} value={candidate}>
+            {t(candidate === "nl" ? "language.nl" : "language.en")}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function EmptyImportState({ language }: { language: Language }) {
+  const { t } = createTranslator(language);
+
   return (
     <div className="import-empty">
       <div className="paper-stack" aria-hidden="true">
@@ -517,33 +577,34 @@ function EmptyImportState() {
         <span />
         <span />
       </div>
-      <p>No SVG chosen yet. Start with a file you already have, then KindCut will show it here.</p>
+      <p>{t("import.empty")}</p>
     </div>
   );
 }
 
-function ImportedSvgPreview({ importedSvg }: { importedSvg: ImportedSvg }) {
-  const friendlyMessages = getFriendlySvgMessages(importedSvg.preflight);
+function ImportedSvgPreview({ importedSvg, language }: { importedSvg: ImportedSvg; language: Language }) {
+  const { t } = createTranslator(language);
+  const friendlyMessages = getFriendlySvgMessages(importedSvg.preflight, language);
   const isReady = importedSvg.preflight.ok && importedSvg.preflight.warnings.length === 0;
 
   return (
     <div className="import-preview-grid">
       <div className="svg-preview-frame">
-        <iframe title={`Preview of ${importedSvg.fileName}`} sandbox="" srcDoc={importedSvg.previewHtml} />
+        <iframe title={t("import.previewTitle", { fileName: importedSvg.fileName })} sandbox="" srcDoc={importedSvg.previewHtml} />
       </div>
 
       <div className="import-summary">
-        <p className="panel-label">Chosen file</p>
+        <p className="panel-label">{t("import.chosenFile")}</p>
         <h3>{importedSvg.fileName}</h3>
         <dl className="friendly-list compact-list">
-          <dt>File</dt>
+          <dt>{t("import.file")}</dt>
           <dd>{importedSvg.fileSize}</dd>
-          <dt>Artwork</dt>
+          <dt>{t("import.artwork")}</dt>
           <dd>{importedSvg.sizeCopy}</dd>
         </dl>
 
         <div className={`svg-check svg-check--${isReady ? "ready" : "warning"}`}>
-          <h3>{isReady ? "This looks easy to start with" : "A few things may need a look"}</h3>
+          <h3>{isReady ? t("import.readyTitle") : t("import.warningTitle")}</h3>
           {friendlyMessages.length > 0 ? (
             <ul className="plain-list">
               {friendlyMessages.map((message) => (
@@ -551,12 +612,12 @@ function ImportedSvgPreview({ importedSvg }: { importedSvg: ImportedSvg }) {
               ))}
             </ul>
           ) : (
-            <p>KindCut can read this SVG and show it in the preview.</p>
+            <p>{t("import.readyMessage")}</p>
           )}
         </div>
 
         <details>
-          <summary>SVG check details</summary>
+          <summary>{t("details.svgCheck")}</summary>
           <pre>
             {[
               importedSvg.preflight.issues.length > 0
@@ -570,7 +631,7 @@ function ImportedSvgPreview({ importedSvg }: { importedSvg: ImportedSvg }) {
         </details>
 
         <details>
-          <summary>Raw SVG</summary>
+          <summary>{t("details.rawSvg")}</summary>
           <pre>{importedSvg.svg}</pre>
         </details>
       </div>
@@ -579,41 +640,47 @@ function ImportedSvgPreview({ importedSvg }: { importedSvg: ImportedSvg }) {
 }
 
 function MaterialMatChooser({
+  language,
   selectedMaterialId,
   selectedMatPreset,
   onMaterialChange,
   onMatChange,
 }: {
+  language: Language;
   selectedMaterialId: number;
   selectedMatPreset: string;
   onMaterialChange: (materialId: number) => void;
   onMatChange: (matPreset: string) => void;
 }) {
+  const { t } = createTranslator(language);
+  const materialCopy = getMaterialBeginnerCopy(selectedMaterialId, language);
+  const matCopy = getMatBeginnerCopy(selectedMatPreset, language);
+
   return (
-    <div className="choice-panel" aria-label="Material and mat choices">
+    <div className="choice-panel" aria-label={t("choice.aria")}>
       <label>
-        Material
+        {t("choice.material")}
         <select value={selectedMaterialId} onChange={(event) => onMaterialChange(Number(event.target.value))}>
           {MATERIAL_OPTIONS.map((material) => (
             <option key={material.id} value={material.id}>
-              {material.name}
+              {getMaterialName(material.id, language) ?? material.name}
             </option>
           ))}
         </select>
       </label>
       <label>
-        Mat
+        {t("choice.mat")}
         <select value={selectedMatPreset} onChange={(event) => onMatChange(event.target.value)}>
           {MAT_PRESETS.map((mat) => (
             <option key={mat.id} value={mat.id}>
-              {mat.name}
+              {getMatName(mat.id, language) ?? mat.name}
             </option>
           ))}
         </select>
       </label>
       <p>
-        {MATERIAL_OPTIONS.find((material) => material.id === selectedMaterialId)?.beginnerCopy}{" "}
-        {MAT_PRESETS.find((mat) => mat.id === selectedMatPreset)?.beginnerCopy}
+        {materialCopy ?? MATERIAL_OPTIONS.find((material) => material.id === selectedMaterialId)?.beginnerCopy}{" "}
+        {matCopy ?? MAT_PRESETS.find((mat) => mat.id === selectedMatPreset)?.beginnerCopy}
       </p>
     </div>
   );
@@ -622,6 +689,7 @@ function MaterialMatChooser({
 function PlanAndCutMonitor({
   result,
   planLabel,
+  language,
   cutSession,
   cutBusy,
   onStart,
@@ -630,70 +698,73 @@ function PlanAndCutMonitor({
 }: {
   result: SlicebugPlanResult;
   planLabel: string;
+  language: Language;
   cutSession: CutSessionSnapshot | null;
   cutBusy: boolean;
   onStart: () => void;
   onContinue: () => void;
   onStop: () => void;
 }) {
-  const copy = getFriendlyPlanResultCopy(result);
+  const { t } = createTranslator(language);
+  const copy = getFriendlyPlanResultCopy(result, language);
   const canStart = result.ok && result.plan && !cutSession;
+  const cutActionCopy = cutSession ? getCutActionCopy(cutSession.action, language) : null;
 
   return (
     <div className={`sample-result sample-result--${copy.tone}`}>
-      <p className="panel-label">Imported SVG handoff</p>
-      <h3>{result.ok ? "Ready to send when you are" : copy.title}</h3>
+      <p className="panel-label">{t("plan.importedPanelLabel")}</p>
+      <h3>{result.ok ? t("plan.readyToSendTitle") : copy.title}</h3>
       <p>
-        Current plan: <strong>{planLabel}</strong>. {copy.message}
+        {t("plan.currentPlan")} <strong>{planLabel}</strong>. {copy.message}
       </p>
       {result.plan ? (
         <dl className="friendly-list compact-list">
-          <dt>Layers</dt>
+          <dt>{t("plan.layers")}</dt>
           <dd>{result.plan.pathCount}</dd>
-          <dt>Tools</dt>
-          <dd>{result.plan.tools.map(formatToolName).join(", ") || "No tools listed"}</dd>
+          <dt>{t("plan.tools")}</dt>
+          <dd>{result.plan.tools.map((tool) => formatToolName(tool, language)).join(", ") || t("plan.noTools")}</dd>
         </dl>
       ) : null}
 
       {canStart ? (
         <div className="cut-start">
           <button type="button" onClick={onStart} disabled={cutBusy}>
-            {cutBusy ? "Starting..." : "Start cut"}
+            {cutBusy ? t("buttons.starting") : t("buttons.startCut")}
           </button>
-          <p>Only press this when the Cricut is nearby, plugged in, and you are ready to watch it.</p>
+          <p>{t("plan.startCutNote")}</p>
         </div>
       ) : null}
 
-      {cutSession ? (
+      {cutSession && cutActionCopy ? (
         <div className={`cut-monitor cut-monitor--${cutSession.action.tone}`} aria-live="polite">
-          <p className="panel-label">Watched Cricut step</p>
-          <h3>{cutSession.action.title}</h3>
-          <p>{cutSession.action.message}</p>
-          <ol className="cut-progress" aria-label="Cutting progress guide">
-            <li className="cut-progress__done">Prepare plan</li>
-            <li className={cutSession.action.kind === "load-tools" ? "cut-progress__active" : ""}>Load tool</li>
-            <li className={cutSession.action.kind === "load-mat" ? "cut-progress__active" : ""}>Load mat</li>
-            <li className={cutSession.action.kind === "running" ? "cut-progress__active" : ""}>Cut/draw</li>
-            <li className={cutSession.action.kind === "finished" ? "cut-progress__active" : ""}>Finish</li>
+          <p className="panel-label">{t("cut.panelLabel")}</p>
+          <h3>{cutActionCopy.title}</h3>
+          <p>{cutActionCopy.message}</p>
+          <ol className="cut-progress" aria-label={t("cut.progressLabel")}>
+            <li className="cut-progress__done">{t("cut.preparePlan")}</li>
+            <li className={cutSession.action.kind === "load-tools" ? "cut-progress__active" : ""}>{t("cut.loadTool")}</li>
+            <li className={cutSession.action.kind === "load-mat" ? "cut-progress__active" : ""}>{t("cut.loadMat")}</li>
+            <li className={cutSession.action.kind === "running" ? "cut-progress__active" : ""}>{t("cut.cutDraw")}</li>
+            <li className={cutSession.action.kind === "finished" ? "cut-progress__active" : ""}>{t("cut.finish")}</li>
           </ol>
           <div className="cut-actions">
             {cutSession.action.requiresContinue ? (
               <button type="button" onClick={onContinue} disabled={cutBusy}>
-                Continue
+                {t("buttons.continue")}
               </button>
             ) : null}
             {cutSession.action.canStop ? (
               <button className="secondary-button" type="button" onClick={onStop} disabled={cutBusy}>
-                Stop
+                {t("buttons.stop")}
               </button>
             ) : null}
           </div>
           <details>
-            <summary>Cut details</summary>
+            <summary>{t("details.cut")}</summary>
             <pre>
               {[
                 `${cutSession.command} ${cutSession.args.join(" ")}`,
-                cutSession.transcript.trim() || "No SliceBug messages yet.",
+                cutSession.transcript.trim() || t("cut.noMessages"),
               ].join("\n\n")}
             </pre>
           </details>
@@ -702,7 +773,7 @@ function PlanAndCutMonitor({
 
       {copy.details.length > 0 ? (
         <details>
-          <summary>Plan details</summary>
+          <summary>{t("details.plan")}</summary>
           <pre>{copy.details.join("\n\n")}</pre>
         </details>
       ) : null}
@@ -710,7 +781,35 @@ function PlanAndCutMonitor({
   );
 }
 
-function EmptyPreviewState() {
+function getCutActionCopy(
+  action: CutSessionSnapshot["action"],
+  language: Language,
+): { title: string; message: string } {
+  const { t } = createTranslator(language);
+
+  switch (action.kind) {
+    case "finished":
+      return { title: t("cutAction.finished.title"), message: t("cutAction.finished.message") };
+    case "load-mat":
+      return { title: t("cutAction.load-mat.title"), message: t("cutAction.load-mat.message") };
+    case "load-tools":
+      return { title: t("cutAction.load-tools.title"), message: t("cutAction.load-tools.message") };
+    case "press-go":
+      return { title: t("cutAction.press-go.title"), message: t("cutAction.press-go.message") };
+    case "replace-tool":
+      return { title: t("cutAction.replace-tool.title"), message: t("cutAction.replace-tool.message") };
+    case "running":
+      return { title: t("cutAction.running.title"), message: t("cutAction.running.message") };
+    case "error":
+      return { title: t("cutAction.error.title"), message: t("cutAction.error.message") };
+    default:
+      return { title: t("cutAction.idle.title"), message: t("cutAction.idle.message") };
+  }
+}
+
+function EmptyPreviewState({ language }: { language: Language }) {
+  const { t } = createTranslator(language);
+
   return (
     <div className="empty-preview">
       <div className="mat-preview" aria-hidden="true">
@@ -720,13 +819,14 @@ function EmptyPreviewState() {
           <span className="pen-line" />
         </div>
       </div>
-      <p>Click “Try the birthday card” above to see a friendly layer summary here.</p>
+      <p>{t("practice.empty")}</p>
     </div>
   );
 }
 
-function SamplePlanResult({ result }: { result: SlicebugPlanResult }) {
-  const copy = getFriendlyPlanResultCopy(result);
+function SamplePlanResult({ result, language }: { result: SlicebugPlanResult; language: Language }) {
+  const { t } = createTranslator(language);
+  const copy = getFriendlyPlanResultCopy(result, language);
 
   return (
     <div className={`sample-result sample-result--${copy.tone}`}>
@@ -734,15 +834,15 @@ function SamplePlanResult({ result }: { result: SlicebugPlanResult }) {
       <p>{copy.message}</p>
       {result.plan ? (
         <dl className="friendly-list compact-list">
-          <dt>Layers</dt>
+          <dt>{t("plan.layers")}</dt>
           <dd>{result.plan.pathCount}</dd>
-          <dt>Tools</dt>
-          <dd>{result.plan.tools.map(formatToolName).join(", ") || "No tools listed"}</dd>
+          <dt>{t("plan.tools")}</dt>
+          <dd>{result.plan.tools.map((tool) => formatToolName(tool, language)).join(", ") || t("plan.noTools")}</dd>
         </dl>
       ) : null}
       {copy.details.length > 0 ? (
         <details>
-          <summary>Advanced details</summary>
+          <summary>{t("details.advanced")}</summary>
           <pre>{copy.details.join("\n\n")}</pre>
         </details>
       ) : null}

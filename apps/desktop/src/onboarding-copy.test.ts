@@ -23,6 +23,7 @@ describe("onboarding copy", () => {
     );
 
     expect(copy.tone).toBe("ready");
+    expect(copy.title).toBe("Klaar voor Cricut-projecten");
     expect(copy.message).not.toMatch(/executable|PATH|slicebug --version|stdout|stderr|JSON/i);
     expect(copy.details.join("\n")).toContain("Executable:");
   });
@@ -39,7 +40,7 @@ describe("onboarding copy", () => {
     );
 
     expect(copy.tone).toBe("warning");
-    expect(copy.title).toBe("One helper needs attention");
+    expect(copy.title).toBe("Een hulpje heeft aandacht nodig");
     expect(copy.message).not.toMatch(/executable|PATH|slicebug --version|stdout|stderr|JSON/i);
     expect(copy.details.join("\n")).toMatch(/PATH/);
   });
@@ -62,13 +63,29 @@ describe("onboarding copy", () => {
     });
 
     expect(copy.tone).toBe("ready");
-    expect(copy.message).toContain("2 layers");
+    expect(copy.message).toContain("2 lagen");
     expect(copy.message).not.toMatch(/executable|PATH|slicebug --version|stdout|stderr|JSON/i);
     expect(copy.details.join("\n")).toMatch(/stdout/);
   });
 
+  it("can still return English onboarding copy when selected", () => {
+    const copy = getFriendlySlicebugStatusCopy(
+      {
+        ok: false,
+        executable: null,
+        version: null,
+        message: "SliceBug was not found.",
+      },
+      false,
+      "en",
+    );
+
+    expect(copy.title).toBe("One helper needs attention");
+  });
+
   it("turns tool ids into crafter-friendly labels", () => {
-    expect(formatToolName("fine_point_blade")).toBe("Fine-point blade");
+    expect(formatToolName("fine_point_blade")).toBe("Fijn mesje");
+    expect(formatToolName("fine_point_blade", "en")).toBe("Fine-point blade");
     expect(formatToolName("foil_transfer")).toBe("Foil Transfer");
   });
 });
