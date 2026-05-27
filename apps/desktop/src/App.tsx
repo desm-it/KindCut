@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ChangeEvent } from "react";
 import { buildBeginnerProject, joyStandardMat, validateProject } from "@cricut-companion/craft-core";
 import { createDesignPrompt } from "@cricut-companion/ai-designer";
 import { buildPlanCommand } from "@cricut-companion/slicebug-bridge";
@@ -9,6 +10,7 @@ import {
   getFriendlyPlanResultCopy,
   getFriendlySlicebugStatusCopy,
 } from "./onboarding-copy";
+import { formatFileSize, getFriendlySvgMessages, getSvgSizeCopy, getSvgSizeInfo } from "./svg-import";
 
 type SlicebugStatus = {
   ok: boolean;
@@ -31,6 +33,15 @@ type SlicebugPlanResult = {
     pathCount: number;
     tools: string[];
   };
+};
+
+type ImportedSvg = {
+  fileName: string;
+  fileSize: string;
+  svg: string;
+  sizeCopy: string;
+  previewHtml: string;
+  preflight: ReturnType<typeof preflightSvg>;
 };
 
 const sampleProject = buildBeginnerProject({
@@ -61,6 +72,8 @@ export function App() {
   const [slicebugLoading, setSlicebugLoading] = useState(false);
   const [samplePlan, setSamplePlan] = useState<SlicebugPlanResult | null>(null);
   const [samplePlanLoading, setSamplePlanLoading] = useState(false);
+  const [importedSvg, setImportedSvg] = useState<ImportedSvg | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const statusCopy = useMemo(
     () => getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading),
@@ -124,6 +137,37 @@ export function App() {
       });
     } finally {
       setSamplePlanLoading(false);
+    }
+  }
+
+  async function handleSvgFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    setImportMessage(null);
+
+    if (!file.name.toLowerCase().endsWith(".svg")) {
+      setImportedSvg(null);
+      setImportMessage("Choose a file that ends in .svg so KindCut can preview it.");
+      return;
+    }
+
+    try {
+      const svg = await file.text();
+      const filePreflight = preflightSvg(svg);
+      setImportedSvg({
+        fileName: file.name,
+        fileSize: formatFileSize(file.size),
+        svg,
+        sizeCopy: getSvgSizeCopy(getSvgSizeInfo(svg)),
+        previewHtml: getSandboxedSvgPreview(svg),
+        preflight: filePreflight,
+      });
+    } catch (error) {
+      setImportedSvg(null);
+      setImportMessage(error instanceof Error ? error.message : "KindCut could not open that file yet.");
     }
   }
 
@@ -214,6 +258,26 @@ export function App() {
           ) : null}
         </article>
 
+        <article className="panel wide-panel import-panel">
+          <div className="split-heading">
+            <div>
+              <p className="panel-label">Your design</p>
+              <h2>Bring in an SVG</h2>
+            </div>
+            <label className="file-button">
+              Choose SVG
+              <input type="file" accept=".svg,image/svg+xml" onChange={(event) => void handleSvgFileChange(event)} />
+            </label>
+          </div>
+          <p className="soft-copy">
+            Pick a design from this computer. KindCut will show a gentle preview and a plain-English check before
+            anything is prepared for a cutter.
+          </p>
+
+          {importMessage ? <p className="warn import-message">{importMessage}</p> : null}
+          {importedSvg ? <ImportedSvgPreview importedSvg={importedSvg} /> : <EmptyImportState />}
+        </article>
+
         <article className="panel wide-panel">
           <div className="split-heading">
             <div>
@@ -253,6 +317,102 @@ export function App() {
         </article>
       </section>
     </main>
+  );
+}
+
+function getSandboxedSvgPreview(svg: string): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline';" />
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        background: #fffdf9;
+      }
+
+      svg {
+        max-width: 92%;
+        max-height: 92%;
+      }
+    </style>
+  </head>
+  <body>${svg}</body>
+</html>`;
+}
+
+function EmptyImportState() {
+  return (
+    <div className="import-empty">
+      <div className="paper-stack" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
+      <p>No SVG chosen yet. Start with a file you already have, then KindCut will show it here.</p>
+    </div>
+  );
+}
+
+function ImportedSvgPreview({ importedSvg }: { importedSvg: ImportedSvg }) {
+  const friendlyMessages = getFriendlySvgMessages(importedSvg.preflight);
+  const isReady = importedSvg.preflight.ok && importedSvg.preflight.warnings.length === 0;
+
+  return (
+    <div className="import-preview-grid">
+      <div className="svg-preview-frame">
+        <iframe title={`Preview of ${importedSvg.fileName}`} sandbox="" srcDoc={importedSvg.previewHtml} />
+      </div>
+
+      <div className="import-summary">
+        <p className="panel-label">Chosen file</p>
+        <h3>{importedSvg.fileName}</h3>
+        <dl className="friendly-list compact-list">
+          <dt>File</dt>
+          <dd>{importedSvg.fileSize}</dd>
+          <dt>Artwork</dt>
+          <dd>{importedSvg.sizeCopy}</dd>
+        </dl>
+
+        <div className={`svg-check svg-check--${isReady ? "ready" : "warning"}`}>
+          <h3>{isReady ? "This looks easy to start with" : "A few things may need a look"}</h3>
+          {friendlyMessages.length > 0 ? (
+            <ul className="plain-list">
+              {friendlyMessages.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+          ) : (
+            <p>KindCut can read this SVG and show it in the preview.</p>
+          )}
+        </div>
+
+        <details>
+          <summary>SVG check details</summary>
+          <pre>
+            {[
+              importedSvg.preflight.issues.length > 0
+                ? `Issues:\n${importedSvg.preflight.issues.join("\n")}`
+                : "Issues: none",
+              importedSvg.preflight.warnings.length > 0
+                ? `Warnings:\n${importedSvg.preflight.warnings.join("\n")}`
+                : "Warnings: none",
+            ].join("\n\n")}
+          </pre>
+        </details>
+
+        <details>
+          <summary>Raw SVG</summary>
+          <pre>{importedSvg.svg}</pre>
+        </details>
+      </div>
+    </div>
   );
 }
 

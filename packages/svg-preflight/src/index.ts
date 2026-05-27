@@ -20,7 +20,7 @@ export function preflightSvg(svg: string): SvgPreflightResult {
     warnings.push("SVG contains text. Convert text to outlines before sending to Cricut.");
   }
 
-  if (!/<path/i.test(svg)) {
+  if (!/<path\b/i.test(svg)) {
     warnings.push("SVG has no path elements yet. Preflight currently focuses on path-based Cricut output.");
   }
 
