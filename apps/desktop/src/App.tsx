@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
 import { buildBeginnerProject, joyStandardMat, validateProject } from "@cricut-companion/craft-core";
 import { createDesignPrompt } from "@cricut-companion/ai-designer";
-import { buildPlanCommand } from "@cricut-companion/slicebug-bridge";
+import { MAT_PRESETS, MATERIAL_OPTIONS, buildPlanCommand } from "@cricut-companion/slicebug-bridge";
 import { preflightSvg } from "@cricut-companion/svg-preflight";
 import {
   APP_NAME,
@@ -33,6 +33,23 @@ type SlicebugPlanResult = {
     pathCount: number;
     tools: string[];
   };
+};
+
+type CutSessionSnapshot = {
+  id: string;
+  status: "idle" | "running" | "waiting" | "finished" | "error" | "stopped" | "blocked";
+  action: {
+    kind: string;
+    title: string;
+    message: string;
+    requiresContinue: boolean;
+    canStop: boolean;
+    tone: "neutral" | "waiting" | "running" | "success" | "error";
+  };
+  transcript: string;
+  command: string;
+  args: string[];
+  planPath: string;
 };
 
 type ImportedSvg = {
@@ -74,6 +91,12 @@ export function App() {
   const [samplePlanLoading, setSamplePlanLoading] = useState(false);
   const [importedSvg, setImportedSvg] = useState<ImportedSvg | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [selectedMaterialId, setSelectedMaterialId] = useState(218);
+  const [selectedMatPreset, setSelectedMatPreset] = useState("joy-standard");
+  const [importedPlan, setImportedPlan] = useState<SlicebugPlanResult | null>(null);
+  const [importedPlanLoading, setImportedPlanLoading] = useState(false);
+  const [cutSession, setCutSession] = useState<CutSessionSnapshot | null>(null);
+  const [cutBusy, setCutBusy] = useState(false);
 
   const statusCopy = useMemo(
     () => getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading),
@@ -123,7 +146,12 @@ export function App() {
 
     setSamplePlanLoading(true);
     try {
-      setSamplePlan(await window.cricutCompanion.slicebug.generateSamplePlan());
+      setSamplePlan(
+        await window.cricutCompanion.slicebug.generateSamplePlan({
+          materialId: selectedMaterialId,
+          matPreset: selectedMatPreset,
+        }),
+      );
     } catch (error) {
       setSamplePlan({
         ok: false,
@@ -137,6 +165,90 @@ export function App() {
       });
     } finally {
       setSamplePlanLoading(false);
+    }
+  }
+
+  async function prepareImportedPlan() {
+    if (!importedSvg) {
+      setImportMessage("Choose an SVG first, then KindCut can prepare it.");
+      return;
+    }
+
+    if (!window.cricutCompanion?.slicebug) {
+      setImportedPlan({
+        ok: false,
+        executable: "",
+        inputSvgPath: "",
+        outputPlanPath: "",
+        stdout: "",
+        stderr: "",
+        message: "Open this screen in the Electron desktop shell to prepare a Cricut handoff.",
+        plan: null,
+      });
+      return;
+    }
+
+    setImportedPlanLoading(true);
+    setImportedPlan(null);
+    setCutSession(null);
+    try {
+      setImportedPlan(
+        await window.cricutCompanion.slicebug.createPlan({
+          svg: importedSvg.svg,
+          fileName: importedSvg.fileName,
+          materialId: selectedMaterialId,
+          matPreset: selectedMatPreset,
+        }),
+      );
+    } catch (error) {
+      setImportedPlan({
+        ok: false,
+        executable: "",
+        inputSvgPath: "",
+        outputPlanPath: "",
+        stdout: "",
+        stderr: "",
+        message: error instanceof Error ? error.message : "KindCut could not prepare that SVG yet.",
+        plan: null,
+      });
+    } finally {
+      setImportedPlanLoading(false);
+    }
+  }
+
+  async function startCutSession(planPath: string) {
+    if (!window.cricutCompanion?.slicebug) {
+      return;
+    }
+    setCutBusy(true);
+    try {
+      setCutSession(await window.cricutCompanion.slicebug.startCutSession(planPath));
+    } finally {
+      setCutBusy(false);
+    }
+  }
+
+  async function continueCutSession() {
+    if (!window.cricutCompanion?.slicebug) {
+      return;
+    }
+    setCutBusy(true);
+    try {
+      setCutSession(await window.cricutCompanion.slicebug.continueCutSession());
+    } finally {
+      setCutBusy(false);
+    }
+  }
+
+  async function stopCutSession() {
+    if (!window.cricutCompanion?.slicebug) {
+      return;
+    }
+    setCutBusy(true);
+    try {
+      setCutSession(await window.cricutCompanion.slicebug.stopCutSession());
+    } finally {
+      setCutBusy(false);
     }
   }
 
@@ -165,6 +277,8 @@ export function App() {
         previewHtml: getSandboxedSvgPreview(svg),
         preflight: filePreflight,
       });
+      setImportedPlan(null);
+      setCutSession(null);
     } catch (error) {
       setImportedSvg(null);
       setImportMessage(error instanceof Error ? error.message : "KindCut could not open that file yet.");
@@ -174,6 +288,22 @@ export function App() {
   useEffect(() => {
     void refreshSlicebugStatus();
   }, []);
+
+  useEffect(() => {
+    if (!window.cricutCompanion?.slicebug || !cutSession || !["running", "waiting"].includes(cutSession.status)) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void window.cricutCompanion?.slicebug.getCutSession().then((snapshot) => {
+        if (snapshot) {
+          setCutSession(snapshot);
+        }
+      });
+    }, 800);
+
+    return () => window.clearInterval(timer);
+  }, [cutSession]);
 
   return (
     <main className="app-shell">
@@ -237,8 +367,15 @@ export function App() {
               {sampleProject.mat.name}, {sampleProject.mat.widthIn} x {sampleProject.mat.heightIn} in
             </dd>
             <dt>Material</dt>
-            <dd>{sampleProject.material.name}</dd>
+            <dd>{MATERIAL_OPTIONS.find((material) => material.id === selectedMaterialId)?.name ?? sampleProject.material.name}</dd>
           </dl>
+          <p className="choice-kicker">Adjust these choices before preparing a preview or starting a watched cut.</p>
+          <MaterialMatChooser
+            selectedMaterialId={selectedMaterialId}
+            selectedMatPreset={selectedMatPreset}
+            onMaterialChange={setSelectedMaterialId}
+            onMatChange={setSelectedMatPreset}
+          />
         </article>
 
         <article className="panel">
@@ -262,7 +399,7 @@ export function App() {
           <div className="split-heading">
             <div>
               <p className="panel-label">Your design</p>
-              <h2>Bring in an SVG</h2>
+              <h2>Bring in an SVG design file</h2>
             </div>
             <label className="file-button">
               Choose SVG
@@ -270,12 +407,31 @@ export function App() {
             </label>
           </div>
           <p className="soft-copy">
-            Pick a design from this computer. KindCut will show a gentle preview and a plain-English check before
+            Pick an SVG design file from this computer. KindCut will show a gentle preview and a plain-English check before
             anything is prepared for a cutter.
           </p>
 
           {importMessage ? <p className="warn import-message">{importMessage}</p> : null}
           {importedSvg ? <ImportedSvgPreview importedSvg={importedSvg} /> : <EmptyImportState />}
+          {importedSvg ? (
+            <div className="prepare-row">
+              <button type="button" onClick={() => void prepareImportedPlan()} disabled={importedPlanLoading}>
+                {importedPlanLoading ? "Preparing..." : "Prepare Cricut handoff"}
+              </button>
+              <p>This makes a local plan only. Cutting starts later, after you press Start cut.</p>
+            </div>
+          ) : null}
+          {importedPlan ? (
+            <PlanAndCutMonitor
+              result={importedPlan}
+              planLabel={importedSvg?.fileName ?? "Imported design"}
+              cutSession={cutSession}
+              cutBusy={cutBusy}
+              onStart={() => void startCutSession(importedPlan.outputPlanPath)}
+              onContinue={() => void continueCutSession()}
+              onStop={() => void stopCutSession()}
+            />
+          ) : null}
         </article>
 
         <article className="panel wide-panel">
@@ -289,7 +445,8 @@ export function App() {
             </button>
           </div>
           <p className="soft-copy">
-            This only prepares a preview file for the sample card. It will not send anything to a Cricut machine.
+            This only prepares a preview file for the sample card with the material and mat you chose. It will not send
+            anything to a Cricut machine.
           </p>
 
           {samplePlan ? <SamplePlanResult result={samplePlan} /> : <EmptyPreviewState />}
@@ -340,6 +497,11 @@ function getSandboxedSvgPreview(svg: string): string {
       svg {
         max-width: 92%;
         max-height: 92%;
+        overflow: visible;
+      }
+
+      svg [stroke]:not([stroke="none"]) {
+        vector-effect: non-scaling-stroke;
       }
     </style>
   </head>
@@ -416,6 +578,138 @@ function ImportedSvgPreview({ importedSvg }: { importedSvg: ImportedSvg }) {
   );
 }
 
+function MaterialMatChooser({
+  selectedMaterialId,
+  selectedMatPreset,
+  onMaterialChange,
+  onMatChange,
+}: {
+  selectedMaterialId: number;
+  selectedMatPreset: string;
+  onMaterialChange: (materialId: number) => void;
+  onMatChange: (matPreset: string) => void;
+}) {
+  return (
+    <div className="choice-panel" aria-label="Material and mat choices">
+      <label>
+        Material
+        <select value={selectedMaterialId} onChange={(event) => onMaterialChange(Number(event.target.value))}>
+          {MATERIAL_OPTIONS.map((material) => (
+            <option key={material.id} value={material.id}>
+              {material.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Mat
+        <select value={selectedMatPreset} onChange={(event) => onMatChange(event.target.value)}>
+          {MAT_PRESETS.map((mat) => (
+            <option key={mat.id} value={mat.id}>
+              {mat.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p>
+        {MATERIAL_OPTIONS.find((material) => material.id === selectedMaterialId)?.beginnerCopy}{" "}
+        {MAT_PRESETS.find((mat) => mat.id === selectedMatPreset)?.beginnerCopy}
+      </p>
+    </div>
+  );
+}
+
+function PlanAndCutMonitor({
+  result,
+  planLabel,
+  cutSession,
+  cutBusy,
+  onStart,
+  onContinue,
+  onStop,
+}: {
+  result: SlicebugPlanResult;
+  planLabel: string;
+  cutSession: CutSessionSnapshot | null;
+  cutBusy: boolean;
+  onStart: () => void;
+  onContinue: () => void;
+  onStop: () => void;
+}) {
+  const copy = getFriendlyPlanResultCopy(result);
+  const canStart = result.ok && result.plan && !cutSession;
+
+  return (
+    <div className={`sample-result sample-result--${copy.tone}`}>
+      <p className="panel-label">Imported SVG handoff</p>
+      <h3>{result.ok ? "Ready to send when you are" : copy.title}</h3>
+      <p>
+        Current plan: <strong>{planLabel}</strong>. {copy.message}
+      </p>
+      {result.plan ? (
+        <dl className="friendly-list compact-list">
+          <dt>Layers</dt>
+          <dd>{result.plan.pathCount}</dd>
+          <dt>Tools</dt>
+          <dd>{result.plan.tools.map(formatToolName).join(", ") || "No tools listed"}</dd>
+        </dl>
+      ) : null}
+
+      {canStart ? (
+        <div className="cut-start">
+          <button type="button" onClick={onStart} disabled={cutBusy}>
+            {cutBusy ? "Starting..." : "Start cut"}
+          </button>
+          <p>Only press this when the Cricut is nearby, plugged in, and you are ready to watch it.</p>
+        </div>
+      ) : null}
+
+      {cutSession ? (
+        <div className={`cut-monitor cut-monitor--${cutSession.action.tone}`} aria-live="polite">
+          <p className="panel-label">Watched Cricut step</p>
+          <h3>{cutSession.action.title}</h3>
+          <p>{cutSession.action.message}</p>
+          <ol className="cut-progress" aria-label="Cutting progress guide">
+            <li className="cut-progress__done">Prepare plan</li>
+            <li className={cutSession.action.kind === "load-tools" ? "cut-progress__active" : ""}>Load tool</li>
+            <li className={cutSession.action.kind === "load-mat" ? "cut-progress__active" : ""}>Load mat</li>
+            <li className={cutSession.action.kind === "running" ? "cut-progress__active" : ""}>Cut/draw</li>
+            <li className={cutSession.action.kind === "finished" ? "cut-progress__active" : ""}>Finish</li>
+          </ol>
+          <div className="cut-actions">
+            {cutSession.action.requiresContinue ? (
+              <button type="button" onClick={onContinue} disabled={cutBusy}>
+                Continue
+              </button>
+            ) : null}
+            {cutSession.action.canStop ? (
+              <button className="secondary-button" type="button" onClick={onStop} disabled={cutBusy}>
+                Stop
+              </button>
+            ) : null}
+          </div>
+          <details>
+            <summary>Cut details</summary>
+            <pre>
+              {[
+                `${cutSession.command} ${cutSession.args.join(" ")}`,
+                cutSession.transcript.trim() || "No SliceBug messages yet.",
+              ].join("\n\n")}
+            </pre>
+          </details>
+        </div>
+      ) : null}
+
+      {copy.details.length > 0 ? (
+        <details>
+          <summary>Plan details</summary>
+          <pre>{copy.details.join("\n\n")}</pre>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 function EmptyPreviewState() {
   return (
     <div className="empty-preview">
@@ -426,7 +720,7 @@ function EmptyPreviewState() {
           <span className="pen-line" />
         </div>
       </div>
-      <p>Start with the birthday card to see a friendly layer summary here.</p>
+      <p>Click “Try the birthday card” above to see a friendly layer summary here.</p>
     </div>
   );
 }

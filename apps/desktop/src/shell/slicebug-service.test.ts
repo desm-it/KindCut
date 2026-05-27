@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
 import {
+  SlicebugCutSession,
   buildSamplePlanRequest,
+  buildSvgPlanRequest,
   buildSlicebugInvocation,
   findSlicebugExecutableCandidates,
   summarizePlanResult,
@@ -73,6 +76,33 @@ describe("slicebug desktop service", () => {
     });
   });
 
+  it("builds a selectable non-cutting SVG plan request", () => {
+    const request = buildSvgPlanRequest("/tmp/cricut-companion-plan", {
+      svg: "<svg />",
+      fileName: "Mom card.svg",
+      materialId: 535,
+      matPreset: "joy-card",
+    });
+
+    expect(request.inputSvgPath).toBe("/tmp/cricut-companion-plan/mom-card.svg");
+    expect(request.outputPlanPath).toBe("/tmp/cricut-companion-plan/mom-card.json");
+    expect(request.invocation).toEqual({
+      args: [
+        "plan",
+        "/tmp/cricut-companion-plan/mom-card.svg",
+        "/tmp/cricut-companion-plan/mom-card.json",
+        "--material",
+        "535",
+        "--mat-preset",
+        "joy-card",
+        "--map",
+        "000000:pen",
+        "--map",
+        "ff0000:fine_point_blade",
+      ],
+    });
+  });
+
   it("summarizes successful plan generation with parsed plan metadata", () => {
     expect(
       summarizePlanResult({
@@ -125,4 +155,92 @@ describe("slicebug desktop service", () => {
       plan: null,
     });
   });
+
+  it("blocks cut sessions in smoke mode before spawning a process", () => {
+    let spawned = false;
+    const session = new SlicebugCutSession({
+      id: "test-cut",
+      executable: "slicebug",
+      planPath: "/tmp/card.json",
+      smokeMode: true,
+      spawnProcess: () => {
+        spawned = true;
+        return new FakeCutProcess();
+      },
+    });
+
+    expect(session.start()).toMatchObject({ status: "blocked" });
+    expect(spawned).toBe(false);
+  });
+
+  it("starts a guarded Joy cut only from an explicit start call and waits before continuing", () => {
+    const fake = new FakeCutProcess();
+    const session = new SlicebugCutSession({
+      id: "test-cut",
+      executable: "slicebug",
+      planPath: "/tmp/card.json",
+      smokeMode: false,
+      spawnProcess: (command, args) => {
+        expect(command).toBe("slicebug");
+        expect(args).toEqual(["cut", "--software-buttons", "/tmp/card.json"]);
+        return fake;
+      },
+    });
+
+    expect(session.getSnapshot().status).toBe("idle");
+    const started = session.start();
+    expect(started.status).toBe("running");
+    expect(fake.stdinWrites).toEqual([]);
+
+    fake.stdout.emit("data", Buffer.from("Insert/load mat and press Enter when ready\n"));
+    expect(session.getSnapshot()).toMatchObject({
+      status: "waiting",
+      action: { kind: "load-mat", requiresContinue: true },
+    });
+    expect(fake.stdinWrites).toEqual([]);
+
+    session.continue();
+    expect(fake.stdinWrites).toEqual(["\n"]);
+
+    fake.stdout.emit("data", Buffer.from("Cutting path 1 of 2\n"));
+    expect(session.getSnapshot()).toMatchObject({ status: "running", action: { kind: "running" } });
+
+    fake.stdout.emit("data", Buffer.from("Finished. Unload the mat.\n"));
+    fake.emit("exit", 0);
+    expect(session.getSnapshot()).toMatchObject({ status: "finished", action: { kind: "finished" } });
+  });
+
+  it("stops a running cut session through the process boundary", () => {
+    const fake = new FakeCutProcess();
+    const session = new SlicebugCutSession({
+      id: "test-cut",
+      executable: "slicebug",
+      planPath: "/tmp/card.json",
+      smokeMode: false,
+      spawnProcess: () => fake,
+    });
+
+    session.start();
+    expect(session.stop()).toMatchObject({ status: "stopped" });
+    expect(fake.killed).toBe(true);
+  });
 });
+
+class FakeCutProcess extends EventEmitter {
+  readonly stdout = new EventEmitter();
+  readonly stderr = new EventEmitter();
+  readonly stdinWrites: string[] = [];
+  killed = false;
+  readonly stdin = {
+    write: (text: string) => {
+      this.stdinWrites.push(text);
+      return true;
+    },
+  };
+
+  kill() {
+    this.killed = true;
+    this.emit("exit", null);
+    return true;
+  }
+}
