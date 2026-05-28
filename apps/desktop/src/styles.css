@@ -1410,7 +1410,7 @@ a {
   top: 0;
   left: 0;
   overflow: visible;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .origin-marker {
@@ -1474,16 +1474,19 @@ a {
 .moveable-control-box {
   --moveable-color: #8f4f2b;
   z-index: 8 !important;
+  pointer-events: auto !important;
 }
 
 .moveable-line {
   background: #8f4f2b !important;
+  pointer-events: auto !important;
 }
 
 .moveable-control {
   border: 2px solid #fffdf9 !important;
   background: #8f4f2b !important;
   box-shadow: 0 3px 8px rgba(61, 40, 24, 0.24);
+  pointer-events: auto !important;
 }
 
 .empty-workpiece {
