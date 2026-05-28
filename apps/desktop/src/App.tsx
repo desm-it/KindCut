@@ -884,6 +884,8 @@ const DEFAULT_SVG_FRAME_SIZE = 180;
 const WORKSPACE_STAGE_LEFT_OFFSET = 42;
 const WORKSPACE_STAGE_TOP_OFFSET = 74;
 const WORKSPACE_HISTORY_LIMIT = 50;
+const ROTATION_SNAP_INTERVAL_DEGREES = 45;
+const ROTATION_SNAP_THRESHOLD_DEGREES = 4;
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -1306,28 +1308,57 @@ function DesignWorkspace({
     if (item) {
       event.set([item.transform.scaleX, item.transform.scaleY]);
       event.setTransform(getWorkspaceItemTransform(item.transform));
+      if (isCornerScaleDirection(event.direction)) {
+        event.setRatio(item.frame.width / item.frame.height);
+      }
+      event.setFixedDirection(getScaleFixedDirection(event.direction, isCenterScaleModifier(event.inputEvent)));
     }
   }
 
   function handleMoveableScaleGroupStart(event: OnScaleGroupStart) {
     beginMoveableTransform(event.targets);
+    if (isCornerScaleDirection(event.direction)) {
+      const bounds = getWorkspaceSelectionBounds(selectedItems);
+      if (bounds?.height) {
+        event.setRatio(bounds.width / bounds.height);
+      }
+    }
+    event.setFixedDirection(getScaleFixedDirection(event.direction, isCenterScaleModifier(event.inputEvent)));
     event.events.forEach((childEvent) => {
       const item = getWorkspaceItemFromTarget(childEvent.target);
       if (item) {
         childEvent.set([item.transform.scaleX, item.transform.scaleY]);
         childEvent.setTransform(getWorkspaceItemTransform(item.transform));
+        if (isCornerScaleDirection(childEvent.direction)) {
+          childEvent.setRatio(item.frame.width / item.frame.height);
+        }
+        childEvent.setFixedDirection(getScaleFixedDirection(childEvent.direction, isCenterScaleModifier(childEvent.inputEvent)));
       }
     });
   }
 
   function handleMoveableScale(event: OnScale) {
-    updateMoveableTargetScale(event.target, event.scale[0] ?? 1, event.scale[1] ?? 1, null);
+    updateMoveableTargetScale(
+      event.target,
+      event.scale[0] ?? 1,
+      event.scale[1] ?? 1,
+      event.direction,
+      isCenterScaleModifier(event.inputEvent),
+      null,
+    );
   }
 
   function handleMoveableScaleGroup(event: OnScaleGroup) {
-    const groupCenter = moveableGroupCenterStart.current;
+    const groupBounds = getMoveableStartBounds();
     event.events.forEach((childEvent) => {
-      updateMoveableTargetScale(childEvent.target, childEvent.scale[0] ?? 1, childEvent.scale[1] ?? 1, groupCenter);
+      updateMoveableTargetScale(
+        childEvent.target,
+        childEvent.scale[0] ?? 1,
+        childEvent.scale[1] ?? 1,
+        childEvent.direction,
+        isCenterScaleModifier(childEvent.inputEvent),
+        groupBounds,
+      );
     });
   }
 
@@ -1352,13 +1383,18 @@ function DesignWorkspace({
   }
 
   function handleMoveableRotate(event: OnRotate) {
-    updateMoveableTargetRotation(event.target, event.rotation, null);
+    updateMoveableTargetRotation(event.target, event.rotation, isPreciseRotationModifier(event.inputEvent), null);
   }
 
   function handleMoveableRotateGroup(event: OnRotateGroup) {
     const groupCenter = moveableGroupCenterStart.current;
     event.events.forEach((childEvent) => {
-      updateMoveableTargetRotation(childEvent.target, childEvent.rotation, groupCenter);
+      updateMoveableTargetRotation(
+        childEvent.target,
+        childEvent.rotation,
+        isPreciseRotationModifier(childEvent.inputEvent),
+        groupCenter,
+      );
     });
   }
 
@@ -1378,16 +1414,29 @@ function DesignWorkspace({
     target: HTMLElement | SVGElement,
     absoluteScaleX: number,
     absoluteScaleY: number,
-    groupCenter: Point | null,
+    direction: number[],
+    fromCenter: boolean,
+    groupBounds: ReturnType<typeof getMoveableStartBounds>,
   ) {
     const item = getWorkspaceItemFromTarget(target);
     if (!item) {
       return;
     }
     const start = moveableTransformStart.current.get(item.id) ?? item.transform;
-    const scaleFactorX = absoluteScaleX / Math.max(0.001, start.scaleX);
-    const scaleFactorY = absoluteScaleY / Math.max(0.001, start.scaleY);
-    const anchor = groupCenter ?? getWorkspaceItemCenterPoint(start, item.frame);
+    let scaleFactorX = absoluteScaleX / Math.max(0.001, start.scaleX);
+    let scaleFactorY = absoluteScaleY / Math.max(0.001, start.scaleY);
+    if (isCornerScaleDirection(direction)) {
+      const uniformScale = Math.max(scaleFactorX, scaleFactorY);
+      scaleFactorX = uniformScale;
+      scaleFactorY = uniformScale;
+    } else if (direction[0] === 0) {
+      scaleFactorX = 1;
+    } else if (direction[1] === 0) {
+      scaleFactorY = 1;
+    }
+    const anchor = groupBounds
+      ? getScaleAnchorForBounds(groupBounds, direction, fromCenter)
+      : getScaleAnchorForItem(start, item.frame, direction, fromCenter);
     const next = scaleWorkspaceItemTransformFromAnchor(start, item.frame, anchor, scaleFactorX, scaleFactorY);
     applyMoveableTargetTransform(target, item.id, next);
   }
@@ -1395,6 +1444,7 @@ function DesignWorkspace({
   function updateMoveableTargetRotation(
     target: HTMLElement | SVGElement,
     absoluteRotation: number,
+    preciseRotation: boolean,
     groupCenter: Point | null,
   ) {
     const item = getWorkspaceItemFromTarget(target);
@@ -1403,7 +1453,10 @@ function DesignWorkspace({
     }
     const start = moveableTransformStart.current.get(item.id) ?? item.transform;
     const anchor = groupCenter ?? getWorkspaceItemCenterPoint(start, item.frame);
-    const next = rotateWorkspaceItemTransformAroundPoint(start, item.frame, anchor, absoluteRotation - start.rotation);
+    const rotationDelta = groupCenter
+      ? getSnappedRotation(absoluteRotation - start.rotation, preciseRotation)
+      : getSnappedRotation(absoluteRotation, preciseRotation) - start.rotation;
+    const next = rotateWorkspaceItemTransformAroundPoint(start, item.frame, anchor, rotationDelta);
     applyMoveableTargetTransform(target, item.id, next);
   }
 
@@ -1433,6 +1486,71 @@ function DesignWorkspace({
       transform.rotation,
     );
     return { x: transform.x + centerOffset.x, y: transform.y + centerOffset.y };
+  }
+
+  function getMoveableStartBounds() {
+    const startItems = Array.from(moveableTransformStart.current, ([id, transform]) => {
+      const item = importedSvgs.find((candidate) => candidate.id === id);
+      return item ? { frame: item.frame, transform } : null;
+    }).filter((item): item is { frame: { width: number; height: number }; transform: WorkspaceItemTransform } => Boolean(item));
+    return getWorkspaceSelectionBounds(startItems);
+  }
+
+  function getScaleAnchorForItem(
+    transform: WorkspaceItemTransform,
+    frame: { width: number; height: number },
+    direction: number[],
+    fromCenter: boolean,
+  ): Point {
+    if (fromCenter) {
+      return getWorkspaceItemCenterPoint(transform, frame);
+    }
+    const width = frame.width * transform.scaleX;
+    const height = frame.height * transform.scaleY;
+    const localAnchor = {
+      x: direction[0] === -1 ? width : direction[0] === 1 ? 0 : width / 2,
+      y: direction[1] === -1 ? height : direction[1] === 1 ? 0 : height / 2,
+    };
+    const rotatedAnchor = rotatePoint(localAnchor, transform.rotation);
+    return { x: transform.x + rotatedAnchor.x, y: transform.y + rotatedAnchor.y };
+  }
+
+  function getScaleAnchorForBounds(
+    bounds: NonNullable<ReturnType<typeof getWorkspaceSelectionBounds>>,
+    direction: number[],
+    fromCenter: boolean,
+  ): Point {
+    if (fromCenter) {
+      return bounds.center;
+    }
+    return {
+      x: direction[0] === -1 ? bounds.right : direction[0] === 1 ? bounds.left : bounds.center.x,
+      y: direction[1] === -1 ? bounds.bottom : direction[1] === 1 ? bounds.top : bounds.center.y,
+    };
+  }
+
+  function getScaleFixedDirection(direction: number[], fromCenter: boolean): number[] {
+    return fromCenter ? [0, 0] : [-(direction[0] ?? 0), -(direction[1] ?? 0)];
+  }
+
+  function isCornerScaleDirection(direction: number[]): boolean {
+    return (direction[0] ?? 0) !== 0 && (direction[1] ?? 0) !== 0;
+  }
+
+  function isCenterScaleModifier(inputEvent: { altKey?: boolean } | null | undefined): boolean {
+    return Boolean(inputEvent?.altKey);
+  }
+
+  function isPreciseRotationModifier(inputEvent: { altKey?: boolean } | null | undefined): boolean {
+    return Boolean(inputEvent?.altKey);
+  }
+
+  function getSnappedRotation(rotation: number, preciseRotation: boolean): number {
+    if (preciseRotation) {
+      return rotation;
+    }
+    const snapped = Math.round(rotation / ROTATION_SNAP_INTERVAL_DEGREES) * ROTATION_SNAP_INTERVAL_DEGREES;
+    return Math.abs(rotation - snapped) <= ROTATION_SNAP_THRESHOLD_DEGREES ? snapped : rotation;
   }
 
   useEffect(() => {
