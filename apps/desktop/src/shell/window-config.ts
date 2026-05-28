@@ -33,7 +33,7 @@ export function createMainWindowOptions(input: MainWindowOptionsInput): BrowserW
     backgroundColor: "#f7efe4",
     show: false,
     titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 18, y: 18 },
+    trafficLightPosition: { x: 18, y: 14 },
     webPreferences: {
       preload: input.preloadPath,
       contextIsolation: true,
