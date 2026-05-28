@@ -140,7 +140,9 @@ type DesktopActionPayload = {
     | "edit-delete"
     | "edit-select-all"
     | "edit-undo"
-    | "edit-redo";
+    | "edit-redo"
+    | "edit-group"
+    | "edit-ungroup";
   value?: string;
 };
 
@@ -595,6 +597,12 @@ export function App() {
       case "edit-delete":
         handleDeleteSvgs();
         break;
+      case "edit-group":
+        handleGroupSvgs();
+        break;
+      case "edit-ungroup":
+        handleUngroupSvg();
+        break;
     }
   }
 
@@ -834,13 +842,20 @@ export function App() {
   useEffect(() => window.cricutCompanion?.onAppAction?.(handleDesktopAction));
 
   useEffect(() => {
-    return window.cricutCompanion?.workspaceEditState?.setProvider(() => ({
-      isWorkspaceContextTarget: screen === "workspace" && Date.now() - lastWorkspaceContextMenuAt.current < 500,
-      selectedObjectCount: lastWorkspaceContextSelectionCount.current ?? selectedSvgIds.length,
-      objectCount: importedSvgs.length,
-      hasInternalClipboard: workspaceClipboard.current.length > 0,
-    }));
-  }, [importedSvgs.length, screen, selectedSvgIds.length]);
+    return window.cricutCompanion?.workspaceEditState?.setProvider(() => {
+      const selCount = lastWorkspaceContextSelectionCount.current ?? selectedSvgIds.length;
+      const selectedSet = new Set(selectedSvgIds);
+      const selectedObjects = importedSvgs.filter((item) => selectedSet.has(item.id));
+      return {
+        isWorkspaceContextTarget: screen === "workspace" && Date.now() - lastWorkspaceContextMenuAt.current < 500,
+        selectedObjectCount: selCount,
+        objectCount: importedSvgs.length,
+        hasInternalClipboard: workspaceClipboard.current.length > 0,
+        canGroup: selCount >= 2,
+        canUngroup: selectedObjects.some((item) => item.type === "group"),
+      };
+    });
+  }, [importedSvgs, screen, selectedSvgIds]);
 
   useEffect(() => {
     document.documentElement.lang = language;

@@ -26,7 +26,9 @@ type RendererAction =
   | "edit-delete"
   | "edit-select-all"
   | "edit-undo"
-  | "edit-redo";
+  | "edit-redo"
+  | "edit-group"
+  | "edit-ungroup";
 
 type ProjectSaveInput = {
   content: string;
@@ -43,6 +45,8 @@ type WorkspaceEditState = {
   selectedObjectCount: number;
   objectCount: number;
   hasInternalClipboard: boolean;
+  canGroup: boolean;
+  canUngroup: boolean;
 };
 
 const PROJECT_FILE_FILTER = { name: "KindCut Projects", extensions: ["kindcut"] };
@@ -219,6 +223,9 @@ async function showContextMenu(window: BrowserWindow): Promise<void> {
     { label: "Copy", accelerator: "CmdOrCtrl+C", enabled: hasSelection, click: () => sendRendererAction("edit-copy") },
     { label: "Paste", accelerator: "CmdOrCtrl+V", enabled: editState.hasInternalClipboard, click: () => sendRendererAction("edit-paste") },
     { label: "Delete", accelerator: "Backspace", enabled: hasSelection, click: () => sendRendererAction("edit-delete") },
+    { type: "separator" },
+    { label: "Group", enabled: editState.canGroup, click: () => sendRendererAction("edit-group") },
+    { label: "Ungroup", enabled: editState.canUngroup, click: () => sendRendererAction("edit-ungroup") },
     { type: "separator" },
     { label: "Select All", accelerator: "CmdOrCtrl+A", enabled: hasObjects, click: () => sendRendererAction("edit-select-all") },
   ]);
