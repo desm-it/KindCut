@@ -1067,9 +1067,17 @@ function DesignWorkspace({
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const workpieceTransformRef = useRef<HTMLDivElement | null>(null);
   const dragStart = useRef<null | { pointerId: number; pointer: Point; pan: Point }>(null);
+  const directItemDragStart = useRef<null | {
+    pointerId: number;
+    id: string;
+    pointer: Point;
+    transform: WorkspaceItemTransform;
+    moved: boolean;
+  }>(null);
   const moveableTransformStart = useRef(new Map<string, WorkspaceItemTransform>());
   const latestMoveableTransforms = useRef(new Map<string, WorkspaceItemTransform>());
   const [moveableTargets, setMoveableTargets] = useState<HTMLElement[]>([]);
+  const [isDirectItemDragging, setIsDirectItemDragging] = useState(false);
   const matDimensions = getMatDimensionsInches(selectedMatPreset);
   const materialName =
     getMaterialName(selectedMaterialId, language) ??
@@ -1141,7 +1149,11 @@ function DesignWorkspace({
     if (event.button !== 0) {
       return;
     }
-    if (selectedSvgId && !(event.target as HTMLElement).closest(".workspace-image-item")) {
+    const target = event.target as HTMLElement;
+    if (target.closest(".moveable-control-box")) {
+      return;
+    }
+    if (selectedSvgId && !target.closest(".workspace-image-item")) {
       onSelectSvg(null);
     }
     event.preventDefault();
@@ -1179,6 +1191,59 @@ function DesignWorkspace({
     }
     if (!selectedSvgIdSet.has(item.id) || selectedItems.length <= 1) {
       onSelectSvg(item.id);
+    }
+    if (!selectedSvgIdSet.has(item.id)) {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      directItemDragStart.current = {
+        pointerId: event.pointerId,
+        id: item.id,
+        pointer: { x: event.clientX, y: event.clientY },
+        transform: item.transform,
+        moved: false,
+      };
+      setIsDirectItemDragging(true);
+    }
+  }
+
+  function handleItemPointerMove(event: PointerEvent<HTMLDivElement>, item: WorkspaceSvgItem) {
+    const drag = directItemDragStart.current;
+    if (!drag || drag.pointerId !== event.pointerId || drag.id !== item.id) {
+      return;
+    }
+    const deltaX = (event.clientX - drag.pointer.x) / zoom;
+    const deltaY = (event.clientY - drag.pointer.y) / zoom;
+    if (Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5) {
+      drag.moved = true;
+    }
+    const next = normalizeWorkspaceItemTransform({
+      ...drag.transform,
+      x: drag.transform.x + deltaX,
+      y: drag.transform.y + deltaY,
+    });
+    event.currentTarget.style.transform = getWorkspaceItemTransform(next);
+  }
+
+  function stopDirectItemDrag(event: PointerEvent<HTMLDivElement>, item: WorkspaceSvgItem) {
+    const drag = directItemDragStart.current;
+    if (!drag || drag.pointerId !== event.pointerId || drag.id !== item.id) {
+      return;
+    }
+    directItemDragStart.current = null;
+    setIsDirectItemDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const deltaX = (event.clientX - drag.pointer.x) / zoom;
+    const deltaY = (event.clientY - drag.pointer.y) / zoom;
+    const next = normalizeWorkspaceItemTransform({
+      ...drag.transform,
+      x: drag.transform.x + deltaX,
+      y: drag.transform.y + deltaY,
+    });
+    event.currentTarget.style.transform = getWorkspaceItemTransform(next);
+    if (drag.moved) {
+      onSvgTransformsCommit([{ id: item.id, transform: next }]);
     }
   }
 
@@ -1499,6 +1564,9 @@ function DesignWorkspace({
                           : `Select and move ${item.fileName}`
                       }
                       onPointerDown={(event) => handleItemPointerDown(event, item)}
+                      onPointerMove={(event) => handleItemPointerMove(event, item)}
+                      onPointerUp={(event) => stopDirectItemDrag(event, item)}
+                      onPointerCancel={(event) => stopDirectItemDrag(event, item)}
                       onContextMenu={(event) => handleItemContextMenu(event, item)}
                     >
                       <img alt="" draggable={false} src={getSvgDataUrl(item.svg)} />
@@ -1506,7 +1574,7 @@ function DesignWorkspace({
                   ))
                     )
                   : null}
-                {moveableTargets.length > 0 ? (
+                {moveableTargets.length > 0 && !isDirectItemDragging ? (
                   <Moveable
                     target={moveableTargets.length === 1 ? moveableTargets[0] : moveableTargets}
                     draggable
