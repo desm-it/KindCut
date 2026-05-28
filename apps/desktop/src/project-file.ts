@@ -1,5 +1,7 @@
 import type { MeasurementUnit, WorkspaceItemTransform } from "./workspace-utils";
 import { type WorkspaceShapeKind, isWorkspaceShapeKind } from "./workspace-shapes";
+import type { WorkspacePathData } from "./workspace-objects";
+import { extractWorkspacePathsFromSvg } from "./workspace-svg-import";
 
 export const KINDCUT_PROJECT_FORMAT = "kindcut-project";
 export const KINDCUT_PROJECT_VERSION = 1;
@@ -11,6 +13,19 @@ export type SavedImportedSvg = {
   fileName: string;
   fileSize: string;
   svg: string;
+  transform?: WorkspaceItemTransform;
+};
+
+export type SavedWorkspaceObject = {
+  id?: string;
+  type: "path" | "group";
+  kind?: "image" | "shape";
+  sourceKind?: "image" | "shape";
+  shapeKind?: WorkspaceShapeKind;
+  fileName: string;
+  fileSize: string;
+  frame: { width: number; height: number };
+  paths: WorkspacePathData[];
   transform?: WorkspaceItemTransform;
 };
 
@@ -27,6 +42,8 @@ export type KindCutProjectFile = {
   importedSvgs: SavedImportedSvg[];
   selectedSvgId: string | null;
   importedSvg: SavedImportedSvg | null;
+  workspaceObjects: SavedWorkspaceObject[];
+  selectedObjectId: string | null;
 };
 
 export function buildProjectFile(input: {
@@ -36,6 +53,8 @@ export function buildProjectFile(input: {
   measurementUnit: MeasurementUnit;
   importedSvg?: SavedImportedSvg | null;
   importedSvgs?: SavedImportedSvg[];
+  workspaceObjects?: SavedWorkspaceObject[];
+  selectedObjectId?: string | null;
   selectedSvgId?: string | null;
   savedAt?: string;
 }): KindCutProjectFile {
@@ -43,6 +62,13 @@ export function buildProjectFile(input: {
   const savedImportedSvgs = importedSvgs.map((item, index) =>
     normalizeSavedImportedSvg({ ...item, id: item.id ?? `svg-${index + 1}` }),
   );
+  const workspaceObjects = (input.workspaceObjects ?? savedImportedSvgs.flatMap(migrateImportedSvgToWorkspaceObject)).map((item, index) =>
+    normalizeSavedWorkspaceObject({ ...item, id: item.id ?? `object-${index + 1}` }),
+  );
+  const selectedObjectId =
+    typeof input.selectedObjectId === "string" && workspaceObjects.some((item) => item.id === input.selectedObjectId)
+      ? input.selectedObjectId
+      : workspaceObjects[0]?.id ?? null;
   const selectedSvgId =
     typeof input.selectedSvgId === "string" && savedImportedSvgs.some((item) => item.id === input.selectedSvgId)
       ? input.selectedSvgId
@@ -61,6 +87,8 @@ export function buildProjectFile(input: {
     importedSvgs: savedImportedSvgs,
     selectedSvgId,
     importedSvg: savedImportedSvgs[0] ?? null,
+    workspaceObjects,
+    selectedObjectId,
   };
 }
 
@@ -101,10 +129,18 @@ export function parseProjectFile(content: string): KindCutProjectFile {
   }
 
   const importedSvgs = parseImportedSvgs(parsed.importedSvgs, parsed.importedSvg);
+  const workspaceObjects = parseWorkspaceObjects(parsed.workspaceObjects, importedSvgs);
   const selectedSvgId =
     typeof parsed.selectedSvgId === "string" && importedSvgs.some((item) => item.id === parsed.selectedSvgId)
       ? parsed.selectedSvgId
       : importedSvgs[0]?.id ?? null;
+
+  const selectedObjectId =
+    typeof parsed.selectedObjectId === "string" && workspaceObjects.some((item) => item.id === parsed.selectedObjectId)
+      ? parsed.selectedObjectId
+      : typeof parsed.selectedSvgId === "string" && workspaceObjects.some((item) => item.id === parsed.selectedSvgId)
+        ? parsed.selectedSvgId
+        : workspaceObjects[0]?.id ?? null;
 
   return {
     format: KINDCUT_PROJECT_FORMAT,
@@ -119,7 +155,110 @@ export function parseProjectFile(content: string): KindCutProjectFile {
     importedSvgs,
     selectedSvgId,
     importedSvg: importedSvgs[0] ?? null,
+    workspaceObjects,
+    selectedObjectId,
   };
+}
+
+function parseWorkspaceObjects(value: unknown, legacyImportedSvgs: SavedImportedSvg[]): SavedWorkspaceObject[] {
+  if (Array.isArray(value)) {
+    return value.map((item, index) => parseWorkspaceObject(item, `object-${index + 1}`));
+  }
+  return legacyImportedSvgs.flatMap(migrateImportedSvgToWorkspaceObject);
+}
+
+function parseWorkspaceObject(value: unknown, fallbackId: string): SavedWorkspaceObject {
+  if (!isRecord(value) || (value.type !== "path" && value.type !== "group") || !Array.isArray(value.paths)) {
+    throw new Error("This is not a valid KindCut project file.");
+  }
+  if (
+    typeof value.fileName !== "string" ||
+    typeof value.fileSize !== "string" ||
+    !isRecord(value.frame) ||
+    typeof value.frame.width !== "number" ||
+    typeof value.frame.height !== "number"
+  ) {
+    throw new Error("This is not a valid KindCut project file.");
+  }
+  return normalizeSavedWorkspaceObject({
+    id: typeof value.id === "string" && value.id.trim() ? value.id : fallbackId,
+    type: value.type,
+    kind: value.kind === "shape" ? "shape" : "image",
+    sourceKind: value.sourceKind === "shape" ? "shape" : "image",
+    shapeKind: isWorkspaceShapeKind(value.shapeKind) ? value.shapeKind : undefined,
+    fileName: value.fileName,
+    fileSize: value.fileSize,
+    frame: { width: value.frame.width, height: value.frame.height },
+    paths: value.paths.map(parseWorkspacePath),
+    transform: parseTransform(value.transform),
+  });
+}
+
+function parseWorkspacePath(value: unknown): WorkspacePathData {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.d !== "string") {
+    throw new Error("This is not a valid KindCut project file.");
+  }
+  return {
+    id: value.id,
+    d: value.d,
+    fill: typeof value.fill === "string" ? value.fill : "none",
+    stroke: typeof value.stroke === "string" ? value.stroke : "#8f4f2b",
+    strokeWidth: typeof value.strokeWidth === "string" ? value.strokeWidth : "2",
+    strokeLinecap: typeof value.strokeLinecap === "string" ? value.strokeLinecap : undefined,
+    strokeLinejoin: typeof value.strokeLinejoin === "string" ? value.strokeLinejoin : undefined,
+    pathTransform: typeof value.pathTransform === "string" ? value.pathTransform : undefined,
+  };
+}
+
+function normalizeSavedWorkspaceObject(value: SavedWorkspaceObject): SavedWorkspaceObject {
+  const paths = value.paths.map((path, index) => ({
+    id: path.id || `path-${index + 1}`,
+    d: path.d,
+    fill: path.fill || "none",
+    stroke: path.stroke || "#8f4f2b",
+    strokeWidth: path.strokeWidth || "2",
+    strokeLinecap: path.strokeLinecap,
+    strokeLinejoin: path.strokeLinejoin,
+    pathTransform: path.pathTransform,
+  }));
+  if (paths.length === 0 || (value.type === "path" && paths.length !== 1)) {
+    throw new Error("This is not a valid KindCut project file.");
+  }
+  return {
+    id: value.id,
+    type: value.type,
+    kind: value.kind === "shape" ? "shape" : "image",
+    sourceKind: value.sourceKind === "shape" ? "shape" : "image",
+    shapeKind: value.kind === "shape" && isWorkspaceShapeKind(value.shapeKind) ? value.shapeKind : undefined,
+    fileName: value.fileName,
+    fileSize: value.fileSize,
+    frame: {
+      width: Number.isFinite(value.frame.width) && value.frame.width > 0 ? value.frame.width : 200,
+      height: Number.isFinite(value.frame.height) && value.frame.height > 0 ? value.frame.height : 200,
+    },
+    paths,
+    transform: value.transform ? normalizeTransform(value.transform) : undefined,
+  };
+}
+
+function migrateImportedSvgToWorkspaceObject(item: SavedImportedSvg): SavedWorkspaceObject[] {
+  try {
+    const extracted = extractWorkspacePathsFromSvg(item.svg);
+    return [{
+      id: item.id,
+      type: extracted.paths.length === 1 ? "path" : "group",
+      kind: item.kind,
+      sourceKind: item.kind,
+      shapeKind: item.shapeKind,
+      fileName: item.fileName,
+      fileSize: item.fileSize,
+      frame: extracted.frame,
+      paths: extracted.paths,
+      transform: item.transform,
+    }];
+  } catch {
+    return [];
+  }
 }
 
 function parseImportedSvgs(value: unknown, legacyValue: unknown): SavedImportedSvg[] {

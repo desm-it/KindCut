@@ -19,6 +19,7 @@
     "@cricut-companion/craft-core": "*",
     "@cricut-companion/slicebug-bridge": "*",
     "@cricut-companion/svg-preflight": "*",
+    "@xmldom/xmldom": "^0.8.13",
     "react": "latest",
     "react-dom": "latest",
     "react-moveable": "^0.56.0"

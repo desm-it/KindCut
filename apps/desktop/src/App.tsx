@@ -33,6 +33,15 @@ import {
 } from "./project-file";
 import { formatFileSize, getFriendlySvgMessages, getSvgSizeCopy, getSvgSizeInfo } from "./svg-import";
 import {
+  type WorkspaceObject,
+  type WorkspaceSvgItem,
+  buildWorkspaceObjectsSvg,
+  buildWorkspaceObjectSvg,
+  cloneWorkspaceObjects,
+  getWorkspaceObjectPartCount,
+} from "./workspace-objects";
+import { extractWorkspacePathsFromSvg } from "./workspace-svg-import";
+import {
   type WorkspaceClipboardSvgItem,
   createPastedWorkspaceSvgInputs,
   getSelectedWorkspaceClipboardItems,
@@ -66,9 +75,10 @@ import {
 import {
   WORKSPACE_SHAPES,
   type WorkspaceShapeKind,
-  buildWorkspaceShapeSvg,
+  buildWorkspaceShapePathObject,
   getWorkspaceShapeDefinition,
 } from "./workspace-shapes";
+import { createWorkspaceGroup, ungroupWorkspaceObject } from "./workspace-grouping";
 type SlicebugStatus = {
   ok: boolean;
   executable: string | null;
@@ -107,26 +117,6 @@ type CutSessionSnapshot = {
   command: string;
   args: string[];
   planPath: string;
-};
-
-type ImportedSvg = {
-  kind: "image" | "shape";
-  shapeKind?: WorkspaceShapeKind;
-  fileName: string;
-  fileSize: string;
-  svg: string;
-  sizeCopy: string;
-  previewHtml: string;
-  preflight: ReturnType<typeof preflightSvg>;
-};
-
-type WorkspaceSvgItem = ImportedSvg & {
-  id: string;
-  transform: WorkspaceItemTransform;
-  frame: {
-    width: number;
-    height: number;
-  };
 };
 
 type WorkspaceHistorySnapshot = {
@@ -368,27 +358,22 @@ export function App() {
       selectedMaterialId,
       selectedMatPreset,
       measurementUnit,
-      importedSvg: importedSvg
-        ? {
-            id: importedSvg.id,
-            kind: importedSvg.kind,
-            shapeKind: importedSvg.shapeKind,
-            fileName: importedSvg.fileName,
-            fileSize: importedSvg.fileSize,
-            svg: importedSvg.svg,
-            transform: importedSvg.transform,
-          }
-        : null,
-      importedSvgs: importedSvgs.map((item) => ({
+      importedSvg: null,
+      importedSvgs: [],
+      workspaceObjects: importedSvgs.map((item) => ({
         id: item.id,
+        type: item.type,
         kind: item.kind,
+        sourceKind: item.sourceKind,
         shapeKind: item.shapeKind,
         fileName: item.fileName,
         fileSize: item.fileSize,
-        svg: item.svg,
+        frame: item.frame,
+        paths: item.paths,
         transform: item.transform,
       })),
-      selectedSvgId,
+      selectedObjectId: selectedSvgId,
+      selectedSvgId: null,
     });
   }
 
@@ -403,21 +388,24 @@ export function App() {
     setCutSession(null);
     setImportMessage(null);
 
-    const restoredItems = projectFile.importedSvgs.map((item, index) =>
-      createWorkspaceSvgItem({
+    const restoredItems = projectFile.workspaceObjects.map((item, index) =>
+      createWorkspaceObjectItem({
         id: item.id ?? `svg-${index + 1}`,
+        type: item.type,
         kind: item.kind ?? "image",
+        sourceKind: item.sourceKind ?? item.kind ?? "image",
         shapeKind: item.shapeKind,
         fileName: item.fileName,
         fileSize: item.fileSize,
-        svg: item.svg,
+        frame: item.frame,
+        paths: item.paths,
         language,
         index,
         transform: item.transform,
       }),
     );
     setImportedSvgs(restoredItems);
-    const restoredSelectedId = projectFile.selectedSvgId ?? restoredItems[0]?.id ?? null;
+    const restoredSelectedId = projectFile.selectedObjectId ?? projectFile.selectedSvgId ?? restoredItems[0]?.id ?? null;
     setSelectedSvgId(restoredSelectedId);
     setSelectedSvgIds(restoredSelectedId ? [restoredSelectedId] : []);
     resetWorkspaceHistory();
@@ -446,13 +434,16 @@ export function App() {
       timestamp: Date.now(),
     });
     const pastedItems = pastedInputs.map((item) =>
-      createWorkspaceSvgItem({
+      createWorkspaceObjectItem({
         id: item.id,
+        type: item.type,
         kind: item.kind ?? "image",
+        sourceKind: item.sourceKind ?? item.kind ?? "image",
         shapeKind: item.shapeKind,
         fileName: item.fileName,
         fileSize: item.fileSize,
-        svg: item.svg,
+        frame: item.frame,
+        paths: item.paths,
         language,
         index: item.index,
         transform: item.transform,
@@ -477,6 +468,52 @@ export function App() {
     setImportedSvgs((current) => current.filter((item) => !idsToDelete.has(item.id)));
     setSelectedSvgId(null);
     setSelectedSvgIds([]);
+    setImportedPlan(null);
+    setCutSession(null);
+    return true;
+  }
+
+  function handleGroupSvgs(): boolean {
+    const idsToGroup = selectedSvgIds.filter((id) => importedSvgs.some((item) => item.id === id));
+    if (idsToGroup.length < 2) {
+      return false;
+    }
+    const selectedSet = new Set(idsToGroup);
+    const selectedObjects = importedSvgs.filter((item) => selectedSet.has(item.id));
+    const partCount = selectedObjects.reduce((total, item) => total + item.paths.length, 0);
+    const groupItem = createWorkspaceGroup({
+      id: `group-${Date.now()}`,
+      items: selectedObjects,
+      label: language === "nl" ? "Groep" : "Group",
+      fileSize: language === "nl" ? `${partCount} onderdelen` : `${partCount} parts`,
+    });
+    if (!groupItem) {
+      return false;
+    }
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((current) => [...current.filter((item) => !selectedSet.has(item.id)), groupItem]);
+    setSelectedSvgId(groupItem.id);
+    setSelectedSvgIds([groupItem.id]);
+    setImportedPlan(null);
+    setCutSession(null);
+    return true;
+  }
+
+  function handleUngroupSvg(): boolean {
+    const group = importedSvgs.find((item) => item.id === selectedSvgId && item.type === "group");
+    if (!group) {
+      return false;
+    }
+    const children = ungroupWorkspaceObject({
+      group,
+      idPrefix: `${group.id}-part-${Date.now()}`,
+      labelForIndex: (index) => language === "nl" ? `${group.fileName} onderdeel ${index + 1}` : `${group.fileName} part ${index + 1}`,
+    });
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((current) => current.flatMap((item) => (item.id === group.id ? children : [item])));
+    const childIds = children.map((item) => item.id);
+    setSelectedSvgId(childIds.at(-1) ?? null);
+    setSelectedSvgIds(childIds);
     setImportedPlan(null);
     setCutSession(null);
     return true;
@@ -668,7 +705,7 @@ export function App() {
     try {
       setImportedPlan(
         await window.cricutCompanion.slicebug.createPlan({
-          svg: importedSvg.svg,
+          svg: buildWorkspaceObjectsSvg(importedSvgs),
           fileName: importedSvg.fileName,
           materialId: selectedMaterialId,
           matPreset: selectedMatPreset,
@@ -889,6 +926,8 @@ export function App() {
       onPasteSvgs={handlePasteSvgs}
       onCutSvgs={handleCutSvgs}
       onDeleteSvgs={handleDeleteSvgs}
+      onGroupSvgs={handleGroupSvgs}
+      onUngroupSvg={handleUngroupSvg}
       onUndoSvgs={handleUndoWorkspace}
       onRedoSvgs={handleRedoWorkspace}
       onWorkspaceContextMenu={markWorkspaceContextMenuTarget}
@@ -913,7 +952,6 @@ const MEASUREMENT_UNIT_STORAGE_KEY = "kindcutMeasurementUnit";
 const WORKSPACE_PIXELS_PER_INCH = 80;
 const WORKSPACE_MIN_ZOOM = 0.45;
 const WORKSPACE_MAX_ZOOM = 3;
-const DEFAULT_SVG_FRAME_SIZE = 180;
 const WORKSPACE_STAGE_LEFT_OFFSET = 42;
 const WORKSPACE_STAGE_TOP_OFFSET = 74;
 const WORKSPACE_HISTORY_LIMIT = 50;
@@ -950,21 +988,69 @@ function createWorkspaceSvgItem({
   index: number;
   transform?: WorkspaceItemTransform;
 }): WorkspaceSvgItem {
+  const extracted = extractWorkspacePathsFromSvg(svg);
   const sizeInfo = getSvgSizeInfo(svg);
-  const frame = getSvgFrame(sizeInfo);
-  return {
+  const base = {
     id,
     kind,
+    sourceKind: kind,
     shapeKind,
     fileName,
     fileSize,
-    svg,
     sizeCopy: getSvgSizeCopy(sizeInfo, language),
-    previewHtml: getSandboxedSvgPreview(svg),
-    preflight: preflightSvg(svg),
-    frame,
+    frame: extracted.frame,
     transform: transform ?? { x: 32 + index * 24, y: 32 + index * 24, scaleX: 1, scaleY: 1, rotation: 0 },
   };
+  if (extracted.paths.length === 1) {
+    return { ...base, type: "path", paths: [extracted.paths[0]!] };
+  }
+  return {
+    ...base,
+    type: "group",
+    paths: extracted.paths,
+  };
+}
+
+function createWorkspaceObjectItem({
+  id,
+  type,
+  kind = "image",
+  sourceKind,
+  shapeKind,
+  fileName,
+  fileSize,
+  frame,
+  paths,
+  language,
+  index,
+  transform,
+}: {
+  id: string;
+  type: "path" | "group";
+  kind?: "image" | "shape";
+  sourceKind?: "image" | "shape";
+  shapeKind?: WorkspaceShapeKind;
+  fileName: string;
+  fileSize: string;
+  frame: { width: number; height: number };
+  paths: WorkspaceObject["paths"];
+  language: Language;
+  index: number;
+  transform?: WorkspaceItemTransform;
+}): WorkspaceSvgItem {
+  return {
+    id,
+    type,
+    kind,
+    sourceKind: sourceKind ?? kind,
+    shapeKind,
+    fileName,
+    fileSize,
+    sizeCopy: `${Math.round(frame.width)} × ${Math.round(frame.height)} px`,
+    frame,
+    paths: paths.map((path) => ({ ...path })) as WorkspaceObject["paths"],
+    transform: transform ?? { x: 32 + index * 24, y: 32 + index * 24, scaleX: 1, scaleY: 1, rotation: 0 },
+  } as WorkspaceSvgItem;
 }
 
 function createWorkspaceShapeItem({
@@ -980,35 +1066,20 @@ function createWorkspaceShapeItem({
 }): WorkspaceSvgItem {
   const definition = getWorkspaceShapeDefinition(shapeKind);
   const label = language === "nl" ? definition.labelNl : definition.labelEn;
-  return createWorkspaceSvgItem({
+  const shape = buildWorkspaceShapePathObject(shapeKind);
+  return createWorkspaceObjectItem({
     id: `shape-${timestamp}-${index}`,
+    type: "path",
     kind: "shape",
+    sourceKind: "shape",
     shapeKind,
     fileName: label,
     fileSize: language === "nl" ? "KindCut-vorm" : "KindCut shape",
-    svg: buildWorkspaceShapeSvg(shapeKind),
+    frame: shape.frame,
+    paths: [shape.path],
     language,
     index,
   });
-}
-
-function getSvgFrame(sizeInfo: ReturnType<typeof getSvgSizeInfo>): { width: number; height: number } {
-  if (!sizeInfo) {
-    return { width: DEFAULT_SVG_FRAME_SIZE, height: DEFAULT_SVG_FRAME_SIZE };
-  }
-  if (sizeInfo.unit === "in") {
-    return {
-      width: Math.max(40, sizeInfo.width * WORKSPACE_PIXELS_PER_INCH),
-      height: Math.max(40, sizeInfo.height * WORKSPACE_PIXELS_PER_INCH),
-    };
-  }
-  const aspectRatio = sizeInfo.width / sizeInfo.height;
-  if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) {
-    return { width: DEFAULT_SVG_FRAME_SIZE, height: DEFAULT_SVG_FRAME_SIZE };
-  }
-  return aspectRatio >= 1
-    ? { width: DEFAULT_SVG_FRAME_SIZE, height: DEFAULT_SVG_FRAME_SIZE / aspectRatio }
-    : { width: DEFAULT_SVG_FRAME_SIZE * aspectRatio, height: DEFAULT_SVG_FRAME_SIZE };
 }
 
 function getSafeProjectFileName(name: string): string {
@@ -1026,11 +1097,7 @@ function loadMeasurementUnitPreference(): MeasurementUnit {
 }
 
 function cloneWorkspaceSvgItems(items: WorkspaceSvgItem[]): WorkspaceSvgItem[] {
-  return items.map((item) => ({
-    ...item,
-    frame: { ...item.frame },
-    transform: { ...item.transform },
-  }));
+  return cloneWorkspaceObjects(items) as WorkspaceSvgItem[];
 }
 
 function workspaceTransformsEqual(a: WorkspaceItemTransform, b: WorkspaceItemTransform): boolean {
@@ -1078,6 +1145,8 @@ function DesignWorkspace({
   onPasteSvgs,
   onCutSvgs,
   onDeleteSvgs,
+  onGroupSvgs,
+  onUngroupSvg,
   onUndoSvgs,
   onRedoSvgs,
   onWorkspaceContextMenu,
@@ -1094,7 +1163,7 @@ function DesignWorkspace({
   measurementUnit: MeasurementUnit;
   selectedMaterialId: number;
   selectedMatPreset: string;
-  importedSvg: ImportedSvg | null;
+  importedSvg: WorkspaceSvgItem | null;
   importedSvgs: WorkspaceSvgItem[];
   selectedSvgId: string | null;
   selectedSvgIds: string[];
@@ -1122,6 +1191,8 @@ function DesignWorkspace({
   onPasteSvgs: () => boolean;
   onCutSvgs: () => boolean;
   onDeleteSvgs: () => boolean;
+  onGroupSvgs: () => boolean;
+  onUngroupSvg: () => boolean;
   onUndoSvgs: () => boolean;
   onRedoSvgs: () => boolean;
   onWorkspaceContextMenu: (selectedObjectCount?: number) => void;
@@ -1181,6 +1252,7 @@ function DesignWorkspace({
   const canCut = Boolean(importedPlan?.ok && importedPlan.plan) && !cutBusy;
   const selectedSvgIdSet = useMemo(() => new Set(selectedSvgIds), [selectedSvgIds]);
   const selectedItems = useMemo(() => importedSvgs.filter((item) => selectedSvgIdSet.has(item.id)), [importedSvgs, selectedSvgIdSet]);
+  const selectedGroup = selectedItems.length === 1 && selectedItems[0]?.type === "group" ? selectedItems[0] : null;
 
   useEffect(() => {
     const root = workpieceTransformRef.current;
@@ -1832,7 +1904,7 @@ function DesignWorkspace({
                       onPointerCancel={(event) => stopDirectItemDrag(event, item)}
                       onContextMenu={(event) => handleItemContextMenu(event, item)}
                     >
-                      <img alt="" draggable={false} src={getSvgDataUrl(item.svg)} />
+                      <WorkspaceObjectArtwork item={item} />
                     </div>
                   ))
                     )
@@ -1894,6 +1966,20 @@ function DesignWorkspace({
           </p>
           {importedSvgs.length > 0 ? (
             <>
+              {selectedItems.length >= 2 || selectedGroup ? (
+                <div className="workspace-group-actions">
+                  {selectedItems.length >= 2 ? (
+                    <button type="button" className="small-secondary-button" onClick={onGroupSvgs}>
+                      {language === "nl" ? "Groeperen" : "Group"}
+                    </button>
+                  ) : null}
+                  {selectedGroup ? (
+                    <button type="button" className="small-secondary-button" onClick={onUngroupSvg}>
+                      {language === "nl" ? "Groep opheffen" : "Ungroup"}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="workspace-item-list" aria-label={language === "nl" ? "Onderdelen in dit project" : "Items in this project"}>
                 {importedSvgs.map((item) => (
                   <button
@@ -1903,7 +1989,13 @@ function DesignWorkspace({
                     onClick={() => onSelectSvg(item.id)}
                   >
                     <span>{item.fileName}</span>
-                    <small>{Math.round(item.transform.scaleX * 100)}% × {Math.round(item.transform.scaleY * 100)}%</small>
+                    <small>
+                      {item.type === "group"
+                        ? language === "nl"
+                          ? `${getWorkspaceObjectPartCount(item)} onderdelen`
+                          : `${getWorkspaceObjectPartCount(item)} parts`
+                        : `${Math.round(item.transform.scaleX * 100)}% × ${Math.round(item.transform.scaleY * 100)}%`}
+                    </small>
                   </button>
                 ))}
               </div>
@@ -1990,12 +2082,34 @@ function ShapeLibraryPanel({
   );
 }
 
-function getSvgDataUrl(svg: string): string {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
 function cssEscape(value: string): string {
   return globalThis.CSS?.escape ? globalThis.CSS.escape(value) : value.replace(/["\\]/g, "\\$&");
+}
+
+function WorkspaceObjectArtwork({ item }: { item: WorkspaceObject }) {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width="100%"
+      height="100%"
+      viewBox={`0 0 ${item.frame.width} ${item.frame.height}`}
+      preserveAspectRatio="none"
+    >
+      {item.paths.map((path) => (
+        <path
+          key={path.id}
+          d={path.d}
+          fill={path.fill}
+          stroke={path.stroke}
+          strokeWidth={path.strokeWidth}
+          strokeLinecap={path.strokeLinecap as "butt" | "round" | "square" | "inherit" | undefined}
+          strokeLinejoin={path.strokeLinejoin as "miter" | "round" | "bevel" | "inherit" | undefined}
+          transform={path.pathTransform}
+        />
+      ))}
+    </svg>
+  );
 }
 
 function getSandboxedSvgPreview(svg: string): string {
@@ -2151,15 +2265,17 @@ function EmptyImportState({ language }: { language: Language }) {
   );
 }
 
-function ImportedSvgPreview({ importedSvg, language }: { importedSvg: ImportedSvg; language: Language }) {
+function ImportedSvgPreview({ importedSvg, language }: { importedSvg: WorkspaceSvgItem; language: Language }) {
   const { t } = createTranslator(language);
-  const friendlyMessages = getFriendlySvgMessages(importedSvg.preflight, language);
-  const isReady = importedSvg.preflight.ok && importedSvg.preflight.warnings.length === 0;
+  const svg = buildWorkspaceObjectSvg(importedSvg);
+  const preflight = preflightSvg(svg);
+  const friendlyMessages = getFriendlySvgMessages(preflight, language);
+  const isReady = preflight.ok && preflight.warnings.length === 0;
 
   return (
     <div className="import-preview-grid">
       <div className="svg-preview-frame">
-        <iframe title={t("import.previewTitle", { fileName: importedSvg.fileName })} sandbox="" srcDoc={importedSvg.previewHtml} />
+        <iframe title={t("import.previewTitle", { fileName: importedSvg.fileName })} sandbox="" srcDoc={getSandboxedSvgPreview(svg)} />
       </div>
 
       <div className="import-summary">
@@ -2189,11 +2305,11 @@ function ImportedSvgPreview({ importedSvg, language }: { importedSvg: ImportedSv
           <summary>{t("details.svgCheck")}</summary>
           <pre>
             {[
-              importedSvg.preflight.issues.length > 0
-                ? `Issues:\n${importedSvg.preflight.issues.join("\n")}`
+              preflight.issues.length > 0
+                ? `Issues:\n${preflight.issues.join("\n")}`
                 : "Issues: none",
-              importedSvg.preflight.warnings.length > 0
-                ? `Warnings:\n${importedSvg.preflight.warnings.join("\n")}`
+              preflight.warnings.length > 0
+                ? `Warnings:\n${preflight.warnings.join("\n")}`
                 : "Warnings: none",
             ].join("\n\n")}
           </pre>
@@ -2201,7 +2317,7 @@ function ImportedSvgPreview({ importedSvg, language }: { importedSvg: ImportedSv
 
         <details>
           <summary>{t("details.rawSvg")}</summary>
-          <pre>{importedSvg.svg}</pre>
+          <pre>{svg}</pre>
         </details>
       </div>
     </div>

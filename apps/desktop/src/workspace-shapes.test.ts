@@ -2,20 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   WORKSPACE_SHAPE_KINDS,
-  buildWorkspaceShapeSvg,
+  buildWorkspaceShapePathObject,
   getWorkspaceShapePath,
   isWorkspaceShapeKind,
 } from "./workspace-shapes";
 
 describe("workspace shapes", () => {
-  it("builds Cricut-friendly path SVGs for every built-in shape", () => {
+  it("builds path objects for every built-in shape", () => {
     for (const shapeKind of WORKSPACE_SHAPE_KINDS) {
-      const svg = buildWorkspaceShapeSvg(shapeKind);
+      const shape = buildWorkspaceShapePathObject(shapeKind);
 
-      expect(svg).toContain('width="2in"');
-      expect(svg).toContain('height="2in"');
-      expect(svg).toContain("<path");
-      expect(svg).toContain('fill="none"');
+      expect(shape.frame).toEqual({ width: 200, height: 200 });
+      expect(shape.path.fill).toBe("none");
+      expect(shape.path.stroke).toBe("#8f4f2b");
       expect(getWorkspaceShapePath(shapeKind)).toMatch(/^M /);
     }
   });

@@ -46,6 +46,24 @@ export function buildWorkspaceShapeSvg(kind: WorkspaceShapeKind): string {
 </svg>`;
 }
 
+export function buildWorkspaceShapePathObject(kind: WorkspaceShapeKind): {
+  frame: { width: number; height: number };
+  path: WorkspacePathData;
+} {
+  return {
+    frame: { width: SHAPE_VIEWBOX_SIZE, height: SHAPE_VIEWBOX_SIZE },
+    path: {
+      id: "path-1",
+      d: getWorkspaceShapePath(kind),
+      fill: "none",
+      stroke: "#8f4f2b",
+      strokeWidth: "6",
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+    },
+  };
+}
+
 export function getWorkspaceShapePath(kind: WorkspaceShapeKind): string {
   switch (kind) {
     case "square":
@@ -107,3 +125,4 @@ type Point = {
   x: number;
   y: number;
 };
+import type { WorkspacePathData } from "./workspace-objects";
