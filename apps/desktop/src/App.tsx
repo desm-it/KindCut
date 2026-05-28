@@ -886,6 +886,7 @@ const WORKSPACE_STAGE_TOP_OFFSET = 74;
 const WORKSPACE_HISTORY_LIMIT = 50;
 const ROTATION_SNAP_INTERVAL_DEGREES = 45;
 const ROTATION_SNAP_THRESHOLD_DEGREES = 4;
+const MOVEABLE_CENTER_DIRECTION = [0, 0] as const;
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -1364,6 +1365,7 @@ function DesignWorkspace({
 
   function handleMoveableRotateStart(event: OnRotateStart) {
     beginMoveableTransform([event.target]);
+    setMoveableRotationCenter(event);
     const item = getWorkspaceItemFromTarget(event.target);
     if (item) {
       event.set(item.transform.rotation);
@@ -1373,7 +1375,9 @@ function DesignWorkspace({
 
   function handleMoveableRotateGroupStart(event: OnRotateGroupStart) {
     beginMoveableTransform(event.targets);
+    setMoveableRotationCenter(event);
     event.events.forEach((childEvent) => {
+      setMoveableRotationCenter(childEvent);
       const item = getWorkspaceItemFromTarget(childEvent.target);
       if (item) {
         childEvent.set(item.transform.rotation);
@@ -1543,6 +1547,10 @@ function DesignWorkspace({
 
   function isPreciseRotationModifier(inputEvent: { altKey?: boolean } | null | undefined): boolean {
     return Boolean(inputEvent?.altKey);
+  }
+
+  function setMoveableRotationCenter(event: OnRotateStart) {
+    event.setFixedDirection([...MOVEABLE_CENTER_DIRECTION]);
   }
 
   function getSnappedRotation(rotation: number, preciseRotation: boolean): number {
