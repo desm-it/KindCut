@@ -1173,7 +1173,12 @@ a {
   gap: 14px;
 }
 
+.design-frame--shape-drawer {
+  grid-template-columns: 86px minmax(210px, 250px) minmax(0, 1fr) minmax(300px, 360px);
+}
+
 .tool-rail,
+.shape-library,
 .project-drawer,
 .workspace-stage {
   border: 1px solid rgba(121, 82, 51, 0.16);
@@ -1204,6 +1209,12 @@ a {
 .tool-button span {
   font-size: 1.25rem;
   line-height: 1;
+}
+
+.tool-button--active {
+  border-color: rgba(143, 79, 43, 0.42);
+  background: #fbefe1;
+  color: #6f3f20;
 }
 
 .tool-button--primary {
@@ -1239,6 +1250,61 @@ a {
   grid-template-rows: auto 1fr;
   overflow: hidden;
   background: #f3eadc;
+}
+
+.shape-library {
+  min-width: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.shape-library h2 {
+  margin: 2px 0 6px;
+  color: #513826;
+  font-size: 1.2rem;
+}
+
+.shape-library p:not(.panel-label) {
+  margin: 0 0 14px;
+  color: #735941;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.shape-library__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.shape-tile {
+  min-height: 86px;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  border: 1px solid rgba(121, 82, 51, 0.16);
+  border-radius: 8px;
+  background: #fffdf9;
+  color: #513826;
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.shape-tile:hover {
+  border-color: rgba(143, 79, 43, 0.42);
+  background: #fbefe1;
+}
+
+.shape-tile span {
+  height: 30px;
+  color: #8f4f2b;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.shape-tile strong {
+  font-size: 0.78rem;
+  line-height: 1.15;
 }
 
 .stage-statusbar {

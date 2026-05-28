@@ -29,6 +29,7 @@ describe("workspace clipboard", () => {
     );
 
     expect(copied).toMatchObject([{ fileName: "flower.svg" }, { fileName: "leaf.svg" }]);
+    expect(copied.map((item) => item.kind)).toEqual(["image", "image"]);
     expect(copied.map((item) => item.fileName)).toEqual(["flower.svg", "leaf.svg"]);
     expect(copied.map((item) => item.transform)).toEqual([baseItem.transform, baseItem.transform]);
     expect(copied.map((item) => item.transform)).not.toContain(baseItem.transform);
@@ -51,6 +52,8 @@ describe("workspace clipboard", () => {
       {
         id: "svg-12345-paste-3",
         index: 3,
+        kind: "image",
+        shapeKind: undefined,
         fileName: "flower.svg",
         fileSize: "1 KB",
         svg: "<svg />",

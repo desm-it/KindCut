@@ -1,10 +1,13 @@
 import type { MeasurementUnit, WorkspaceItemTransform } from "./workspace-utils";
+import { type WorkspaceShapeKind, isWorkspaceShapeKind } from "./workspace-shapes";
 
 export const KINDCUT_PROJECT_FORMAT = "kindcut-project";
 export const KINDCUT_PROJECT_VERSION = 1;
 
 export type SavedImportedSvg = {
   id?: string;
+  kind?: "image" | "shape";
+  shapeKind?: WorkspaceShapeKind;
   fileName: string;
   fileSize: string;
   svg: string;
@@ -144,6 +147,8 @@ function parseImportedSvg(value: unknown, fallbackId: string): SavedImportedSvg 
   }
   return normalizeSavedImportedSvg({
     id: typeof value.id === "string" && value.id.trim() ? value.id : fallbackId,
+    kind: value.kind === "shape" ? "shape" : "image",
+    shapeKind: isWorkspaceShapeKind(value.shapeKind) ? value.shapeKind : undefined,
     fileName: value.fileName,
     fileSize: value.fileSize,
     svg: value.svg,
@@ -154,6 +159,8 @@ function parseImportedSvg(value: unknown, fallbackId: string): SavedImportedSvg 
 function normalizeSavedImportedSvg(value: SavedImportedSvg): SavedImportedSvg {
   return {
     id: value.id,
+    kind: value.kind === "shape" ? "shape" : "image",
+    shapeKind: value.kind === "shape" && isWorkspaceShapeKind(value.shapeKind) ? value.shapeKind : undefined,
     fileName: value.fileName,
     fileSize: value.fileSize,
     svg: value.svg,

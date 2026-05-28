@@ -1,6 +1,9 @@
 import type { WorkspaceItemTransform } from "./workspace-utils";
+import type { WorkspaceShapeKind } from "./workspace-shapes";
 
 export type WorkspaceClipboardSvgItem = {
+  kind?: "image" | "shape";
+  shapeKind?: WorkspaceShapeKind;
   fileName: string;
   fileSize: string;
   svg: string;
@@ -21,7 +24,14 @@ export function getSelectedWorkspaceClipboardItems<T extends { id: string; fileN
   const selectedIdSet = new Set(ids);
   return items
     .filter((item) => selectedIdSet.has(item.id))
-    .map((item) => ({ fileName: item.fileName, fileSize: item.fileSize, svg: item.svg, transform: { ...item.transform } }));
+    .map((item) => ({
+      kind: "kind" in item && item.kind === "shape" ? "shape" : "image",
+      shapeKind: "shapeKind" in item ? item.shapeKind as WorkspaceShapeKind | undefined : undefined,
+      fileName: item.fileName,
+      fileSize: item.fileSize,
+      svg: item.svg,
+      transform: { ...item.transform },
+    }));
 }
 
 export function createPastedWorkspaceSvgInputs(input: {
@@ -33,6 +43,8 @@ export function createPastedWorkspaceSvgInputs(input: {
   const offset = input.offset ?? 24;
   return input.items.map((item, itemIndex) => ({
     ...item,
+    kind: item.kind ?? "image",
+    shapeKind: item.shapeKind,
     id: `svg-${input.timestamp}-paste-${input.startIndex + itemIndex}`,
     index: input.startIndex + itemIndex,
     transform: {

@@ -63,6 +63,12 @@ import {
   rotateWorkspaceItemTransformAroundPoint,
   scaleWorkspaceItemTransformFromAnchor,
 } from "./workspace-utils";
+import {
+  WORKSPACE_SHAPES,
+  type WorkspaceShapeKind,
+  buildWorkspaceShapeSvg,
+  getWorkspaceShapeDefinition,
+} from "./workspace-shapes";
 type SlicebugStatus = {
   ok: boolean;
   executable: string | null;
@@ -104,6 +110,8 @@ type CutSessionSnapshot = {
 };
 
 type ImportedSvg = {
+  kind: "image" | "shape";
+  shapeKind?: WorkspaceShapeKind;
   fileName: string;
   fileSize: string;
   svg: string;
@@ -363,6 +371,8 @@ export function App() {
       importedSvg: importedSvg
         ? {
             id: importedSvg.id,
+            kind: importedSvg.kind,
+            shapeKind: importedSvg.shapeKind,
             fileName: importedSvg.fileName,
             fileSize: importedSvg.fileSize,
             svg: importedSvg.svg,
@@ -371,6 +381,8 @@ export function App() {
         : null,
       importedSvgs: importedSvgs.map((item) => ({
         id: item.id,
+        kind: item.kind,
+        shapeKind: item.shapeKind,
         fileName: item.fileName,
         fileSize: item.fileSize,
         svg: item.svg,
@@ -394,6 +406,8 @@ export function App() {
     const restoredItems = projectFile.importedSvgs.map((item, index) =>
       createWorkspaceSvgItem({
         id: item.id ?? `svg-${index + 1}`,
+        kind: item.kind ?? "image",
+        shapeKind: item.shapeKind,
         fileName: item.fileName,
         fileSize: item.fileSize,
         svg: item.svg,
@@ -434,6 +448,8 @@ export function App() {
     const pastedItems = pastedInputs.map((item) =>
       createWorkspaceSvgItem({
         id: item.id,
+        kind: item.kind ?? "image",
+        shapeKind: item.shapeKind,
         fileName: item.fileName,
         fileSize: item.fileSize,
         svg: item.svg,
@@ -464,6 +480,22 @@ export function App() {
     setImportedPlan(null);
     setCutSession(null);
     return true;
+  }
+
+  function handleAddWorkspaceShape(shapeKind: WorkspaceShapeKind) {
+    const item = createWorkspaceShapeItem({
+      shapeKind,
+      language,
+      index: importedSvgs.length,
+      timestamp: Date.now(),
+    });
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((current) => [...current, item]);
+    setSelectedSvgId(item.id);
+    setSelectedSvgIds([item.id]);
+    setImportMessage(null);
+    setImportedPlan(null);
+    setCutSession(null);
   }
 
   function handleCutSvgs(): boolean {
@@ -849,6 +881,7 @@ export function App() {
       onMaterialChange={setSelectedMaterialId}
       onMatChange={setSelectedMatPreset}
       onSvgFileChange={(event) => void handleSvgFileChange(event)}
+      onAddShape={handleAddWorkspaceShape}
       onSelectSvg={selectSingleSvg}
       onSelectSvgGroup={selectSvgGroup}
       onSelectAllSvgs={handleSelectAllSvgs}
@@ -898,6 +931,8 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
 
 function createWorkspaceSvgItem({
   id,
+  kind = "image",
+  shapeKind,
   fileName,
   fileSize,
   svg,
@@ -906,6 +941,8 @@ function createWorkspaceSvgItem({
   transform,
 }: {
   id: string;
+  kind?: "image" | "shape";
+  shapeKind?: WorkspaceShapeKind;
   fileName: string;
   fileSize: string;
   svg: string;
@@ -917,6 +954,8 @@ function createWorkspaceSvgItem({
   const frame = getSvgFrame(sizeInfo);
   return {
     id,
+    kind,
+    shapeKind,
     fileName,
     fileSize,
     svg,
@@ -926,6 +965,31 @@ function createWorkspaceSvgItem({
     frame,
     transform: transform ?? { x: 32 + index * 24, y: 32 + index * 24, scaleX: 1, scaleY: 1, rotation: 0 },
   };
+}
+
+function createWorkspaceShapeItem({
+  shapeKind,
+  language,
+  index,
+  timestamp,
+}: {
+  shapeKind: WorkspaceShapeKind;
+  language: Language;
+  index: number;
+  timestamp: number;
+}): WorkspaceSvgItem {
+  const definition = getWorkspaceShapeDefinition(shapeKind);
+  const label = language === "nl" ? definition.labelNl : definition.labelEn;
+  return createWorkspaceSvgItem({
+    id: `shape-${timestamp}-${index}`,
+    kind: "shape",
+    shapeKind,
+    fileName: label,
+    fileSize: language === "nl" ? "KindCut-vorm" : "KindCut shape",
+    svg: buildWorkspaceShapeSvg(shapeKind),
+    language,
+    index,
+  });
 }
 
 function getSvgFrame(sizeInfo: ReturnType<typeof getSvgSizeInfo>): { width: number; height: number } {
@@ -1006,6 +1070,7 @@ function DesignWorkspace({
   onMaterialChange,
   onMatChange,
   onSvgFileChange,
+  onAddShape,
   onSelectSvg,
   onSelectSvgGroup,
   onSelectAllSvgs,
@@ -1049,6 +1114,7 @@ function DesignWorkspace({
   onMaterialChange: (materialId: number) => void;
   onMatChange: (matPreset: string) => void;
   onSvgFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onAddShape: (shapeKind: WorkspaceShapeKind) => void;
   onSelectSvg: (id: string | null) => void;
   onSelectSvgGroup: (ids: string[]) => void;
   onSelectAllSvgs: () => void;
@@ -1071,6 +1137,7 @@ function DesignWorkspace({
   const { t } = createTranslator(language);
   const [zoom, setZoom] = useState(0.85);
   const [pan, setPan] = useState<Point>({ x: 260, y: 90 });
+  const [shapeDrawerOpen, setShapeDrawerOpen] = useState(false);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const workpieceTransformRef = useRef<HTMLDivElement | null>(null);
   const dragStart = useRef<null | { pointerId: number; pointer: Point; pan: Point }>(null);
@@ -1657,7 +1724,10 @@ function DesignWorkspace({
         </div>
       </header>
 
-      <section className="design-frame" aria-label={language === "nl" ? "Ontwerpwerkruimte" : "Design workspace"}>
+      <section
+        className={shapeDrawerOpen ? "design-frame design-frame--shape-drawer" : "design-frame"}
+        aria-label={language === "nl" ? "Ontwerpwerkruimte" : "Design workspace"}
+      >
         <aside className="tool-rail no-drag" aria-label={language === "nl" ? "Gereedschappen" : "Tools"}>
           <label className="tool-button tool-button--primary">
             <span>＋</span>
@@ -1672,11 +1742,27 @@ function DesignWorkspace({
             <span>T</span>
             {language === "nl" ? "Tekst" : "Text"}
           </button>
-          <button className="tool-button" type="button" disabled>
+          <button
+            className={shapeDrawerOpen ? "tool-button tool-button--active" : "tool-button"}
+            type="button"
+            onClick={() => setShapeDrawerOpen((current) => !current)}
+            aria-expanded={shapeDrawerOpen}
+            aria-controls="shape-library-panel"
+          >
             <span>□</span>
             {language === "nl" ? "Vorm" : "Shape"}
           </button>
         </aside>
+
+        {shapeDrawerOpen ? (
+          <ShapeLibraryPanel
+            language={language}
+            onAddShape={(shapeKind) => {
+              onAddShape(shapeKind);
+              setShapeDrawerOpen(false);
+            }}
+          />
+        ) : null}
 
         <section className="workspace-stage no-drag">
           <div className="stage-statusbar">
@@ -1712,7 +1798,7 @@ function DesignWorkspace({
                 {importedSvgs.length === 0 ? (
                   <div className="empty-workpiece">
                     <strong>{language === "nl" ? "Leeg project" : "Blank project"}</strong>
-                    <span>{language === "nl" ? "Importeer een afbeelding of plaats straks tekst/vormen op deze mat." : "Import an image or place text/shapes on this mat later."}</span>
+                    <span>{language === "nl" ? "Kies een vorm of voeg een eigen ontwerp toe." : "Choose a shape or add your own design."}</span>
                   </div>
                 ) : null}
               </div>
@@ -1737,7 +1823,7 @@ function DesignWorkspace({
                       }}
                       aria-label={
                         language === "nl"
-                          ? `${item.fileName} selecteren en verplaatsen`
+                          ? `${item.fileName} kiezen en verplaatsen`
                           : `Select and move ${item.fileName}`
                       }
                       onPointerDown={(event) => handleItemPointerDown(event, item)}
@@ -1808,7 +1894,7 @@ function DesignWorkspace({
           </p>
           {importedSvgs.length > 0 ? (
             <>
-              <div className="workspace-item-list" aria-label={language === "nl" ? "Afbeeldingen in dit project" : "Images in this project"}>
+              <div className="workspace-item-list" aria-label={language === "nl" ? "Onderdelen in dit project" : "Items in this project"}>
                 {importedSvgs.map((item) => (
                   <button
                     key={item.id}
@@ -1821,7 +1907,7 @@ function DesignWorkspace({
                   </button>
                 ))}
               </div>
-              {importedSvg ? <ImportedSvgPreview importedSvg={importedSvg} language={language} /> : null}
+              {importedSvg?.kind === "image" ? <ImportedSvgPreview importedSvg={importedSvg} language={language} /> : null}
             </>
           ) : (
             <EmptyImportState language={language} />
@@ -1870,6 +1956,37 @@ function Ruler({ axis, ticks, unit }: { axis: "x" | "y"; ticks: ReturnType<typeo
         </span>
       ))}
     </div>
+  );
+}
+
+function ShapeLibraryPanel({
+  language,
+  onAddShape,
+}: {
+  language: Language;
+  onAddShape: (shapeKind: WorkspaceShapeKind) => void;
+}) {
+  return (
+    <aside
+      id="shape-library-panel"
+      className="shape-library no-drag"
+      aria-label={language === "nl" ? "Vormenbibliotheek" : "Shape library"}
+    >
+      <p className="panel-label">{language === "nl" ? "Vormen" : "Shapes"}</p>
+      <h2>{language === "nl" ? "Kies een basisvorm" : "Choose a basic shape"}</h2>
+      <p>{language === "nl" ? "Plaats een vorm op de mat. Daarna kun je hem slepen, vergroten, draaien of kopieren." : "Place a shape on the mat. Then move, resize, rotate, or copy it."}</p>
+      <div className="shape-library__grid">
+        {WORKSPACE_SHAPES.map((shape) => {
+          const label = language === "nl" ? shape.labelNl : shape.labelEn;
+          return (
+            <button key={shape.kind} type="button" className="shape-tile" onClick={() => onAddShape(shape.kind)}>
+              <span aria-hidden="true">{shape.icon}</span>
+              <strong>{label}</strong>
+            </button>
+          );
+        })}
+      </div>
+    </aside>
   );
 }
 
