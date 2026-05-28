@@ -7,7 +7,7 @@ describe("workspace SVG path extraction", () => {
 
     expect(extracted.frame).toEqual({ width: 20, height: 10 });
     expect(extracted.paths).toHaveLength(1);
-    expect(extracted.paths[0]).toMatchObject({ d: "M0 0L10 10", stroke: "#000" });
+    expect(extracted.paths[0]).toMatchObject({ d: "M0 0L10 10", stroke: "#000000" });
   });
 
   it("extracts multiple paths for grouped import", () => {

@@ -14,7 +14,7 @@ describe("workspace shapes", () => {
 
       expect(shape.frame).toEqual({ width: 200, height: 200 });
       expect(shape.path.fill).toBe("none");
-      expect(shape.path.stroke).toBe("#8f4f2b");
+      expect(shape.path.stroke).toBe("#000000");
       expect(getWorkspaceShapePath(shapeKind)).toMatch(/^M /);
     }
   });

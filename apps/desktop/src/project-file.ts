@@ -6,6 +6,17 @@ import { extractWorkspacePathsFromSvg } from "./workspace-svg-import";
 export const KINDCUT_PROJECT_FORMAT = "kindcut-project";
 export const KINDCUT_PROJECT_VERSION = 1;
 
+export type WorkspaceTool = {
+  id: string;
+  color: string;
+  type: "pen" | "cut";
+};
+
+export const DEFAULT_TOOLS: WorkspaceTool[] = [
+  { id: "tool-1", color: "#000000", type: "pen" },
+  { id: "tool-2", color: "#ff0000", type: "cut" },
+];
+
 export type SavedImportedSvg = {
   id?: string;
   kind?: "image" | "shape";
@@ -38,6 +49,7 @@ export type KindCutProjectFile = {
     selectedMaterialId: number;
     selectedMatPreset: string;
     measurementUnit: MeasurementUnit;
+    tools: WorkspaceTool[];
   };
   importedSvgs: SavedImportedSvg[];
   selectedSvgId: string | null;
@@ -51,6 +63,7 @@ export function buildProjectFile(input: {
   selectedMaterialId: number;
   selectedMatPreset: string;
   measurementUnit: MeasurementUnit;
+  tools?: WorkspaceTool[];
   importedSvg?: SavedImportedSvg | null;
   importedSvgs?: SavedImportedSvg[];
   workspaceObjects?: SavedWorkspaceObject[];
@@ -83,6 +96,7 @@ export function buildProjectFile(input: {
       selectedMaterialId: input.selectedMaterialId,
       selectedMatPreset: input.selectedMatPreset,
       measurementUnit: input.measurementUnit,
+      tools: input.tools ?? DEFAULT_TOOLS,
     },
     importedSvgs: savedImportedSvgs,
     selectedSvgId,
@@ -151,6 +165,7 @@ export function parseProjectFile(content: string): KindCutProjectFile {
       selectedMaterialId,
       selectedMatPreset,
       measurementUnit,
+      tools: parseTools(workspace.tools),
     },
     importedSvgs,
     selectedSvgId,
@@ -345,4 +360,19 @@ function isMeasurementUnit(value: unknown): value is MeasurementUnit {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseTools(value: unknown): WorkspaceTool[] {
+  if (!Array.isArray(value) || value.length === 0) return DEFAULT_TOOLS;
+  const tools: WorkspaceTool[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const item = value[i];
+    if (!isRecord(item) || typeof item.color !== "string" || (item.type !== "pen" && item.type !== "cut")) continue;
+    tools.push({
+      id: typeof item.id === "string" && item.id ? item.id : `tool-${i + 1}`,
+      color: item.color,
+      type: item.type,
+    });
+  }
+  return tools.length > 0 ? tools : DEFAULT_TOOLS;
 }

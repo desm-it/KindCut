@@ -191,6 +191,29 @@ function normalizePaint(value: string | null, fallback: string): string {
   return normalized || fallback;
 }
 
+const CSS_COLOR_NAMES: Record<string, string> = {
+  black: "#000000",
+  white: "#ffffff",
+  red: "#ff0000",
+  green: "#008000",
+  blue: "#0000ff",
+  yellow: "#ffff00",
+  cyan: "#00ffff",
+  magenta: "#ff00ff",
+  gray: "#808080",
+  grey: "#808080",
+  orange: "#ffa500",
+  purple: "#800080",
+  pink: "#ffc0cb",
+  brown: "#a52a2a",
+  lime: "#00ff00",
+  navy: "#000080",
+  teal: "#008080",
+  silver: "#c0c0c0",
+  maroon: "#800000",
+  olive: "#808000",
+};
+
 function normalizeColor(value: string | null): string {
   const cleaned = (value ?? "").trim().toLowerCase();
   if (!cleaned) {
@@ -198,6 +221,14 @@ function normalizeColor(value: string | null): string {
   }
   if (cleaned === "#fff" || cleaned === "#ffffff" || cleaned === "rgb(255,255,255)" || cleaned === "rgb(255 255 255)") {
     return "white";
+  }
+  // Expand 3-digit hex to 6-digit
+  if (/^#[0-9a-f]{3}$/.test(cleaned)) {
+    return `#${cleaned[1]}${cleaned[1]}${cleaned[2]}${cleaned[2]}${cleaned[3]}${cleaned[3]}`;
+  }
+  // Convert named colors to hex
+  if (Object.prototype.hasOwnProperty.call(CSS_COLOR_NAMES, cleaned)) {
+    return CSS_COLOR_NAMES[cleaned]!;
   }
   return cleaned;
 }

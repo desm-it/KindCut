@@ -1024,7 +1024,7 @@ a {
 .design-topbar {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   border: 1px solid rgba(121, 82, 51, 0.13);
   border-radius: 16px;
@@ -1083,9 +1083,7 @@ a {
 }
 
 .design-topbar__controls {
-  display: grid;
-  grid-template-columns: minmax(300px, 520px) max-content;
-  gap: 12px;
+  display: flex;
   align-items: stretch;
   justify-content: end;
 }
@@ -1780,6 +1778,7 @@ a {
   display: flex;
   flex-direction: column;
   padding: 14px 14px 0;
+  overflow-y: auto;
 }
 
 .drawer-section + .drawer-section {
@@ -1833,8 +1832,29 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 7px 0;
   border-top: 1px solid rgba(121, 82, 51, 0.08);
+}
+
+.object-settings__row--first {
+  border-top: none;
+  padding-top: 0;
+}
+
+.object-settings__select {
+  min-height: 0;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid rgba(121, 82, 51, 0.2);
+  background: #fffdf9;
+  color: #3d2410;
+  width: 170px;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .object-settings__label {
@@ -2255,4 +2275,129 @@ a {
 .cut-modal__btn:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* Tool list (workpiece settings panel) */
+.tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-list__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.tool-list__color {
+  width: 28px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid rgba(121, 82, 51, 0.25);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tool-list__color::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.tool-list__color::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+
+.tool-list__type {
+  flex: 1;
+  height: 26px;
+  font-size: 0.75rem;
+  border: 1px solid rgba(121, 82, 51, 0.22);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #3d2400;
+  padding: 0 6px;
+  cursor: pointer;
+}
+
+.tool-list__warn {
+  font-size: 0.82rem;
+  color: #b85c00;
+  flex-shrink: 0;
+}
+
+.tool-list__delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(121, 82, 51, 0.5);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tool-list__delete:hover {
+  background: rgba(192, 80, 58, 0.1);
+  color: #c0503a;
+}
+
+.tool-list__delete svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tool-list__add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 5px 8px;
+  border: 1px dashed rgba(121, 82, 51, 0.3);
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(121, 82, 51, 0.7);
+  font-size: 0.75rem;
+  cursor: pointer;
+  width: 100%;
+}
+
+.tool-list__add:hover {
+  background: rgba(121, 82, 51, 0.05);
+  border-color: rgba(121, 82, 51, 0.45);
+  color: #3d2400;
+}
+
+.tool-list__add svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* Object settings tool warning */
+.object-settings__tool-warn {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  color: #b85c00;
+}
+
+.object-settings__tool-warn code {
+  font-family: monospace;
+  font-size: 0.72rem;
+}
+
+/* Layer list warning icon */
+.workspace-item-list__warn {
+  font-size: 0.75rem;
+  color: #b85c00;
+  margin-left: 2px;
+  flex-shrink: 0;
+  line-height: 1;
 }

@@ -27,6 +27,8 @@ import {
 } from "./onboarding-copy";
 import {
   type KindCutProjectFile,
+  type WorkspaceTool,
+  DEFAULT_TOOLS,
   buildProjectFile,
   parseProjectFile,
   serializeProjectFile,
@@ -196,6 +198,7 @@ export function App() {
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [selectedMaterialId, setSelectedMaterialId] = useState(218);
   const [selectedMatPreset, setSelectedMatPreset] = useState("joy-standard");
+  const [tools, setTools] = useState<WorkspaceTool[]>(DEFAULT_TOOLS);
   const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>(() => loadMeasurementUnitPreference());
   const [importedPlan, setImportedPlan] = useState<SlicebugPlanResult | null>(null);
   const [importedPlanLoading, setImportedPlanLoading] = useState(false);
@@ -364,6 +367,7 @@ export function App() {
       selectedMaterialId,
       selectedMatPreset,
       measurementUnit,
+      tools,
       importedSvg: null,
       importedSvgs: [],
       workspaceObjects: importedSvgs.map((item) => ({
@@ -387,6 +391,7 @@ export function App() {
     setSelectedMaterialId(projectFile.workspace.selectedMaterialId);
     setSelectedMatPreset(projectFile.workspace.selectedMatPreset);
     setMeasurementUnit(projectFile.workspace.measurementUnit);
+    setTools(projectFile.workspace.tools);
     saveMeasurementUnitPreference(projectFile.workspace.measurementUnit);
     setCurrentProjectPath(projectPath);
     setImportedPlan(null);
@@ -758,12 +763,22 @@ export function App() {
     }
   }
 
+  function buildToolColorMap(): Record<string, string> {
+    const map: Record<string, string> = {};
+    for (const tool of tools) {
+      const hex = tool.color.replace(/^#/, "").toLowerCase();
+      map[hex] = tool.type === "pen" ? "pen" : "fine_point_blade";
+    }
+    return map;
+  }
+
   async function handleOpenCutPreview() {
     if (importedSvgs.length === 0) return;
     const matDims = getMatDimensionsInches(selectedMatPreset);
     const matW = matDims.width * WORKSPACE_PIXELS_PER_INCH;
     const matH = matDims.height * WORKSPACE_PIXELS_PER_INCH;
     const svg = buildWorkspaceCutSvg(importedSvgs, matW, matH);
+    const colorMap = buildToolColorMap();
 
     if (!window.cricutCompanion?.slicebug) {
       setCutPreview({
@@ -781,6 +796,7 @@ export function App() {
         fileName: importedSvgs[0]?.fileName ?? "design",
         materialId: selectedMaterialId,
         matPreset: selectedMatPreset,
+        colorMap,
       });
       setImportedPlan(plan);
       setCutPreview({ plan, svg, matPreset: selectedMatPreset });
@@ -990,6 +1006,8 @@ export function App() {
       onBackWelcome={() => setScreen("welcome")}
       onMaterialChange={setSelectedMaterialId}
       onMatChange={setSelectedMatPreset}
+      tools={tools}
+      onToolsChange={setTools}
       onSvgFileChange={(event) => void handleSvgFileChange(event)}
       onAddShape={handleAddWorkspaceShape}
       onSelectSvg={selectSingleSvg}
@@ -1226,6 +1244,8 @@ function DesignWorkspace({
   onBackWelcome,
   onMaterialChange,
   onMatChange,
+  tools,
+  onToolsChange,
   onSvgFileChange,
   onAddShape,
   onSelectSvg,
@@ -1275,6 +1295,8 @@ function DesignWorkspace({
   onBackWelcome: () => void;
   onMaterialChange: (materialId: number) => void;
   onMatChange: (matPreset: string) => void;
+  tools: WorkspaceTool[];
+  onToolsChange: (tools: WorkspaceTool[]) => void;
   onSvgFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddShape: (shapeKind: WorkspaceShapeKind) => void;
   onSelectSvg: (id: string | null) => void;
@@ -1917,13 +1939,6 @@ function DesignWorkspace({
         />
 
         <div className="design-topbar__controls no-drag">
-          <MaterialMatChooser
-            language={language}
-            selectedMaterialId={selectedMaterialId}
-            selectedMatPreset={selectedMatPreset}
-            onMaterialChange={onMaterialChange}
-            onMatChange={onMatChange}
-          />
           <button className="cut-button" type="button" disabled={!canCut} onClick={onStartCut}>
             <span aria-hidden="true">▶</span>
             {cutBusy ? t("buttons.starting") : t("buttons.startCut")}
@@ -2091,34 +2106,119 @@ function DesignWorkspace({
           {importMessage ? <p className="warn">{importMessage}</p> : null}
 
           <div className="drawer-section">
-            <p className="drawer-section__title">{language === "nl" ? "Geselecteerd" : "Selection"}</p>
             {(() => {
+              const nl = language === "nl";
               const sel = selectedSvgId ? importedSvgs.find((x) => x.id === selectedSvgId) ?? null : null;
+
               if (!sel) return (
-                <div className="object-settings object-settings--empty">
-                  <p>{language === "nl" ? "Geen object geselecteerd" : "No object selected"}</p>
-                </div>
-              );
-              const color = sel.paths[0]?.stroke ?? "#8f4f2b";
-              return (
-                <div className="object-settings">
-                  <p className="object-settings__name">{sel.fileName}</p>
-                  <div className="object-settings__row">
-                    <label className="object-settings__label" htmlFor="obj-color">
-                      {language === "nl" ? "Kleur" : "Color"}
-                    </label>
-                    <div className="object-settings__color-wrap">
-                      <input
-                        id="obj-color"
-                        type="color"
-                        value={color}
-                        onChange={(e) => onChangeObjectColor(sel.id, e.currentTarget.value)}
-                        className="object-settings__color-input"
-                      />
-                      <span className="object-settings__color-hex">{color.toUpperCase()}</span>
+                <>
+                  <p className="drawer-section__title">{nl ? "Werkstuk" : "Workpiece"}</p>
+                  <div className="object-settings">
+                    <div className="object-settings__row object-settings__row--first">
+                      <label className="object-settings__label" htmlFor="wp-material">{nl ? "Materiaal" : "Material"}</label>
+                      <select id="wp-material" className="object-settings__select" value={selectedMaterialId} onChange={(e) => onMaterialChange(Number(e.target.value))}>
+                        {MATERIAL_OPTIONS.map((m) => <option key={m.id} value={m.id}>{getMaterialName(m.id, language) ?? m.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="object-settings__row">
+                      <label className="object-settings__label" htmlFor="wp-mat">{nl ? "Mat" : "Mat"}</label>
+                      <select id="wp-mat" className="object-settings__select" value={selectedMatPreset} onChange={(e) => onMatChange(e.target.value)}>
+                        {MAT_PRESETS.map((m) => <option key={m.id} value={m.id}>{getMatName(m.id, language) ?? m.name}</option>)}
+                      </select>
                     </div>
                   </div>
-                </div>
+
+                  <p className="drawer-section__title" style={{ marginTop: 16 }}>{nl ? "Gereedschappen" : "Tools"}</p>
+                  <div className="tool-list">
+                    {tools.map((tool, idx) => {
+                      const dupColor = tools.some((t, i) => i !== idx && t.color.toLowerCase() === tool.color.toLowerCase());
+                      return (
+                        <div key={tool.id} className="tool-list__item">
+                          <input
+                            type="color"
+                            className="tool-list__color"
+                            value={tool.color}
+                            onChange={(e) => {
+                              const newColor = e.target.value;
+                              onToolsChange(tools.map((t) => t.id === tool.id ? { ...t, color: newColor } : t));
+                              onChangeObjectColor !== undefined && importedSvgs.forEach((obj) => {
+                                if (obj.paths.some((p) => p.stroke.toLowerCase() === tool.color.toLowerCase())) {
+                                  onChangeObjectColor(obj.id, newColor);
+                                }
+                              });
+                            }}
+                            title={nl ? "Verander kleur" : "Change color"}
+                          />
+                          <select
+                            className="tool-list__type"
+                            value={tool.type}
+                            onChange={(e) => onToolsChange(tools.map((t) => t.id === tool.id ? { ...t, type: e.target.value as "pen" | "cut" } : t))}
+                          >
+                            <option value="pen">{nl ? "Pen" : "Pen"}</option>
+                            <option value="cut">{nl ? "Snijden" : "Cut"}</option>
+                          </select>
+                          {dupColor && <span className="tool-list__warn" title={nl ? "Dubbele kleur" : "Duplicate color"}>⚠</span>}
+                          <button
+                            type="button"
+                            className="tool-list__delete"
+                            onClick={() => onToolsChange(tools.filter((t) => t.id !== tool.id))}
+                            aria-label={nl ? "Verwijder" : "Delete"}
+                          >
+                            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M2 4h10M8 4V2.5h-2V4M3.5 4l.5 7.5h6l.5-7.5"/></svg>
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className="tool-list__add"
+                      onClick={() => {
+                        const id = `tool-${Date.now()}`;
+                        onToolsChange([...tools, { id, color: "#000000", type: "pen" }]);
+                      }}
+                    >
+                      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M7 2v10M2 7h10"/></svg>
+                      {nl ? "Gereedschap toevoegen" : "Add tool"}
+                    </button>
+                  </div>
+                </>
+              );
+
+              // Object selected — show name + tool picker
+              const color = sel.paths[0]?.stroke ?? "#000000";
+              const matchedTool = tools.find((t) => t.color.toLowerCase() === color.toLowerCase()) ?? null;
+              const noToolWarning = !matchedTool;
+              return (
+                <>
+                  <p className="drawer-section__title">{nl ? "Geselecteerd" : "Selection"}</p>
+                  <div className="object-settings">
+                    <p className="object-settings__name">{sel.fileName}</p>
+                    <div className="object-settings__row">
+                      <label className="object-settings__label" htmlFor="obj-tool">{nl ? "Gereedschap" : "Tool"}</label>
+                      <select
+                        id="obj-tool"
+                        className="object-settings__select"
+                        value={matchedTool?.id ?? ""}
+                        onChange={(e) => {
+                          const picked = tools.find((t) => t.id === e.target.value);
+                          if (picked) onChangeObjectColor(sel.id, picked.color);
+                        }}
+                      >
+                        {tools.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.color.toUpperCase()} — {t.type === "pen" ? (nl ? "Pen" : "Pen") : (nl ? "Snijden" : "Cut")}
+                          </option>
+                        ))}
+                        {noToolWarning && <option value="">— {nl ? "Geen gereedschap" : "No tool"} —</option>}
+                      </select>
+                    </div>
+                    {noToolWarning && (
+                      <p className="object-settings__tool-warn">
+                        ⚠ {nl ? "Geen gereedschap voor kleur " : "No tool for color "}<code>{color.toUpperCase()}</code>
+                      </p>
+                    )}
+                  </div>
+                </>
               );
             })()}
           </div>
@@ -2189,6 +2289,11 @@ function DesignWorkspace({
                           ) : (
                             <span>
                               {item.fileName}
+                              {(() => {
+                                const stroke = item.paths[0]?.stroke ?? "";
+                                const hasMatch = tools.some((t) => t.color.toLowerCase() === stroke.toLowerCase());
+                                return !hasMatch && stroke ? <span className="workspace-item-list__warn" title={language === "nl" ? "Geen gereedschap voor deze kleur" : "No tool for this color"}>⚠</span> : null;
+                              })()}
                             </span>
                           )}
                         </button>
