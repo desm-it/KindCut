@@ -124,22 +124,31 @@ export function scaleWorkspaceItemTransformFromAnchor(
   scaleX: number,
   scaleY: number,
 ): WorkspaceItemTransform {
-  const center = getWorkspaceItemCenter({ transform, frame });
-  const nextCenter = {
-    x: anchor.x + (center.x - anchor.x) * scaleX,
-    y: anchor.y + (center.y - anchor.y) * scaleY,
-  };
   const nextScaleX = transform.scaleX * scaleX;
   const nextScaleY = transform.scaleY * scaleY;
-  const nextCenterOffset = rotatePoint(
-    { x: (frame.width * nextScaleX) / 2, y: (frame.height * nextScaleY) / 2 },
-    transform.rotation,
+
+  // Convert the screen-space anchor back to the object's local pixel space so we
+  // can re-apply it correctly after the new scale (screen-space scaling breaks for
+  // rotated objects because local X/Y no longer align with screen X/Y).
+  const localAnchorStart = rotatePoint(
+    { x: anchor.x - transform.x, y: anchor.y - transform.y },
+    -transform.rotation,
   );
+  const startWidth = frame.width * transform.scaleX;
+  const startHeight = frame.height * transform.scaleY;
+  const anchorNormX = startWidth > 0 ? localAnchorStart.x / startWidth : 0.5;
+  const anchorNormY = startHeight > 0 ? localAnchorStart.y / startHeight : 0.5;
+
+  const localAnchorNew = {
+    x: anchorNormX * frame.width * nextScaleX,
+    y: anchorNormY * frame.height * nextScaleY,
+  };
+  const rotatedAnchorNew = rotatePoint(localAnchorNew, transform.rotation);
 
   return normalizeWorkspaceItemTransform({
     ...transform,
-    x: nextCenter.x - nextCenterOffset.x,
-    y: nextCenter.y - nextCenterOffset.y,
+    x: anchor.x - rotatedAnchorNew.x,
+    y: anchor.y - rotatedAnchorNew.y,
     scaleX: nextScaleX,
     scaleY: nextScaleY,
   });

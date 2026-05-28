@@ -35,10 +35,11 @@ describe("workspace grouping", () => {
     expect(group?.paths[1]?.pathTransform).toContain("translate(30 40)");
   });
 
-  it("ungroups back to path objects without changing the group transform", () => {
+  it("ungroups back to path objects restoring original names and transforms", () => {
+    const objectB = { ...pathObject, id: "b", fileName: "b", transform: { x: 40, y: 15, scaleX: 1, scaleY: 1, rotation: 0 } };
     const group = createWorkspaceGroup({
       id: "group-1",
-      items: [pathObject, { ...pathObject, id: "b", transform: { x: 40, y: 15, scaleX: 1, scaleY: 1, rotation: 0 } }],
+      items: [pathObject, objectB],
       label: "Groep",
       fileSize: "2 onderdelen",
     })!;
@@ -51,6 +52,7 @@ describe("workspace grouping", () => {
 
     expect(children).toHaveLength(2);
     expect(children.every((item) => item.type === "path")).toBe(true);
+    expect(children.map((item) => item.fileName)).toEqual(["a", "b"]);
     expect(children.map((item) => item.transform)).toEqual([group.transform, group.transform]);
   });
 });

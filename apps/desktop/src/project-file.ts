@@ -207,6 +207,7 @@ function parseWorkspacePath(value: unknown): WorkspacePathData {
     strokeLinecap: typeof value.strokeLinecap === "string" ? value.strokeLinecap : undefined,
     strokeLinejoin: typeof value.strokeLinejoin === "string" ? value.strokeLinejoin : undefined,
     pathTransform: typeof value.pathTransform === "string" ? value.pathTransform : undefined,
+    sourceLabel: typeof value.sourceLabel === "string" ? value.sourceLabel : undefined,
   };
 }
 
@@ -220,6 +221,7 @@ function normalizeSavedWorkspaceObject(value: SavedWorkspaceObject): SavedWorksp
     strokeLinecap: path.strokeLinecap,
     strokeLinejoin: path.strokeLinejoin,
     pathTransform: path.pathTransform,
+    sourceLabel: path.sourceLabel,
   }));
   if (paths.length === 0 || (value.type === "path" && paths.length !== 1)) {
     throw new Error("This is not a valid KindCut project file.");

@@ -124,4 +124,24 @@ describe("workspace measurement helpers", () => {
       ),
     ).toEqual({ x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 90 });
   });
+
+  it("keeps the anchor fixed when scaling a rotated object along one axis", () => {
+    // Object at (0,0), 100×100 frame, scale 1, rotated 90°.
+    // Right-center in local space = (100, 50) → screen anchor = (-50, 100).
+    // Scale X by 2: anchor must stay at (-50, 100).
+    const result = scaleWorkspaceItemTransformFromAnchor(
+      { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 90 },
+      { width: 100, height: 100 },
+      { x: -50, y: 100 },
+      2,
+      1,
+    );
+    const r = (result.rotation * Math.PI) / 180;
+    const anchorX = result.x + Math.cos(r) * (100 * result.scaleX) - Math.sin(r) * (50 * result.scaleY);
+    const anchorY = result.y + Math.sin(r) * (100 * result.scaleX) + Math.cos(r) * (50 * result.scaleY);
+    expect(result.scaleX).toBeCloseTo(2);
+    expect(result.scaleY).toBeCloseTo(1);
+    expect(anchorX).toBeCloseTo(-50);
+    expect(anchorY).toBeCloseTo(100);
+  });
 });

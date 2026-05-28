@@ -184,6 +184,7 @@ export function App() {
     past: [],
     future: [],
   });
+  const [clipboardHasItems, setClipboardHasItems] = useState(false);
   const workspaceClipboard = useRef<WorkspaceClipboardSvgItem[]>([]);
   const lastWorkspaceContextMenuAt = useRef(0);
   const lastWorkspaceContextSelectionCount = useRef<number | null>(null);
@@ -424,6 +425,7 @@ export function App() {
       return false;
     }
     workspaceClipboard.current = copiedItems;
+    setClipboardHasItems(true);
     return true;
   }
 
@@ -543,6 +545,12 @@ export function App() {
       return false;
     }
     return handleDeleteSvgs();
+  }
+
+  function handleRenameObject(id: string, newName: string) {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setImportedSvgs((current) => current.map((item) => item.id === id ? { ...item, fileName: trimmed } : item));
   }
 
   function markWorkspaceContextMenuTarget(selectedObjectCount?: number) {
@@ -938,12 +946,14 @@ export function App() {
       onSelectSvg={selectSingleSvg}
       onSelectSvgGroup={selectSvgGroup}
       onSelectAllSvgs={handleSelectAllSvgs}
+      canPaste={clipboardHasItems}
       onCopySvgs={handleCopySvgs}
       onPasteSvgs={handlePasteSvgs}
       onCutSvgs={handleCutSvgs}
       onDeleteSvgs={handleDeleteSvgs}
       onGroupSvgs={handleGroupSvgs}
       onUngroupSvg={handleUngroupSvg}
+      onRenameObject={handleRenameObject}
       onUndoSvgs={handleUndoWorkspace}
       onRedoSvgs={handleRedoWorkspace}
       onWorkspaceContextMenu={markWorkspaceContextMenuTarget}
@@ -1149,6 +1159,7 @@ function DesignWorkspace({
   projectOpening,
   cutSession,
   cutBusy,
+  canPaste,
   onBackWelcome,
   onMaterialChange,
   onMatChange,
@@ -1163,6 +1174,7 @@ function DesignWorkspace({
   onDeleteSvgs,
   onGroupSvgs,
   onUngroupSvg,
+  onRenameObject,
   onUndoSvgs,
   onRedoSvgs,
   onWorkspaceContextMenu,
@@ -1195,6 +1207,7 @@ function DesignWorkspace({
   projectOpening: boolean;
   cutSession: CutSessionSnapshot | null;
   cutBusy: boolean;
+  canPaste: boolean;
   onBackWelcome: () => void;
   onMaterialChange: (materialId: number) => void;
   onMatChange: (matPreset: string) => void;
@@ -1209,6 +1222,7 @@ function DesignWorkspace({
   onDeleteSvgs: () => boolean;
   onGroupSvgs: () => boolean;
   onUngroupSvg: () => boolean;
+  onRenameObject: (id: string, newName: string) => void;
   onUndoSvgs: () => boolean;
   onRedoSvgs: () => boolean;
   onWorkspaceContextMenu: (selectedObjectCount?: number) => void;
@@ -1225,6 +1239,9 @@ function DesignWorkspace({
   const [zoom, setZoom] = useState(0.85);
   const [pan, setPan] = useState<Point>({ x: 260, y: 90 });
   const [shapeDrawerOpen, setShapeDrawerOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const pendingRenameRef = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const workpieceTransformRef = useRef<HTMLDivElement | null>(null);
   const dragStart = useRef<null | { pointerId: number; pointer: Point; pan: Point }>(null);
@@ -1282,6 +1299,13 @@ function DesignWorkspace({
         .filter((target): target is HTMLElement => Boolean(target)),
     );
   }, [selectedItems]);
+
+  useEffect(() => {
+    if (pendingRenameRef.current) {
+      clearTimeout(pendingRenameRef.current.timer);
+      pendingRenameRef.current = null;
+    }
+  }, [selectedSvgIds]);
 
   function clampZoom(nextZoom: number) {
     return Math.min(WORKSPACE_MAX_ZOOM, Math.max(WORKSPACE_MIN_ZOOM, nextZoom));
@@ -1795,15 +1819,27 @@ function DesignWorkspace({
           </div>
         </div>
 
+        <WorkspaceToolbar
+          language={language}
+          canCopy={selectedSvgIds.length > 0}
+          canCut={selectedSvgIds.length > 0}
+          canPaste={canPaste}
+          canDelete={selectedSvgIds.length > 0}
+          canGroup={selectedSvgIds.length >= 2}
+          canUngroup={selectedGroup !== null}
+          projectSaving={projectSaving}
+          projectOpening={projectOpening}
+          onOpen={onOpenProject}
+          onSave={onSaveProject}
+          onCopy={onCopySvgs}
+          onCut={onCutSvgs}
+          onPaste={onPasteSvgs}
+          onDelete={onDeleteSvgs}
+          onGroup={onGroupSvgs}
+          onUngroup={onUngroupSvg}
+        />
+
         <div className="design-topbar__controls no-drag">
-          <div className="project-action-group" aria-label={language === "nl" ? "Projectbestanden" : "Project files"}>
-            <button className="small-secondary-button" type="button" onClick={onOpenProject} disabled={projectOpening || projectSaving}>
-              {projectOpening ? (language === "nl" ? "Openen..." : "Opening...") : language === "nl" ? "Open" : "Open"}
-            </button>
-            <button className="small-secondary-button" type="button" onClick={onSaveProject} disabled={projectOpening || projectSaving}>
-              {projectSaving ? (language === "nl" ? "Bewaren..." : "Saving...") : language === "nl" ? "Bewaar" : "Save"}
-            </button>
-          </div>
           <MaterialMatChooser
             language={language}
             selectedMaterialId={selectedMaterialId}
@@ -1976,80 +2012,94 @@ function DesignWorkspace({
         </section>
 
         <aside className="project-drawer no-drag">
-          <p className="panel-label">{language === "nl" ? "Project" : "Project"}</p>
-          <h2>{importedSvg ? importedSvg.fileName : language === "nl" ? "Nieuw leeg ontwerp" : "New blank design"}</h2>
-          {currentProjectPath ? <p className="project-path">{currentProjectPath}</p> : null}
           {projectMessage ? <p className="ok project-message">{projectMessage}</p> : null}
           {importMessage ? <p className="warn">{importMessage}</p> : null}
-          <p className={validationOk ? "ok" : "warn"}>
-            {validationOk
-              ? language === "nl" ? "Werkruimte klaar. De linialen starten linksboven op de mat." : "Workspace ready. Rulers start at the mat’s top-left."
-              : t("projectCheck.warningMessage")}
-          </p>
           {importedSvgs.length > 0 ? (
             <>
-              {selectedItems.length >= 2 || selectedGroup ? (
-                <div className="workspace-group-actions">
-                  {selectedItems.length >= 2 ? (
-                    <button type="button" className="small-secondary-button" onClick={onGroupSvgs}>
-                      {language === "nl" ? "Groeperen" : "Group"}
-                    </button>
-                  ) : null}
-                  {selectedGroup ? (
-                    <button type="button" className="small-secondary-button" onClick={onUngroupSvg}>
-                      {language === "nl" ? "Groep opheffen" : "Ungroup"}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
               <div className="workspace-item-list" aria-label={language === "nl" ? "Onderdelen in dit project" : "Items in this project"}>
-                {importedSvgs.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={selectedSvgIdSet.has(item.id) ? "workspace-item-list__item workspace-item-list__item--selected" : "workspace-item-list__item"}
-                    onClick={() => onSelectSvg(item.id)}
-                  >
-                    <span>{item.fileName}</span>
-                    <small>
-                      {item.type === "group"
-                        ? language === "nl"
-                          ? `${getWorkspaceObjectPartCount(item)} onderdelen`
-                          : `${getWorkspaceObjectPartCount(item)} parts`
-                        : `${Math.round(item.transform.scaleX * 100)}% × ${Math.round(item.transform.scaleY * 100)}%`}
-                    </small>
-                  </button>
-                ))}
+                {importedSvgs.map((item) => {
+                  const isSelected = selectedSvgIdSet.has(item.id);
+                  const isExpanded = expandedGroups.has(item.id);
+                  const isRenaming = renamingId === item.id;
+                  return (
+                    <div key={item.id} className="workspace-item-list__row">
+                      <div
+                        className={`workspace-item-list__item${isSelected ? " workspace-item-list__item--selected" : ""}`}
+                      >
+                        {item.type === "group" ? (
+                          <button
+                            type="button"
+                            className="workspace-item-list__expand"
+                            aria-label={isExpanded ? "Collapse group" : "Expand group"}
+                            onClick={() => setExpandedGroups((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
+                              return next;
+                            })}
+                          >
+                            {isExpanded ? "▾" : "▸"}
+                          </button>
+                        ) : (
+                          <span className="workspace-item-list__icon">◈</span>
+                        )}
+                        <button
+                          type="button"
+                          className="workspace-item-list__select"
+                          onClick={() => {
+                            if (pendingRenameRef.current) {
+                              clearTimeout(pendingRenameRef.current.timer);
+                              pendingRenameRef.current = null;
+                            }
+                            if (isSelected && selectedSvgIds.length === 1 && renamingId !== item.id) {
+                              const timer = setTimeout(() => {
+                                setRenamingId(item.id);
+                                pendingRenameRef.current = null;
+                              }, 500);
+                              pendingRenameRef.current = { id: item.id, timer };
+                            } else {
+                              onSelectSvg(item.id);
+                            }
+                          }}
+                          aria-pressed={isSelected}
+                        >
+                          {isRenaming ? (
+                            <input
+                              className="workspace-item-list__rename-input"
+                              defaultValue={item.fileName}
+                              autoFocus
+                              onBlur={(e) => { onRenameObject(item.id, e.currentTarget.value); setRenamingId(null); }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") { onRenameObject(item.id, e.currentTarget.value); setRenamingId(null); }
+                                if (e.key === "Escape") { setRenamingId(null); }
+                                e.stopPropagation();
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : (
+                            <span>
+                              {item.fileName}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                      {item.type === "group" && isExpanded ? (
+                        <div className="workspace-item-list__children">
+                          {item.paths.map((path, i) => (
+                            <div key={path.id} className="workspace-item-list__child">
+                              <span className="workspace-item-list__icon">◈</span>
+                              <span>{path.sourceLabel ?? (language === "nl" ? `Pad ${i + 1}` : `Path ${i + 1}`)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
-              {importedSvg?.kind === "image" ? <ImportedSvgPreview importedSvg={importedSvg} language={language} /> : null}
             </>
           ) : (
             <EmptyImportState language={language} />
           )}
-          <div className="prepare-row">
-            <button type="button" onClick={onPrepareImportedPlan} disabled={!canPrepare}>
-              {importedPlanLoading ? t("buttons.preparing") : t("buttons.prepareHandoff")}
-            </button>
-          </div>
-          {importedPlan ? (
-            <PlanAndCutMonitor
-              result={importedPlan}
-              planLabel={importedSvg?.fileName ?? (language === "nl" ? "Geimporteerd ontwerp" : "Imported design")}
-              language={language}
-              cutSession={cutSession}
-              cutBusy={cutBusy}
-              onStart={onStartCut}
-              onContinue={onContinueCut}
-              onStop={onStopCut}
-            />
-          ) : null}
-          {samplePlan ? <SamplePlanResult result={samplePlan} language={language} /> : null}
-          <details>
-            <summary>{t("details.handoffCommand")}</summary>
-            <pre>
-              {planCommand.command} {planCommand.args.join(" ")}
-            </pre>
-          </details>
         </aside>
       </section>
     </main>
@@ -2132,6 +2182,139 @@ function WorkspaceObjectArtwork({ item }: { item: WorkspaceObject }) {
         />
       ))}
     </svg>
+  );
+}
+
+function ToolbarBtn({
+  icon,
+  label,
+  onClick,
+  disabled = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className="toolbar-btn"
+      aria-label={label}
+      data-label={label}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {icon}
+    </button>
+  );
+}
+
+function WorkspaceToolbar({
+  language,
+  canCopy,
+  canCut,
+  canPaste,
+  canDelete,
+  canGroup,
+  canUngroup,
+  projectSaving,
+  projectOpening,
+  onOpen,
+  onSave,
+  onCopy,
+  onCut,
+  onPaste,
+  onDelete,
+  onGroup,
+  onUngroup,
+}: {
+  language: Language;
+  canCopy: boolean;
+  canCut: boolean;
+  canPaste: boolean;
+  canDelete: boolean;
+  canGroup: boolean;
+  canUngroup: boolean;
+  projectSaving: boolean;
+  projectOpening: boolean;
+  onOpen: () => void;
+  onSave: () => void;
+  onCopy: () => boolean;
+  onCut: () => boolean;
+  onPaste: () => boolean;
+  onDelete: () => boolean;
+  onGroup: () => boolean;
+  onUngroup: () => boolean;
+}) {
+  const nl = language === "nl";
+  return (
+    <nav className="workspace-toolbar no-drag" role="toolbar" aria-label={nl ? "Werkbalk" : "Toolbar"}>
+      <div className="toolbar-group">
+        {/* Open — folder */}
+        <ToolbarBtn
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h3.586a1 1 0 0 1 .707.293L10.5 6.5H15.5A1.5 1.5 0 0 1 17 8v6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14V6.5z"/></svg>}
+          label={nl ? "Open" : "Open"}
+          onClick={onOpen}
+          disabled={projectOpening || projectSaving}
+        />
+        {/* Save — floppy disk */}
+        <ToolbarBtn
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="14" height="14" rx="2"/><rect x="7" y="3" width="6" height="5" rx="0.5" fill="currentColor" stroke="none"/><rect x="6" y="11" width="8" height="5" rx="1"/></svg>}
+          label={nl ? "Opslaan" : "Save"}
+          onClick={onSave}
+          disabled={projectOpening || projectSaving}
+        />
+      </div>
+      <div className="toolbar-sep" aria-hidden="true" />
+      <div className="toolbar-group">
+        {/* Copy — two overlapping pages */}
+        <ToolbarBtn
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="7" width="9" height="10" rx="1.5"/><path d="M13 7V5a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 5v7.5A1.5 1.5 0 0 0 4 14h3"/></svg>}
+          label={nl ? "Kopieer" : "Copy"}
+          onClick={onCopy}
+          disabled={!canCopy}
+        />
+        {/* Cut — scissors */}
+        <ToolbarBtn
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="5.5" cy="6" r="2.5"/><circle cx="5.5" cy="14" r="2.5"/><path d="M8 7.5 17 3M8 12.5 17 17"/></svg>}
+          label={nl ? "Knippen" : "Cut"}
+          onClick={onCut}
+          disabled={!canCut}
+        />
+        {/* Paste — clipboard */}
+        <ToolbarBtn
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="5" width="11" height="12" rx="1.5"/><path d="M8 5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1"/><path d="M8 10h5M8 13h3"/></svg>}
+          label={nl ? "Plakken" : "Paste"}
+          onClick={onPaste}
+          disabled={!canPaste}
+        />
+        {/* Delete — trash */}
+        <ToolbarBtn
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 5.5h13M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M5.5 5.5l.75 10a1.5 1.5 0 0 0 1.5 1.5h4.5a1.5 1.5 0 0 0 1.5-1.5l.75-10"/><path d="M8.5 9v4M11.5 9v4"/></svg>}
+          label={nl ? "Verwijder" : "Delete"}
+          onClick={onDelete}
+          disabled={!canDelete}
+        />
+      </div>
+      <div className="toolbar-sep" aria-hidden="true" />
+      <div className="toolbar-group">
+        {/* Group — dashed bounding box with two rects inside */}
+        <ToolbarBtn
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="16" height="16" rx="2" strokeDasharray="3 2"/><rect x="4" y="4" width="5" height="5" rx="1"/><rect x="11" y="11" width="5" height="5" rx="1"/></svg>}
+          label={nl ? "Groeperen" : "Group"}
+          onClick={onGroup}
+          disabled={!canGroup}
+        />
+        {/* Ungroup — two rects pulling apart */}
+        <ToolbarBtn
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="7" height="7" rx="1.5"/><rect x="11" y="8" width="7" height="7" rx="1.5"/><path d="M9 8.5l2 1.5M9 10l2-1" strokeWidth="1" strokeDasharray="2 1.5"/></svg>}
+          label={nl ? "Groep opheffen" : "Ungroup"}
+          onClick={onUngroup}
+          disabled={!canUngroup}
+        />
+      </div>
+    </nav>
   );
 }
 

@@ -1023,8 +1023,8 @@ a {
 
 .design-topbar {
   display: grid;
-  grid-template-columns: minmax(190px, 0.45fr) minmax(0, 1.55fr);
-  gap: 18px;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
   align-items: center;
   border: 1px solid rgba(121, 82, 51, 0.13);
   border-radius: 16px;
@@ -1081,9 +1081,9 @@ a {
 
 .design-topbar__controls {
   display: grid;
-  grid-template-columns: max-content minmax(300px, 520px) max-content;
+  grid-template-columns: minmax(300px, 520px) max-content;
   gap: 12px;
-  align-items: end;
+  align-items: center;
   justify-content: end;
 }
 
@@ -1091,6 +1091,92 @@ a {
   display: flex;
   gap: 7px;
   align-items: end;
+}
+
+.workspace-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 22px;
+  background: rgba(121, 82, 51, 0.18);
+  flex-shrink: 0;
+  margin: 0 5px;
+}
+
+.toolbar-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #7a5038;
+  padding: 0;
+  cursor: pointer;
+  transition: background 100ms, border-color 100ms, color 100ms;
+  flex-shrink: 0;
+}
+
+.toolbar-btn svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.toolbar-btn:hover:not(:disabled) {
+  background: rgba(143, 79, 43, 0.1);
+  border-color: rgba(143, 79, 43, 0.18);
+  color: #5d3822;
+}
+
+.toolbar-btn:active:not(:disabled) {
+  background: rgba(143, 79, 43, 0.18);
+}
+
+.toolbar-btn:disabled {
+  color: rgba(122, 80, 56, 0.28);
+  cursor: default;
+}
+
+.toolbar-btn::after {
+  content: attr(data-label);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(52, 30, 14, 0.9);
+  color: #fffdf9;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms 300ms;
+  z-index: 100;
+}
+
+.toolbar-btn:hover:not(:disabled)::after {
+  opacity: 1;
+}
+
+.workspace-item-list__item--selected .workspace-item-list__select {
+  cursor: text;
 }
 
 .small-secondary-button {
@@ -1664,18 +1750,21 @@ a {
   margin-top: 14px;
 }
 
+.workspace-item-list__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .workspace-item-list__item {
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  display: flex;
   align-items: center;
+  gap: 4px;
   border: 1px solid rgba(121, 82, 51, 0.14);
   border-radius: 8px;
   background: #fffdf9;
   color: #513826;
-  padding: 9px 10px;
-  text-align: left;
+  padding: 6px 8px;
 }
 
 .workspace-item-list__item--selected {
@@ -1683,17 +1772,74 @@ a {
   background: #fbefe1;
 }
 
-.workspace-item-list__item span {
+.workspace-item-list__expand,
+.workspace-item-list__icon {
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #8a6d54;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.workspace-item-list__select {
+  flex: 1;
   min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+}
+
+.workspace-item-list__select span {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 850;
+  font-weight: 700;
+  font-size: 0.85rem;
 }
 
-.workspace-item-list__item small {
-  color: #8a6d54;
-  font-weight: 900;
+.workspace-item-list__rename-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid #8f4f2b;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: inherit;
+  outline: none;
+  padding: 0;
+}
+
+.workspace-item-list__children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 24px;
+}
+
+.workspace-item-list__child {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: #7a5c40;
+  font-size: 0.8rem;
+}
+
+.workspace-item-list__child span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .project-path,

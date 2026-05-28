@@ -15,6 +15,7 @@ export type WorkspacePathData = WorkspacePathVisual & {
   id: string;
   d: string;
   pathTransform?: string;
+  sourceLabel?: string;
 };
 
 export type WorkspaceObjectBase = {

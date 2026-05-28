@@ -1,4 +1,4 @@
-import type { WorkspaceObject } from "./workspace-objects";
+import type { WorkspaceObject, WorkspacePathData } from "./workspace-objects";
 import type { WorkspaceBounds } from "./workspace-utils";
 import { getWorkspaceSelectionBounds } from "./workspace-utils";
 
@@ -19,6 +19,7 @@ export function createWorkspaceGroup(input: {
     item.paths.map((path) => ({
       ...path,
       id: `${item.id}-${path.id}`,
+      sourceLabel: item.fileName,
       pathTransform: getGroupedPathTransform(item, path.pathTransform, bounds),
     })),
   );
@@ -44,19 +45,39 @@ export function ungroupWorkspaceObject(input: {
   if (input.group.type !== "group") {
     return [];
   }
-  return input.group.paths.map((path, index) => ({
-    id: `${input.idPrefix}-${index}`,
-    type: "path",
-    kind: input.group.kind,
-    sourceKind: input.group.sourceKind,
-    shapeKind: input.group.shapeKind,
-    fileName: input.labelForIndex(index),
-    fileSize: input.group.fileSize,
-    sizeCopy: input.group.sizeCopy,
-    frame: { ...input.group.frame },
-    paths: [{ ...path, id: `path-${index + 1}` }],
-    transform: { ...input.group.transform },
-  }));
+
+  // Rebuild original objects by grouping consecutive paths that share a sourceLabel.
+  type Segment = { label: string; paths: WorkspacePathData[] };
+  const segments: Segment[] = [];
+  for (const path of input.group.paths) {
+    const label = path.sourceLabel ?? null;
+    const last = segments[segments.length - 1];
+    if (label !== null && last && last.label === label) {
+      last.paths.push(path);
+    } else {
+      segments.push({ label: label ?? input.labelForIndex(segments.length), paths: [path] });
+    }
+  }
+
+  return segments.map((segment, index) => {
+    const id = `${input.idPrefix}-${index}`;
+    const cleanedPaths = segment.paths.map((p, i) => ({ ...p, id: `path-${i + 1}` }));
+    const base = {
+      id,
+      kind: input.group.kind,
+      sourceKind: input.group.sourceKind,
+      shapeKind: input.group.shapeKind,
+      fileName: segment.label,
+      fileSize: input.group.fileSize,
+      sizeCopy: input.group.sizeCopy,
+      frame: { ...input.group.frame },
+      transform: { ...input.group.transform },
+    };
+    if (cleanedPaths.length === 1) {
+      return { ...base, type: "path" as const, paths: [cleanedPaths[0]!] as [WorkspacePathData] };
+    }
+    return { ...base, type: "group" as const, paths: cleanedPaths };
+  });
 }
 
 function getGroupedPathTransform(
