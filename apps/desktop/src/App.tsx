@@ -66,6 +66,7 @@ import {
   getMeasurementTicks,
   getViewportTransform,
   getWorkspaceItemTransform,
+  getWorkspaceItemVisualSize,
   getWorkspaceSelectionBounds,
   normalizeWorkspaceItemTransform,
   rotatePoint,
@@ -1622,6 +1623,12 @@ function DesignWorkspace({
     latestMoveableTransforms.current.set(id, transform);
     if (target instanceof HTMLElement) {
       target.style.transform = getWorkspaceItemTransform(transform);
+      const frame = importedSvgs.find((item) => item.id === id)?.frame;
+      if (frame) {
+        const size = getWorkspaceItemVisualSize(frame, transform);
+        target.style.width = `${size.width}px`;
+        target.style.height = `${size.height}px`;
+      }
     }
   }
 
@@ -1904,8 +1911,8 @@ function DesignWorkspace({
                       data-workspace-item-id={item.id}
                       className={`workspace-image-item${selectedSvgIdSet.has(item.id) ? " workspace-image-item--selected" : ""}${item.id === selectedSvgId ? " workspace-image-item--primary-selected" : ""}`}
                       style={{
-                        width: item.frame.width,
-                        height: item.frame.height,
+                        width: getWorkspaceItemVisualSize(item.frame, item.transform).width,
+                        height: getWorkspaceItemVisualSize(item.frame, item.transform).height,
                         transform: getWorkspaceItemTransform(item.transform),
                       }}
                       aria-label={

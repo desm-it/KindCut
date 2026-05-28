@@ -71,9 +71,9 @@ describe("workspace measurement helpers", () => {
     expect(getViewportTransform({ zoom: 1.5, pan: { x: -48, y: 72 } })).toBe("translate(-48px, 72px) scale(1.5)");
   });
 
-  it("formats image transforms with non-uniform scale and rotation", () => {
+  it("formats image transforms with position and rotation only (scale encoded in size)", () => {
     expect(getWorkspaceItemTransform({ x: 12.345, y: 67.891, scaleX: 1.234, scaleY: 0.876, rotation: 14.567 })).toBe(
-      "translate3d(12.35px, 67.89px, 0) rotate(14.57deg) scale(1.23, 0.88)",
+      "translate3d(12.35px, 67.89px, 0) rotate(14.57deg)",
     );
   });
 

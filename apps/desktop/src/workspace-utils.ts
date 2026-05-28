@@ -72,8 +72,15 @@ export function getViewportTransform({ zoom, pan }: { zoom: number; pan: Point }
   return `translate(${roundCss(pan.x)}px, ${roundCss(pan.y)}px) scale(${roundCss(zoom)})`;
 }
 
-export function getWorkspaceItemTransform({ x, y, scaleX, scaleY, rotation }: WorkspaceItemTransform): string {
-  return `translate3d(${roundCss(x)}px, ${roundCss(y)}px, 0) rotate(${roundCss(rotation)}deg) scale(${roundCss(scaleX)}, ${roundCss(scaleY)})`;
+export function getWorkspaceItemTransform({ x, y, rotation }: WorkspaceItemTransform): string {
+  return `translate3d(${roundCss(x)}px, ${roundCss(y)}px, 0) rotate(${roundCss(rotation)}deg)`;
+}
+
+export function getWorkspaceItemVisualSize(frame: WorkspaceItemFrame, transform: WorkspaceItemTransform): { width: number; height: number } {
+  return {
+    width: frame.width * transform.scaleX,
+    height: frame.height * transform.scaleY,
+  };
 }
 
 export function normalizeWorkspaceItemTransform(transform: WorkspaceItemTransform): WorkspaceItemTransform {
