@@ -13,7 +13,9 @@ type AppActionPayload = {
     | "edit-copy"
     | "edit-paste"
     | "edit-delete"
-    | "edit-select-all";
+    | "edit-select-all"
+    | "edit-undo"
+    | "edit-redo";
   value?: string;
 };
 

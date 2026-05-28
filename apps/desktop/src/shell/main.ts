@@ -24,7 +24,9 @@ type RendererAction =
   | "edit-copy"
   | "edit-paste"
   | "edit-delete"
-  | "edit-select-all";
+  | "edit-select-all"
+  | "edit-undo"
+  | "edit-redo";
 
 type ProjectSaveInput = {
   content: string;
@@ -127,6 +129,9 @@ function createEditMenu(): MenuItemConstructorOptions {
   return {
     label: "Edit",
     submenu: [
+      { label: "Undo", accelerator: "CmdOrCtrl+Z", click: () => sendRendererAction("edit-undo") },
+      { label: "Redo", accelerator: process.platform === "darwin" ? "Shift+Cmd+Z" : "Ctrl+Y", click: () => sendRendererAction("edit-redo") },
+      { type: "separator" },
       { label: "Cut", accelerator: "CmdOrCtrl+X", click: () => sendRendererAction("edit-cut") },
       { label: "Copy", accelerator: "CmdOrCtrl+C", click: () => sendRendererAction("edit-copy") },
       { label: "Paste", accelerator: "CmdOrCtrl+V", click: () => sendRendererAction("edit-paste") },

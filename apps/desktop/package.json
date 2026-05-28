@@ -15,12 +15,13 @@
     "package:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
-    "@cricut-companion/craft-core": "*",
     "@cricut-companion/ai-designer": "*",
+    "@cricut-companion/craft-core": "*",
     "@cricut-companion/slicebug-bridge": "*",
     "@cricut-companion/svg-preflight": "*",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-moveable": "^0.56.0"
   },
   "devDependencies": {
     "@types/react": "latest",

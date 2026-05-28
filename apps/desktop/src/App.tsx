@@ -1,9 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ChangeEvent, MouseEvent, PointerEvent, RefObject, WheelEvent } from "react";
+import type { ChangeEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
 import { buildBeginnerProject, joyStandardMat, validateProject } from "@cricut-companion/craft-core";
 import { createDesignPrompt } from "@cricut-companion/ai-designer";
 import { MAT_PRESETS, MATERIAL_OPTIONS, buildPlanCommand } from "@cricut-companion/slicebug-bridge";
 import { preflightSvg } from "@cricut-companion/svg-preflight";
+import Moveable from "react-moveable";
+import type {
+  OnDrag,
+  OnDragGroup,
+  OnDragGroupStart,
+  OnDragStart,
+  OnRotate,
+  OnRotateGroup,
+  OnRotateGroupStart,
+  OnRotateStart,
+  OnScale,
+  OnScaleGroup,
+  OnScaleGroupStart,
+  OnScaleStart,
+} from "react-moveable";
 import {
   APP_NAME,
   formatToolName,
@@ -38,16 +53,11 @@ import {
   type MeasurementUnit,
   type Point,
   type WorkspaceItemTransform,
-  addPoint,
   getMatDimensionsInches,
   getMeasurementTicks,
-  getWorkspaceSelectionBounds,
   getViewportTransform,
   getWorkspaceItemTransform,
   normalizeWorkspaceItemTransform,
-  rotatePoint,
-  rotateWorkspaceItemTransformAroundPoint,
-  scaleWorkspaceItemTransformFromAnchor,
 } from "./workspace-utils";
 type SlicebugStatus = {
   ok: boolean;
@@ -107,6 +117,12 @@ type WorkspaceSvgItem = ImportedSvg & {
   };
 };
 
+type WorkspaceHistorySnapshot = {
+  importedSvgs: WorkspaceSvgItem[];
+  selectedSvgId: string | null;
+  selectedSvgIds: string[];
+};
+
 type AppScreen = "welcome" | "workspace";
 
 type DesktopActionPayload = {
@@ -120,7 +136,9 @@ type DesktopActionPayload = {
     | "edit-copy"
     | "edit-paste"
     | "edit-delete"
-    | "edit-select-all";
+    | "edit-select-all"
+    | "edit-undo"
+    | "edit-redo";
   value?: string;
 };
 
@@ -157,6 +175,10 @@ export function App() {
   const [importedSvgs, setImportedSvgs] = useState<WorkspaceSvgItem[]>([]);
   const [selectedSvgId, setSelectedSvgId] = useState<string | null>(null);
   const [selectedSvgIds, setSelectedSvgIds] = useState<string[]>([]);
+  const [workspaceHistory, setWorkspaceHistory] = useState<{ past: WorkspaceHistorySnapshot[]; future: WorkspaceHistorySnapshot[] }>({
+    past: [],
+    future: [],
+  });
   const workspaceClipboard = useRef<WorkspaceClipboardSvgItem[]>([]);
   const lastWorkspaceContextMenuAt = useRef(0);
   const lastWorkspaceContextSelectionCount = useRef<number | null>(null);
@@ -199,11 +221,67 @@ export function App() {
     setSelectedSvgId(uniqueIds.at(-1) ?? null);
   }
 
+  function createWorkspaceHistorySnapshot(): WorkspaceHistorySnapshot {
+    return {
+      importedSvgs: cloneWorkspaceSvgItems(importedSvgs),
+      selectedSvgId,
+      selectedSvgIds: [...selectedSvgIds],
+    };
+  }
+
+  function pushWorkspaceHistorySnapshot(snapshot = createWorkspaceHistorySnapshot()) {
+    setWorkspaceHistory((current) => ({
+      past: [...current.past, snapshot].slice(-WORKSPACE_HISTORY_LIMIT),
+      future: [],
+    }));
+  }
+
+  function resetWorkspaceHistory() {
+    setWorkspaceHistory({ past: [], future: [] });
+  }
+
+  function restoreWorkspaceHistorySnapshot(snapshot: WorkspaceHistorySnapshot) {
+    setImportedSvgs(cloneWorkspaceSvgItems(snapshot.importedSvgs));
+    setSelectedSvgId(snapshot.selectedSvgId);
+    setSelectedSvgIds([...snapshot.selectedSvgIds]);
+    setImportedPlan(null);
+    setCutSession(null);
+  }
+
+  function handleUndoWorkspace(): boolean {
+    const previous = workspaceHistory.past.at(-1);
+    if (!previous) {
+      return false;
+    }
+    const currentSnapshot = createWorkspaceHistorySnapshot();
+    setWorkspaceHistory((current) => ({
+      past: current.past.slice(0, -1),
+      future: [currentSnapshot, ...current.future].slice(0, WORKSPACE_HISTORY_LIMIT),
+    }));
+    restoreWorkspaceHistorySnapshot(previous);
+    return true;
+  }
+
+  function handleRedoWorkspace(): boolean {
+    const next = workspaceHistory.future[0];
+    if (!next) {
+      return false;
+    }
+    const currentSnapshot = createWorkspaceHistorySnapshot();
+    setWorkspaceHistory((current) => ({
+      past: [...current.past, currentSnapshot].slice(-WORKSPACE_HISTORY_LIMIT),
+      future: current.future.slice(1),
+    }));
+    restoreWorkspaceHistorySnapshot(next);
+    return true;
+  }
+
   function enterWorkspace() {
     setScreen("workspace");
   }
 
   function handleNewProject() {
+    resetWorkspaceHistory();
     setImportedSvgs([]);
     setSelectedSvgId(null);
     setSelectedSvgIds([]);
@@ -324,6 +402,7 @@ export function App() {
     const restoredSelectedId = projectFile.selectedSvgId ?? restoredItems[0]?.id ?? null;
     setSelectedSvgId(restoredSelectedId);
     setSelectedSvgIds(restoredSelectedId ? [restoredSelectedId] : []);
+    resetWorkspaceHistory();
   }
 
   function handleSelectAllSvgs() {
@@ -359,6 +438,7 @@ export function App() {
         transform: item.transform,
       }),
     );
+    pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) => [...current, ...pastedItems]);
     const pastedIds = pastedItems.map((item) => item.id);
     setSelectedSvgId(pastedIds.at(-1) ?? null);
@@ -373,6 +453,7 @@ export function App() {
     if (idsToDelete.size === 0) {
       return false;
     }
+    pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) => current.filter((item) => !idsToDelete.has(item.id)));
     setSelectedSvgId(null);
     setSelectedSvgIds([]);
@@ -399,6 +480,9 @@ export function App() {
   }
 
   function handleDesktopAction(payload: DesktopActionPayload) {
+    if ((payload.action === "edit-undo" || payload.action === "edit-redo") && isEditableKeyboardTarget(document.activeElement)) {
+      return;
+    }
     switch (payload.action) {
       case "new-project":
         handleNewProject();
@@ -419,6 +503,12 @@ export function App() {
         break;
       case "edit-select-all":
         handleSelectAllSvgs();
+        break;
+      case "edit-undo":
+        handleUndoWorkspace();
+        break;
+      case "edit-redo":
+        handleRedoWorkspace();
         break;
       case "edit-copy":
         handleCopySvgs();
@@ -630,6 +720,7 @@ export function App() {
           }),
         ),
       );
+      pushWorkspaceHistorySnapshot();
       setImportedSvgs((current) => [...current, ...newItems]);
       const newSelectedIds = newItems.map((item) => item.id);
       setSelectedSvgId(newSelectedIds.at(-1) ?? null);
@@ -645,8 +736,22 @@ export function App() {
     event.target.value = "";
   }
 
-  function handleSvgTransformChange(id: string, transform: WorkspaceItemTransform) {
-    setImportedSvgs((current) => current.map((item) => (item.id === id ? { ...item, transform } : item)));
+  function handleSvgTransformsCommit(updates: Array<{ id: string; transform: WorkspaceItemTransform }>) {
+    const transformById = new Map(updates.map((update) => [update.id, normalizeWorkspaceItemTransform(update.transform)]));
+    const hasChanges = importedSvgs.some((item) => {
+      const transform = transformById.get(item.id);
+      return transform ? !workspaceTransformsEqual(item.transform, transform) : false;
+    });
+    if (!hasChanges) {
+      return;
+    }
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((current) =>
+      current.map((item) => {
+        const transform = transformById.get(item.id);
+        return transform ? { ...item, transform } : item;
+      }),
+    );
   }
 
   useEffect(() => {
@@ -747,8 +852,10 @@ export function App() {
       onPasteSvgs={handlePasteSvgs}
       onCutSvgs={handleCutSvgs}
       onDeleteSvgs={handleDeleteSvgs}
+      onUndoSvgs={handleUndoWorkspace}
+      onRedoSvgs={handleRedoWorkspace}
       onWorkspaceContextMenu={markWorkspaceContextMenuTarget}
-      onSvgTransformChange={handleSvgTransformChange}
+      onSvgTransformsCommit={handleSvgTransformsCommit}
       onPrepareImportedPlan={() => void prepareImportedPlan()}
       onOpenProject={() => void handleOpenProject()}
       onSaveProject={() => void handleSaveProject()}
@@ -770,32 +877,9 @@ const WORKSPACE_PIXELS_PER_INCH = 80;
 const WORKSPACE_MIN_ZOOM = 0.45;
 const WORKSPACE_MAX_ZOOM = 3;
 const DEFAULT_SVG_FRAME_SIZE = 180;
-const MIN_IMAGE_SIZE = 18;
 const WORKSPACE_STAGE_LEFT_OFFSET = 42;
 const WORKSPACE_STAGE_TOP_OFFSET = 74;
-const ROTATION_SNAP_INTERVAL_DEGREES = 45;
-const ROTATION_SNAP_THRESHOLD_DEGREES = 4;
-
-type TransformControlCssVars = Record<`--${string}`, string>;
-
-function buildTransformControlCssVars(zoom: number, transform: WorkspaceItemTransform): TransformControlCssVars {
-  const effectiveScaleX = Math.max(0.01, zoom * transform.scaleX);
-  const effectiveScaleY = Math.max(0.01, zoom * transform.scaleY);
-  const averageScale = Math.max(0.01, (effectiveScaleX + effectiveScaleY) / 2);
-  return {
-    "--transform-box-outset-x": `${7 / effectiveScaleX}px`,
-    "--transform-box-outset-y": `${7 / effectiveScaleY}px`,
-    "--transform-border-width": `${1 / averageScale}px`,
-    "--transform-handle-width": `${11 / effectiveScaleX}px`,
-    "--transform-handle-height": `${11 / effectiveScaleY}px`,
-    "--transform-handle-border-width": `${2 / averageScale}px`,
-    "--transform-rotate-width": `${19 / effectiveScaleX}px`,
-    "--transform-rotate-height": `${19 / effectiveScaleY}px`,
-    "--transform-rotate-top": `${-31 / effectiveScaleY}px`,
-    "--transform-rotate-right": `${-7 / effectiveScaleX}px`,
-    "--transform-rotate-font-size": `${12 / averageScale}px`,
-  };
-}
+const WORKSPACE_HISTORY_LIMIT = 50;
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -870,6 +954,18 @@ function loadMeasurementUnitPreference(): MeasurementUnit {
   }
 }
 
+function cloneWorkspaceSvgItems(items: WorkspaceSvgItem[]): WorkspaceSvgItem[] {
+  return items.map((item) => ({
+    ...item,
+    frame: { ...item.frame },
+    transform: { ...item.transform },
+  }));
+}
+
+function workspaceTransformsEqual(a: WorkspaceItemTransform, b: WorkspaceItemTransform): boolean {
+  return a.x === b.x && a.y === b.y && a.scaleX === b.scaleX && a.scaleY === b.scaleY && a.rotation === b.rotation;
+}
+
 function saveMeasurementUnitPreference(unit: MeasurementUnit): void {
   try {
     window.localStorage.setItem(MEASUREMENT_UNIT_STORAGE_KEY, unit);
@@ -910,8 +1006,10 @@ function DesignWorkspace({
   onPasteSvgs,
   onCutSvgs,
   onDeleteSvgs,
+  onUndoSvgs,
+  onRedoSvgs,
   onWorkspaceContextMenu,
-  onSvgTransformChange,
+  onSvgTransformsCommit,
   onPrepareImportedPlan,
   onOpenProject,
   onSaveProject,
@@ -951,8 +1049,10 @@ function DesignWorkspace({
   onPasteSvgs: () => boolean;
   onCutSvgs: () => boolean;
   onDeleteSvgs: () => boolean;
+  onUndoSvgs: () => boolean;
+  onRedoSvgs: () => boolean;
   onWorkspaceContextMenu: (selectedObjectCount?: number) => void;
-  onSvgTransformChange: (id: string, transform: WorkspaceItemTransform) => void;
+  onSvgTransformsCommit: (updates: Array<{ id: string; transform: WorkspaceItemTransform }>) => void;
   onPrepareImportedPlan: () => void;
   onOpenProject: () => void;
   onSaveProject: () => void;
@@ -966,24 +1066,10 @@ function DesignWorkspace({
   const [pan, setPan] = useState<Point>({ x: 260, y: 90 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const workpieceTransformRef = useRef<HTMLDivElement | null>(null);
-  const selectionTransformBoxRef = useRef<HTMLDivElement | null>(null);
   const dragStart = useRef<null | { pointerId: number; pointer: Point; pan: Point }>(null);
-  const itemTransformStart = useRef<null | {
-    pointerId: number;
-    id: string;
-    mode: ImageTransformMode;
-    handle?: ResizeHandle;
-    pointer: Point;
-    transform: WorkspaceItemTransform;
-    latestTransform: WorkspaceItemTransform;
-    frame: { width: number; height: number };
-    element: HTMLDivElement;
-    selectionElement?: HTMLDivElement | null;
-    groupItems?: Array<{ id: string; transform: WorkspaceItemTransform; frame: { width: number; height: number } }>;
-    latestGroupTransforms?: Map<string, WorkspaceItemTransform>;
-    groupBounds?: NonNullable<ReturnType<typeof getWorkspaceSelectionBounds>>;
-    rotationStart?: { center: Point; angle: number };
-  }>(null);
+  const moveableTransformStart = useRef(new Map<string, WorkspaceItemTransform>());
+  const latestMoveableTransforms = useRef(new Map<string, WorkspaceItemTransform>());
+  const [moveableTargets, setMoveableTargets] = useState<HTMLElement[]>([]);
   const matDimensions = getMatDimensionsInches(selectedMatPreset);
   const materialName =
     getMaterialName(selectedMaterialId, language) ??
@@ -1012,7 +1098,19 @@ function DesignWorkspace({
   const canCut = Boolean(importedPlan?.ok && importedPlan.plan) && !cutBusy;
   const selectedSvgIdSet = useMemo(() => new Set(selectedSvgIds), [selectedSvgIds]);
   const selectedItems = useMemo(() => importedSvgs.filter((item) => selectedSvgIdSet.has(item.id)), [importedSvgs, selectedSvgIdSet]);
-  const selectionBounds = selectedItems.length > 1 ? getWorkspaceSelectionBounds(selectedItems) : null;
+
+  useEffect(() => {
+    const root = workpieceTransformRef.current;
+    if (!root || selectedItems.length === 0) {
+      setMoveableTargets([]);
+      return;
+    }
+    setMoveableTargets(
+      selectedItems
+        .map((item) => root.querySelector<HTMLElement>(`[data-workspace-item-id="${cssEscape(item.id)}"]`))
+        .filter((target): target is HTMLElement => Boolean(target)),
+    );
+  }, [selectedItems]);
 
   function clampZoom(nextZoom: number) {
     return Math.min(WORKSPACE_MAX_ZOOM, Math.max(WORKSPACE_MIN_ZOOM, nextZoom));
@@ -1043,10 +1141,10 @@ function DesignWorkspace({
     if (event.button !== 0) {
       return;
     }
-    event.preventDefault();
     if (selectedSvgId && !(event.target as HTMLElement).closest(".workspace-image-item")) {
       onSelectSvg(null);
     }
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     dragStart.current = { pointerId: event.pointerId, pointer: { x: event.clientX, y: event.clientY }, pan };
   }
@@ -1066,206 +1164,22 @@ function DesignWorkspace({
     }
   }
 
-  function workspacePointFromEvent(event: PointerEvent<HTMLElement>): Point {
-    const rect = workpieceTransformRef.current?.getBoundingClientRect();
-    return rect
-      ? { x: (event.clientX - rect.left) / zoom, y: (event.clientY - rect.top) / zoom }
-      : { x: event.clientX / zoom, y: event.clientY / zoom };
-  }
-
   function handleItemPointerDown(event: PointerEvent<HTMLDivElement>, item: WorkspaceSvgItem) {
+    event.stopPropagation();
     if (event.button !== 0) {
-      event.stopPropagation();
       return;
     }
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const isExistingMultiSelectionDrag = selectedSvgIdSet.has(item.id) && selectedItems.length > 1;
-    if (!selectedSvgIdSet.has(item.id)) {
+    if ((event.metaKey || event.ctrlKey || event.shiftKey) && selectedSvgIdSet.has(item.id) && selectedItems.length > 1) {
+      onSelectSvgGroup(selectedSvgIds.filter((id) => id !== item.id));
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.shiftKey) {
+      onSelectSvgGroup([...selectedSvgIds, item.id]);
+      return;
+    }
+    if (!selectedSvgIdSet.has(item.id) || selectedItems.length <= 1) {
       onSelectSvg(item.id);
     }
-    const groupItems = isExistingMultiSelectionDrag
-      ? selectedItems.map((selected) => ({ id: selected.id, transform: selected.transform, frame: selected.frame }))
-      : undefined;
-    itemTransformStart.current = {
-      pointerId: event.pointerId,
-      id: item.id,
-      mode: "move",
-      pointer: workspacePointFromEvent(event),
-      transform: item.transform,
-      latestTransform: item.transform,
-      frame: item.frame,
-      element: event.currentTarget,
-      selectionElement: groupItems ? selectionTransformBoxRef.current : null,
-      groupItems,
-      latestGroupTransforms: groupItems ? new Map(groupItems.map((selected) => [selected.id, selected.transform])) : undefined,
-      groupBounds: groupItems ? getWorkspaceSelectionBounds(groupItems) ?? undefined : undefined,
-    };
-  }
-
-  function handleItemPointerMove(event: PointerEvent<HTMLDivElement>) {
-    const drag = itemTransformStart.current;
-    if (!drag || drag.pointerId !== event.pointerId) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-
-    updateActiveTransformSession(drag, workspacePointFromEvent(event), event.altKey);
-  }
-
-  function stopItemDragging(event: PointerEvent<HTMLDivElement>) {
-    const drag = itemTransformStart.current;
-    if (drag?.pointerId === event.pointerId) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (drag.latestGroupTransforms) {
-        for (const [id, transform] of drag.latestGroupTransforms) {
-          onSvgTransformChange(id, transform);
-        }
-      } else {
-        onSvgTransformChange(drag.id, drag.latestTransform);
-      }
-      itemTransformStart.current = null;
-    }
-  }
-
-  function handleTransformHandlePointerDown(
-    event: PointerEvent<HTMLSpanElement>,
-    item: WorkspaceSvgItem,
-    mode: ImageTransformMode,
-    handle?: ResizeHandle,
-  ) {
-    if (event.button !== 0) {
-      event.stopPropagation();
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    const imageElement = event.currentTarget.closest<HTMLDivElement>(".workspace-image-item");
-    if (!imageElement) {
-      return;
-    }
-    imageElement.setPointerCapture(event.pointerId);
-    if (selectedSvgId !== item.id) {
-      onSelectSvg(item.id);
-    }
-    const pointer = workspacePointFromEvent(event);
-    const startWidth = item.frame.width * item.transform.scaleX;
-    const startHeight = item.frame.height * item.transform.scaleY;
-    const center = addPoint(
-      { x: item.transform.x, y: item.transform.y },
-      rotatePoint({ x: startWidth / 2, y: startHeight / 2 }, item.transform.rotation),
-    );
-    itemTransformStart.current = {
-      pointerId: event.pointerId,
-      id: item.id,
-      mode,
-      handle,
-      pointer,
-      transform: item.transform,
-      latestTransform: item.transform,
-      frame: item.frame,
-      element: imageElement,
-      rotationStart:
-        mode === "rotate"
-          ? {
-              center,
-              angle: Math.atan2(pointer.y - center.y, pointer.x - center.x),
-            }
-          : undefined,
-    };
-  }
-
-  function handleSelectionHandlePointerDown(
-    event: PointerEvent<HTMLSpanElement>,
-    mode: ImageTransformMode,
-    handle?: ResizeHandle,
-  ) {
-    if (event.button !== 0 || !selectionBounds || selectedItems.length < 2) {
-      event.stopPropagation();
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    const selectionElement = event.currentTarget.closest<HTMLDivElement>(".multi-transform-box");
-    if (!selectionElement) {
-      return;
-    }
-    selectionElement.setPointerCapture(event.pointerId);
-    const pointer = workspacePointFromEvent(event);
-    const groupItems = selectedItems.map((item) => ({ id: item.id, transform: item.transform, frame: item.frame }));
-    itemTransformStart.current = {
-      pointerId: event.pointerId,
-      id: selectedSvgId ?? groupItems[0]?.id ?? "selection",
-      mode,
-      handle,
-      pointer,
-      transform: { x: selectionBounds.left, y: selectionBounds.top, scaleX: 1, scaleY: 1, rotation: 0 },
-      latestTransform: { x: selectionBounds.left, y: selectionBounds.top, scaleX: 1, scaleY: 1, rotation: 0 },
-      frame: { width: selectionBounds.width, height: selectionBounds.height },
-      element: selectionElement,
-      selectionElement,
-      groupItems,
-      latestGroupTransforms: new Map(groupItems.map((item) => [item.id, item.transform])),
-      groupBounds: selectionBounds,
-      rotationStart:
-        mode === "rotate"
-          ? {
-              center: selectionBounds.center,
-              angle: Math.atan2(pointer.y - selectionBounds.center.y, pointer.x - selectionBounds.center.x),
-            }
-          : undefined,
-    };
-  }
-
-  function getTransformControlStyle(item: WorkspaceSvgItem): CSSProperties {
-    return buildTransformControlCssVars(zoom, item.transform) as CSSProperties;
-  }
-
-  function applyTransformControlStyle(element: HTMLElement, transform: WorkspaceItemTransform) {
-    const vars = buildTransformControlCssVars(zoom, transform);
-    for (const [name, value] of Object.entries(vars)) {
-      element.style.setProperty(name, value);
-    }
-  }
-
-  function updateActiveTransformSession(
-    drag: NonNullable<typeof itemTransformStart.current>,
-    pointer: Point,
-    preciseRotation: boolean,
-  ) {
-    if (drag.groupItems && drag.latestGroupTransforms && drag.groupBounds) {
-      const groupSession = { ...drag, groupItems: drag.groupItems, groupBounds: drag.groupBounds };
-      const nextTransforms = getNextGroupTransforms(groupSession, pointer, { preciseRotation });
-      drag.latestGroupTransforms = nextTransforms;
-      for (const [id, transform] of nextTransforms) {
-        const element = workpieceTransformRef.current?.querySelector<HTMLElement>(`[data-workspace-item-id="${cssEscape(id)}"]`);
-        if (element) {
-          element.style.transform = getWorkspaceItemTransform(transform);
-        }
-      }
-      const nextBounds = getWorkspaceSelectionBounds(
-        drag.groupItems.map((item) => ({ ...item, transform: nextTransforms.get(item.id) ?? item.transform })),
-      );
-      if (nextBounds && drag.selectionElement) {
-        applySelectionBoxStyle(drag.selectionElement, nextBounds);
-      }
-      return;
-    }
-
-    const latestTransform = getNextImageTransform(drag, pointer, { preciseRotation });
-    drag.latestTransform = latestTransform;
-    drag.element.style.transform = getWorkspaceItemTransform(latestTransform);
-    applyTransformControlStyle(drag.element, latestTransform);
-  }
-
-  function applySelectionBoxStyle(element: HTMLElement, bounds: NonNullable<ReturnType<typeof getWorkspaceSelectionBounds>>) {
-    element.style.left = `${bounds.left}px`;
-    element.style.top = `${bounds.top}px`;
-    element.style.width = `${bounds.width}px`;
-    element.style.height = `${bounds.height}px`;
   }
 
   function handleItemContextMenu(event: MouseEvent<HTMLDivElement>, item: WorkspaceSvgItem) {
@@ -1276,12 +1190,154 @@ function DesignWorkspace({
     onWorkspaceContextMenu(selectedSvgIdSet.has(item.id) ? selectedSvgIds.length : 1);
   }
 
+  function beginMoveableTransform(targets: Array<HTMLElement | SVGElement>) {
+    moveableTransformStart.current = new Map(
+      targets.flatMap((target) => {
+        const item = getWorkspaceItemFromTarget(target);
+        return item ? [[item.id, item.transform] as const] : [];
+      }),
+    );
+    latestMoveableTransforms.current = new Map(moveableTransformStart.current);
+  }
+
+  function handleMoveableDragStart(event: OnDragStart) {
+    beginMoveableTransform([event.target]);
+    const item = getWorkspaceItemFromTarget(event.target);
+    if (item) {
+      event.set([item.transform.x, item.transform.y]);
+    }
+  }
+
+  function handleMoveableDragGroupStart(event: OnDragGroupStart) {
+    beginMoveableTransform(event.targets);
+    event.events.forEach((childEvent) => {
+      const item = getWorkspaceItemFromTarget(childEvent.target);
+      if (item) {
+        childEvent.set([item.transform.x, item.transform.y]);
+      }
+    });
+  }
+
+  function handleMoveableDrag(event: OnDrag) {
+    updateMoveableTargetTransform(event.target, { x: event.beforeTranslate[0], y: event.beforeTranslate[1] });
+  }
+
+  function handleMoveableDragGroup(event: OnDragGroup) {
+    event.events.forEach(handleMoveableDrag);
+  }
+
+  function handleMoveableScaleStart(event: OnScaleStart) {
+    beginMoveableTransform([event.target]);
+    const item = getWorkspaceItemFromTarget(event.target);
+    if (item) {
+      event.set([item.transform.scaleX, item.transform.scaleY]);
+      event.setTransform(getWorkspaceItemTransform(item.transform));
+    }
+  }
+
+  function handleMoveableScaleGroupStart(event: OnScaleGroupStart) {
+    beginMoveableTransform(event.targets);
+    event.events.forEach((childEvent) => {
+      const item = getWorkspaceItemFromTarget(childEvent.target);
+      if (item) {
+        childEvent.set([item.transform.scaleX, item.transform.scaleY]);
+        childEvent.setTransform(getWorkspaceItemTransform(item.transform));
+      }
+    });
+  }
+
+  function handleMoveableScale(event: OnScale) {
+    updateMoveableTargetTransform(event.target, {
+      x: event.drag.beforeTranslate[0],
+      y: event.drag.beforeTranslate[1],
+      scaleX: event.scale[0],
+      scaleY: event.scale[1],
+    });
+  }
+
+  function handleMoveableScaleGroup(event: OnScaleGroup) {
+    event.events.forEach(handleMoveableScale);
+  }
+
+  function handleMoveableRotateStart(event: OnRotateStart) {
+    beginMoveableTransform([event.target]);
+    const item = getWorkspaceItemFromTarget(event.target);
+    if (item) {
+      event.set(item.transform.rotation);
+      event.setTransform(getWorkspaceItemTransform(item.transform));
+    }
+  }
+
+  function handleMoveableRotateGroupStart(event: OnRotateGroupStart) {
+    beginMoveableTransform(event.targets);
+    event.events.forEach((childEvent) => {
+      const item = getWorkspaceItemFromTarget(childEvent.target);
+      if (item) {
+        childEvent.set(item.transform.rotation);
+        childEvent.setTransform(getWorkspaceItemTransform(item.transform));
+      }
+    });
+  }
+
+  function handleMoveableRotate(event: OnRotate) {
+    updateMoveableTargetTransform(event.target, {
+      x: event.drag.beforeTranslate[0],
+      y: event.drag.beforeTranslate[1],
+      rotation: event.rotation,
+    });
+  }
+
+  function handleMoveableRotateGroup(event: OnRotateGroup) {
+    event.events.forEach(handleMoveableRotate);
+  }
+
+  function updateMoveableTargetTransform(
+    target: HTMLElement | SVGElement,
+    transformPart: Partial<WorkspaceItemTransform>,
+  ) {
+    const item = getWorkspaceItemFromTarget(target);
+    if (!item) {
+      return;
+    }
+    const start = moveableTransformStart.current.get(item.id) ?? item.transform;
+    const next = normalizeWorkspaceItemTransform({ ...start, ...transformPart });
+    latestMoveableTransforms.current.set(item.id, next);
+    if (target instanceof HTMLElement) {
+      target.style.transform = getWorkspaceItemTransform(next);
+    }
+  }
+
+  function commitMoveableTransforms() {
+    const updates = Array.from(latestMoveableTransforms.current, ([id, transform]) => ({ id, transform }));
+    moveableTransformStart.current = new Map();
+    latestMoveableTransforms.current = new Map();
+    onSvgTransformsCommit(updates);
+  }
+
+  function getWorkspaceItemFromTarget(target: HTMLElement | SVGElement): WorkspaceSvgItem | null {
+    const id = target instanceof HTMLElement ? target.dataset.workspaceItemId : undefined;
+    return id ? importedSvgs.find((item) => item.id === id) ?? null : null;
+  }
+
   useEffect(() => {
     function handleKeyDown(event: globalThis.KeyboardEvent) {
       if (isEditableKeyboardTarget(event.target)) {
         return;
       }
       const usesModifier = event.metaKey || event.ctrlKey;
+      if (usesModifier && event.key.toLowerCase() === "z") {
+        const handled = event.shiftKey ? onRedoSvgs() : onUndoSvgs();
+        if (handled) {
+          event.preventDefault();
+        }
+        return;
+      }
+      if (usesModifier && event.key.toLowerCase() === "y") {
+        if (onRedoSvgs()) {
+          event.preventDefault();
+        }
+        return;
+      }
       if (usesModifier && event.key.toLowerCase() === "a") {
         event.preventDefault();
         onSelectAllSvgs();
@@ -1314,7 +1370,7 @@ function DesignWorkspace({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCopySvgs, onCutSvgs, onDeleteSvgs, onPasteSvgs, onSelectAllSvgs]);
+  }, [onCopySvgs, onCutSvgs, onDeleteSvgs, onPasteSvgs, onRedoSvgs, onSelectAllSvgs, onUndoSvgs]);
 
   return (
     <main className="app-shell design-shell">
@@ -1436,7 +1492,6 @@ function DesignWorkspace({
                         width: item.frame.width,
                         height: item.frame.height,
                         transform: getWorkspaceItemTransform(item.transform),
-                        ...getTransformControlStyle(item),
                       }}
                       aria-label={
                         language === "nl"
@@ -1445,27 +1500,44 @@ function DesignWorkspace({
                       }
                       onPointerDown={(event) => handleItemPointerDown(event, item)}
                       onContextMenu={(event) => handleItemContextMenu(event, item)}
-                      onPointerMove={handleItemPointerMove}
-                      onPointerUp={stopItemDragging}
-                      onPointerCancel={stopItemDragging}
                     >
                       <img alt="" draggable={false} src={getSvgDataUrl(item.svg)} />
-                      {item.id === selectedSvgId && selectedItems.length === 1 ? (
-                        <ImageTransformControls item={item} language={language} onHandlePointerDown={handleTransformHandlePointerDown} />
-                      ) : null}
                     </div>
                   ))
                     )
                   : null}
-                {selectionBounds ? (
-                  <MultiSelectionTransformControls
-                    bounds={selectionBounds}
-                    language={language}
-                    zoom={zoom}
-                    selectionBoxRef={selectionTransformBoxRef}
-                    onHandlePointerDown={handleSelectionHandlePointerDown}
-                    onPointerMove={handleItemPointerMove}
-                    onPointerUp={stopItemDragging}
+                {moveableTargets.length > 0 ? (
+                  <Moveable
+                    target={moveableTargets.length === 1 ? moveableTargets[0] : moveableTargets}
+                    draggable
+                    scalable
+                    rotatable
+                    groupable={moveableTargets.length > 1}
+                    origin={false}
+                    keepRatio={false}
+                    throttleDrag={0}
+                    throttleScale={0}
+                    throttleRotate={0}
+                    zoom={1 / Math.max(0.01, zoom)}
+                    renderDirections={["nw", "n", "ne", "w", "e", "sw", "s", "se"]}
+                    onDragStart={handleMoveableDragStart}
+                    onDrag={handleMoveableDrag}
+                    onDragEnd={commitMoveableTransforms}
+                    onDragGroupStart={handleMoveableDragGroupStart}
+                    onDragGroup={handleMoveableDragGroup}
+                    onDragGroupEnd={commitMoveableTransforms}
+                    onScaleStart={handleMoveableScaleStart}
+                    onScale={handleMoveableScale}
+                    onScaleEnd={commitMoveableTransforms}
+                    onScaleGroupStart={handleMoveableScaleGroupStart}
+                    onScaleGroup={handleMoveableScaleGroup}
+                    onScaleGroupEnd={commitMoveableTransforms}
+                    onRotateStart={handleMoveableRotateStart}
+                    onRotate={handleMoveableRotate}
+                    onRotateEnd={commitMoveableTransforms}
+                    onRotateGroupStart={handleMoveableRotateGroupStart}
+                    onRotateGroup={handleMoveableRotateGroup}
+                    onRotateGroupEnd={commitMoveableTransforms}
                   />
                 ) : null}
               </div>
@@ -1554,307 +1626,6 @@ function Ruler({ axis, ticks, unit }: { axis: "x" | "y"; ticks: ReturnType<typeo
       ))}
     </div>
   );
-}
-
-type ImageTransformMode = "move" | "resize" | "rotate";
-type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
-
-type ImageTransformSession = {
-  mode: ImageTransformMode;
-  handle?: ResizeHandle;
-  pointer: Point;
-  transform: WorkspaceItemTransform;
-  frame: { width: number; height: number };
-  rotationStart?: { center: Point; angle: number };
-};
-
-function ImageTransformControls({
-  item,
-  language,
-  onHandlePointerDown,
-}: {
-  item: WorkspaceSvgItem;
-  language: Language;
-  onHandlePointerDown: (
-    event: PointerEvent<HTMLSpanElement>,
-    item: WorkspaceSvgItem,
-    mode: ImageTransformMode,
-    handle?: ResizeHandle,
-  ) => void;
-}) {
-  const handles: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
-  const rotateTitle =
-    language === "nl"
-      ? "Draaien — klikt automatisch vast op 45° en 90°. Houd Option/Alt ingedrukt voor precies draaien."
-      : "Rotate — snaps to 45° and 90° angles. Hold Option/Alt for precise rotation.";
-
-  return (
-    <span className="image-transform-box" aria-hidden="true">
-      {handles.map((handle) => (
-        <span
-          key={handle}
-          className={`image-transform-handle image-transform-handle--${handle}`}
-          onPointerDown={(event) => onHandlePointerDown(event, item, "resize", handle)}
-        />
-      ))}
-      <span
-        className="image-transform-rotate"
-        title={rotateTitle}
-        onPointerDown={(event) => onHandlePointerDown(event, item, "rotate")}
-      >
-        ↻
-      </span>
-    </span>
-  );
-}
-
-function MultiSelectionTransformControls({
-  bounds,
-  language,
-  zoom,
-  selectionBoxRef,
-  onHandlePointerDown,
-  onPointerMove,
-  onPointerUp,
-}: {
-  bounds: NonNullable<ReturnType<typeof getWorkspaceSelectionBounds>>;
-  language: Language;
-  zoom: number;
-  selectionBoxRef: RefObject<HTMLDivElement | null>;
-  onHandlePointerDown: (event: PointerEvent<HTMLSpanElement>, mode: ImageTransformMode, handle?: ResizeHandle) => void;
-  onPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
-  onPointerUp: (event: PointerEvent<HTMLDivElement>) => void;
-}) {
-  const handles: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
-  const rotateTitle =
-    language === "nl"
-      ? "Selectie draaien - klikt automatisch vast op 45° en 90°. Houd Option/Alt ingedrukt voor precies draaien."
-      : "Rotate selection - snaps to 45° and 90° angles. Hold Option/Alt for precise rotation.";
-  const controlScale = Math.max(0.01, zoom);
-  const style = {
-    left: bounds.left,
-    top: bounds.top,
-    width: bounds.width,
-    height: bounds.height,
-    "--transform-box-outset-x": `${7 / controlScale}px`,
-    "--transform-box-outset-y": `${7 / controlScale}px`,
-    "--transform-border-width": `${1 / controlScale}px`,
-    "--transform-handle-width": `${11 / controlScale}px`,
-    "--transform-handle-height": `${11 / controlScale}px`,
-    "--transform-handle-border-width": `${2 / controlScale}px`,
-    "--transform-rotate-width": `${19 / controlScale}px`,
-    "--transform-rotate-height": `${19 / controlScale}px`,
-    "--transform-rotate-top": `${-31 / controlScale}px`,
-    "--transform-rotate-right": `${-7 / controlScale}px`,
-    "--transform-rotate-font-size": `${12 / controlScale}px`,
-  } as CSSProperties;
-
-  return (
-    <div
-      ref={selectionBoxRef}
-      className="multi-transform-box"
-      style={style}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-    >
-      {handles.map((handle) => (
-        <span
-          key={handle}
-          className={`image-transform-handle image-transform-handle--${handle}`}
-          onPointerDown={(event) => onHandlePointerDown(event, "resize", handle)}
-        />
-      ))}
-      <span
-        className="image-transform-rotate"
-        title={rotateTitle}
-        onPointerDown={(event) => onHandlePointerDown(event, "rotate")}
-      >
-        ↻
-      </span>
-    </div>
-  );
-}
-
-function getNextImageTransform(
-  session: ImageTransformSession,
-  pointer: Point,
-  options: { preciseRotation?: boolean } = {},
-): WorkspaceItemTransform {
-  if (session.mode === "move") {
-    return normalizeWorkspaceItemTransform({
-      ...session.transform,
-      x: session.transform.x + pointer.x - session.pointer.x,
-      y: session.transform.y + pointer.y - session.pointer.y,
-    });
-  }
-
-  if (session.mode === "rotate" && session.rotationStart) {
-    const startWidth = session.frame.width * session.transform.scaleX;
-    const startHeight = session.frame.height * session.transform.scaleY;
-    const rawRotation =
-      session.transform.rotation +
-      ((Math.atan2(pointer.y - session.rotationStart.center.y, pointer.x - session.rotationStart.center.x) -
-        session.rotationStart.angle) *
-        180) /
-        Math.PI;
-    const nextRotation = options.preciseRotation ? rawRotation : snapRotation(rawRotation);
-    const rotatedCenterOffset = rotatePoint({ x: startWidth / 2, y: startHeight / 2 }, nextRotation);
-    return normalizeWorkspaceItemTransform({
-      ...session.transform,
-      x: session.rotationStart.center.x - rotatedCenterOffset.x,
-      y: session.rotationStart.center.y - rotatedCenterOffset.y,
-      rotation: nextRotation,
-    });
-  }
-
-  if (session.mode === "resize" && session.handle) {
-    return getResizedImageTransform(session, pointer, session.handle);
-  }
-
-  return session.transform;
-}
-
-function getNextGroupTransforms(
-  session: ImageTransformSession & {
-    groupItems: Array<{ id: string; transform: WorkspaceItemTransform; frame: { width: number; height: number } }>;
-    groupBounds: NonNullable<ReturnType<typeof getWorkspaceSelectionBounds>>;
-  },
-  pointer: Point,
-  options: { preciseRotation?: boolean } = {},
-): Map<string, WorkspaceItemTransform> {
-  if (session.mode === "move") {
-    const deltaX = pointer.x - session.pointer.x;
-    const deltaY = pointer.y - session.pointer.y;
-    return new Map(
-      session.groupItems.map((item) => [
-        item.id,
-        normalizeWorkspaceItemTransform({
-          ...item.transform,
-          x: item.transform.x + deltaX,
-          y: item.transform.y + deltaY,
-        }),
-      ]),
-    );
-  }
-
-  if (session.mode === "rotate" && session.rotationStart) {
-    const rotationStart = session.rotationStart;
-    const rawDelta =
-      ((Math.atan2(pointer.y - rotationStart.center.y, pointer.x - rotationStart.center.x) -
-        rotationStart.angle) *
-        180) /
-      Math.PI;
-    const targetRotation = options.preciseRotation ? rawDelta : snapRotation(rawDelta);
-    return new Map(
-      session.groupItems.map((item) => [
-        item.id,
-        rotateWorkspaceItemTransformAroundPoint(item.transform, item.frame, rotationStart.center, targetRotation),
-      ]),
-    );
-  }
-
-  if (session.mode === "resize" && session.handle) {
-    const scale = getGroupResizeScale(session.groupBounds, pointer, session.handle);
-    return new Map(
-      session.groupItems.map((item) => [
-        item.id,
-        scaleWorkspaceItemTransformFromAnchor(item.transform, item.frame, scale.anchor, scale.scaleX, scale.scaleY),
-      ]),
-    );
-  }
-
-  return new Map(session.groupItems.map((item) => [item.id, item.transform]));
-}
-
-function getGroupResizeScale(
-  bounds: NonNullable<ReturnType<typeof getWorkspaceSelectionBounds>>,
-  pointer: Point,
-  handle: ResizeHandle,
-): { anchor: Point; scaleX: number; scaleY: number } {
-  const handleX = handle.includes("w") ? -1 : handle.includes("e") ? 1 : 0;
-  const handleY = handle.includes("n") ? -1 : handle.includes("s") ? 1 : 0;
-  const anchor = {
-    x: handleX === -1 ? bounds.right : handleX === 1 ? bounds.left : bounds.center.x,
-    y: handleY === -1 ? bounds.bottom : handleY === 1 ? bounds.top : bounds.center.y,
-  };
-  const minScaleX = MIN_IMAGE_SIZE / Math.max(MIN_IMAGE_SIZE, bounds.width);
-  const minScaleY = MIN_IMAGE_SIZE / Math.max(MIN_IMAGE_SIZE, bounds.height);
-  let scaleX = 1;
-  let scaleY = 1;
-
-  if (handleX !== 0) {
-    scaleX = Math.max(minScaleX, (handleX * (pointer.x - anchor.x)) / bounds.width);
-  }
-  if (handleY !== 0) {
-    scaleY = Math.max(minScaleY, (handleY * (pointer.y - anchor.y)) / bounds.height);
-  }
-  if (handleX !== 0 && handleY !== 0) {
-    const uniformScale = Math.max(scaleX, scaleY);
-    scaleX = uniformScale;
-    scaleY = uniformScale;
-  }
-
-  return { anchor, scaleX, scaleY };
-}
-
-function snapRotation(rotation: number): number {
-  const snapped = Math.round(rotation / ROTATION_SNAP_INTERVAL_DEGREES) * ROTATION_SNAP_INTERVAL_DEGREES;
-  const distance = Math.abs(rotation - snapped);
-  return distance <= ROTATION_SNAP_THRESHOLD_DEGREES ? snapped : rotation;
-}
-
-function getResizedImageTransform(
-  session: ImageTransformSession,
-  pointer: Point,
-  handle: ResizeHandle,
-): WorkspaceItemTransform {
-  const handleX = handle.includes("w") ? -1 : handle.includes("e") ? 1 : 0;
-  const handleY = handle.includes("n") ? -1 : handle.includes("s") ? 1 : 0;
-  const startWidth = session.frame.width * session.transform.scaleX;
-  const startHeight = session.frame.height * session.transform.scaleY;
-  const startTopLeft = { x: session.transform.x, y: session.transform.y };
-  const anchorLocal = getResizeAnchorLocal(handleX, handleY, startWidth, startHeight);
-  const anchor = addPoint(startTopLeft, rotatePoint(anchorLocal, session.transform.rotation));
-  const pointerLocal = rotatePoint(
-    { x: pointer.x - anchor.x, y: pointer.y - anchor.y },
-    -session.transform.rotation,
-  );
-
-  let nextWidth = startWidth;
-  let nextHeight = startHeight;
-  let topLeftLocal = { x: 0, y: 0 };
-
-  if (handleX !== 0 && handleY !== 0) {
-    const widthRatio = Math.max(MIN_IMAGE_SIZE / startWidth, (handleX * pointerLocal.x) / startWidth);
-    const heightRatio = Math.max(MIN_IMAGE_SIZE / startHeight, (handleY * pointerLocal.y) / startHeight);
-    const ratio = Math.max(widthRatio, heightRatio);
-    nextWidth = startWidth * ratio;
-    nextHeight = startHeight * ratio;
-    topLeftLocal = { x: handleX === 1 ? 0 : -nextWidth, y: handleY === 1 ? 0 : -nextHeight };
-  } else if (handleX !== 0) {
-    nextWidth = Math.max(MIN_IMAGE_SIZE, handleX * pointerLocal.x);
-    topLeftLocal = { x: handleX === 1 ? 0 : -nextWidth, y: -startHeight / 2 };
-  } else if (handleY !== 0) {
-    nextHeight = Math.max(MIN_IMAGE_SIZE, handleY * pointerLocal.y);
-    topLeftLocal = { x: -startWidth / 2, y: handleY === 1 ? 0 : -nextHeight };
-  }
-
-  const topLeft = addPoint(anchor, rotatePoint(topLeftLocal, session.transform.rotation));
-  return normalizeWorkspaceItemTransform({
-    ...session.transform,
-    x: topLeft.x,
-    y: topLeft.y,
-    scaleX: nextWidth / session.frame.width,
-    scaleY: nextHeight / session.frame.height,
-  });
-}
-
-function getResizeAnchorLocal(handleX: number, handleY: number, width: number, height: number): Point {
-  return {
-    x: handleX === -1 ? width : handleX === 1 ? 0 : width / 2,
-    y: handleY === -1 ? height : handleY === 1 ? 0 : height / 2,
-  };
 }
 
 function getSvgDataUrl(svg: string): string {
