@@ -57,7 +57,11 @@ import {
   getMeasurementTicks,
   getViewportTransform,
   getWorkspaceItemTransform,
+  getWorkspaceSelectionBounds,
   normalizeWorkspaceItemTransform,
+  rotatePoint,
+  rotateWorkspaceItemTransformAroundPoint,
+  scaleWorkspaceItemTransformFromAnchor,
 } from "./workspace-utils";
 type SlicebugStatus = {
   ok: boolean;
@@ -1075,6 +1079,7 @@ function DesignWorkspace({
     moved: boolean;
   }>(null);
   const moveableTransformStart = useRef(new Map<string, WorkspaceItemTransform>());
+  const moveableGroupCenterStart = useRef<Point | null>(null);
   const latestMoveableTransforms = useRef(new Map<string, WorkspaceItemTransform>());
   const [moveableTargets, setMoveableTargets] = useState<HTMLElement[]>([]);
   const [isDirectItemDragging, setIsDirectItemDragging] = useState(false);
@@ -1256,13 +1261,17 @@ function DesignWorkspace({
   }
 
   function beginMoveableTransform(targets: Array<HTMLElement | SVGElement>) {
-    moveableTransformStart.current = new Map(
-      targets.flatMap((target) => {
-        const item = getWorkspaceItemFromTarget(target);
-        return item ? [[item.id, item.transform] as const] : [];
-      }),
-    );
+    const startEntries = targets.flatMap((target) => {
+      const item = getWorkspaceItemFromTarget(target);
+      return item ? [[item.id, item.transform] as const] : [];
+    });
+    moveableTransformStart.current = new Map(startEntries);
     latestMoveableTransforms.current = new Map(moveableTransformStart.current);
+    const startItems = startEntries.flatMap(([id, transform]) => {
+      const item = importedSvgs.find((candidate) => candidate.id === id);
+      return item ? [{ frame: item.frame, transform }] : [];
+    });
+    moveableGroupCenterStart.current = getWorkspaceSelectionBounds(startItems)?.center ?? null;
   }
 
   function handleMoveableDragStart(event: OnDragStart) {
@@ -1312,16 +1321,14 @@ function DesignWorkspace({
   }
 
   function handleMoveableScale(event: OnScale) {
-    updateMoveableTargetTransform(event.target, {
-      x: event.drag.beforeTranslate[0],
-      y: event.drag.beforeTranslate[1],
-      scaleX: event.scale[0],
-      scaleY: event.scale[1],
-    });
+    updateMoveableTargetScale(event.target, event.scale[0] ?? 1, event.scale[1] ?? 1, null);
   }
 
   function handleMoveableScaleGroup(event: OnScaleGroup) {
-    event.events.forEach(handleMoveableScale);
+    const groupCenter = moveableGroupCenterStart.current;
+    event.events.forEach((childEvent) => {
+      updateMoveableTargetScale(childEvent.target, childEvent.scale[0] ?? 1, childEvent.scale[1] ?? 1, groupCenter);
+    });
   }
 
   function handleMoveableRotateStart(event: OnRotateStart) {
@@ -1345,15 +1352,14 @@ function DesignWorkspace({
   }
 
   function handleMoveableRotate(event: OnRotate) {
-    updateMoveableTargetTransform(event.target, {
-      x: event.drag.beforeTranslate[0],
-      y: event.drag.beforeTranslate[1],
-      rotation: event.rotation,
-    });
+    updateMoveableTargetRotation(event.target, event.rotation, null);
   }
 
   function handleMoveableRotateGroup(event: OnRotateGroup) {
-    event.events.forEach(handleMoveableRotate);
+    const groupCenter = moveableGroupCenterStart.current;
+    event.events.forEach((childEvent) => {
+      updateMoveableTargetRotation(childEvent.target, childEvent.rotation, groupCenter);
+    });
   }
 
   function updateMoveableTargetTransform(
@@ -1365,16 +1371,53 @@ function DesignWorkspace({
       return;
     }
     const start = moveableTransformStart.current.get(item.id) ?? item.transform;
-    const next = normalizeWorkspaceItemTransform({ ...start, ...transformPart });
-    latestMoveableTransforms.current.set(item.id, next);
+    applyMoveableTargetTransform(target, item.id, normalizeWorkspaceItemTransform({ ...start, ...transformPart }));
+  }
+
+  function updateMoveableTargetScale(
+    target: HTMLElement | SVGElement,
+    absoluteScaleX: number,
+    absoluteScaleY: number,
+    groupCenter: Point | null,
+  ) {
+    const item = getWorkspaceItemFromTarget(target);
+    if (!item) {
+      return;
+    }
+    const start = moveableTransformStart.current.get(item.id) ?? item.transform;
+    const scaleFactorX = absoluteScaleX / Math.max(0.001, start.scaleX);
+    const scaleFactorY = absoluteScaleY / Math.max(0.001, start.scaleY);
+    const anchor = groupCenter ?? getWorkspaceItemCenterPoint(start, item.frame);
+    const next = scaleWorkspaceItemTransformFromAnchor(start, item.frame, anchor, scaleFactorX, scaleFactorY);
+    applyMoveableTargetTransform(target, item.id, next);
+  }
+
+  function updateMoveableTargetRotation(
+    target: HTMLElement | SVGElement,
+    absoluteRotation: number,
+    groupCenter: Point | null,
+  ) {
+    const item = getWorkspaceItemFromTarget(target);
+    if (!item) {
+      return;
+    }
+    const start = moveableTransformStart.current.get(item.id) ?? item.transform;
+    const anchor = groupCenter ?? getWorkspaceItemCenterPoint(start, item.frame);
+    const next = rotateWorkspaceItemTransformAroundPoint(start, item.frame, anchor, absoluteRotation - start.rotation);
+    applyMoveableTargetTransform(target, item.id, next);
+  }
+
+  function applyMoveableTargetTransform(target: HTMLElement | SVGElement, id: string, transform: WorkspaceItemTransform) {
+    latestMoveableTransforms.current.set(id, transform);
     if (target instanceof HTMLElement) {
-      target.style.transform = getWorkspaceItemTransform(next);
+      target.style.transform = getWorkspaceItemTransform(transform);
     }
   }
 
   function commitMoveableTransforms() {
     const updates = Array.from(latestMoveableTransforms.current, ([id, transform]) => ({ id, transform }));
     moveableTransformStart.current = new Map();
+    moveableGroupCenterStart.current = null;
     latestMoveableTransforms.current = new Map();
     onSvgTransformsCommit(updates);
   }
@@ -1382,6 +1425,14 @@ function DesignWorkspace({
   function getWorkspaceItemFromTarget(target: HTMLElement | SVGElement): WorkspaceSvgItem | null {
     const id = target instanceof HTMLElement ? target.dataset.workspaceItemId : undefined;
     return id ? importedSvgs.find((item) => item.id === id) ?? null : null;
+  }
+
+  function getWorkspaceItemCenterPoint(transform: WorkspaceItemTransform, frame: { width: number; height: number }): Point {
+    const centerOffset = rotatePoint(
+      { x: (frame.width * transform.scaleX) / 2, y: (frame.height * transform.scaleY) / 2 },
+      transform.rotation,
+    );
+    return { x: transform.x + centerOffset.x, y: transform.y + centerOffset.y };
   }
 
   useEffect(() => {
