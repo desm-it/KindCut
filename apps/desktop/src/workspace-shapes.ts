@@ -42,7 +42,7 @@ export function isWorkspaceShapeKind(value: unknown): value is WorkspaceShapeKin
 
 export function buildWorkspaceShapeSvg(kind: WorkspaceShapeKind): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="2in" height="2in" viewBox="0 0 ${SHAPE_VIEWBOX_SIZE} ${SHAPE_VIEWBOX_SIZE}">
-  <path d="${getWorkspaceShapePath(kind)}" fill="none" stroke="#8f4f2b" stroke-width="6" stroke-linejoin="round" stroke-linecap="round" />
+  <path d="${getWorkspaceShapePath(kind)}" fill="none" stroke="#8f4f2b" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />
 </svg>`;
 }
 
@@ -57,7 +57,7 @@ export function buildWorkspaceShapePathObject(kind: WorkspaceShapeKind): {
       d: getWorkspaceShapePath(kind),
       fill: "none",
       stroke: "#8f4f2b",
-      strokeWidth: "6",
+      strokeWidth: "1.5",
       strokeLinecap: "round",
       strokeLinejoin: "round",
     },
