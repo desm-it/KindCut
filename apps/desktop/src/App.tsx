@@ -2121,6 +2121,7 @@ function WorkspaceObjectArtwork({ item }: { item: WorkspaceObject }) {
           strokeLinecap={path.strokeLinecap as "butt" | "round" | "square" | "inherit" | undefined}
           strokeLinejoin={path.strokeLinejoin as "miter" | "round" | "bevel" | "inherit" | undefined}
           transform={path.pathTransform}
+          vectorEffect="non-scaling-stroke"
         />
       ))}
     </svg>
