@@ -1497,10 +1497,10 @@ a {
   top: 0;
   left: 0;
   display: block;
-  border: 1px solid rgba(121, 82, 51, 0.08);
+  border: 1px solid transparent;
   border-radius: 6px;
-  background: rgba(255, 253, 249, 0.86);
-  box-shadow: 0 8px 18px rgba(61, 40, 24, 0.08);
+  background: transparent;
+  box-shadow: none;
   cursor: move;
   will-change: transform;
   contain: layout style;
@@ -1513,7 +1513,6 @@ a {
 }
 
 .workspace-image-item:hover:not(:disabled) {
-  background: rgba(255, 253, 249, 0.86);
   transition: none !important;
 }
 
