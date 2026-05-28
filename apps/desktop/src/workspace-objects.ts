@@ -68,6 +68,25 @@ export function buildWorkspaceObjectSvg(item: WorkspaceObject): string {
     .join("")}</svg>`;
 }
 
+export function buildWorkspaceCutSvg(items: WorkspaceObject[], matWidthPx: number, matHeightPx: number): string {
+  const w = formatNumber(Math.max(1, matWidthPx));
+  const h = formatNumber(Math.max(1, matHeightPx));
+  const paths = items
+    .map((item) => {
+      const transform = `translate(${formatNumber(item.transform.x)} ${formatNumber(item.transform.y)}) rotate(${formatNumber(item.transform.rotation)}) scale(${formatNumber(item.transform.scaleX)} ${formatNumber(item.transform.scaleY)})`;
+      return `<g transform="${transform}">${item.paths
+        .map((path) => {
+          const pathTransform = path.pathTransform ? ` transform="${escapeXml(path.pathTransform)}"` : "";
+          const strokeLinecap = path.strokeLinecap ? ` stroke-linecap="${escapeXml(path.strokeLinecap)}"` : "";
+          const strokeLinejoin = path.strokeLinejoin ? ` stroke-linejoin="${escapeXml(path.strokeLinejoin)}"` : "";
+          return `<path d="${escapeXml(path.d)}" fill="${escapeXml(path.fill)}" stroke="${escapeXml(path.stroke)}" stroke-width="${escapeXml(path.strokeWidth)}"${strokeLinecap}${strokeLinejoin}${pathTransform}/>`;
+        })
+        .join("")}</g>`;
+    })
+    .join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${paths}</svg>`;
+}
+
 export function buildWorkspaceObjectsSvg(items: WorkspaceObject[]): string {
   if (items.length === 0) {
     return '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" viewBox="0 0 1 1"></svg>';

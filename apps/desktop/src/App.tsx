@@ -37,6 +37,7 @@ import {
   type WorkspaceSvgItem,
   buildWorkspaceObjectsSvg,
   buildWorkspaceObjectSvg,
+  buildWorkspaceCutSvg,
   cloneWorkspaceObjects,
   getWorkspaceObjectPartCount,
 } from "./workspace-objects";
@@ -198,6 +199,7 @@ export function App() {
   const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>(() => loadMeasurementUnitPreference());
   const [importedPlan, setImportedPlan] = useState<SlicebugPlanResult | null>(null);
   const [importedPlanLoading, setImportedPlanLoading] = useState(false);
+  const [cutPreview, setCutPreview] = useState<{ plan: SlicebugPlanResult; svg: string; matPreset: string } | null>(null);
   const [cutSession, setCutSession] = useState<CutSessionSnapshot | null>(null);
   const [cutBusy, setCutBusy] = useState(false);
   const { t } = useMemo(() => createTranslator(language), [language]);
@@ -553,6 +555,18 @@ export function App() {
     setImportedSvgs((current) => current.map((item) => item.id === id ? { ...item, fileName: trimmed } : item));
   }
 
+  function handleChangeObjectColor(id: string, color: string) {
+    setImportedSvgs((current) =>
+      current.map((item): WorkspaceObject => {
+        if (item.id !== id) return item;
+        if (item.type === "path") {
+          return { ...item, paths: [{ ...item.paths[0], stroke: color }] };
+        }
+        return { ...item, paths: item.paths.map((p) => ({ ...p, stroke: color })) };
+      }),
+    );
+  }
+
   function markWorkspaceContextMenuTarget(selectedObjectCount?: number) {
     lastWorkspaceContextMenuAt.current = Date.now();
     lastWorkspaceContextSelectionCount.current = selectedObjectCount ?? null;
@@ -744,6 +758,40 @@ export function App() {
     }
   }
 
+  async function handleOpenCutPreview() {
+    if (importedSvgs.length === 0) return;
+    const matDims = getMatDimensionsInches(selectedMatPreset);
+    const matW = matDims.width * WORKSPACE_PIXELS_PER_INCH;
+    const matH = matDims.height * WORKSPACE_PIXELS_PER_INCH;
+    const svg = buildWorkspaceCutSvg(importedSvgs, matW, matH);
+
+    if (!window.cricutCompanion?.slicebug) {
+      setCutPreview({
+        plan: { ok: false, executable: "", inputSvgPath: "", outputPlanPath: "", stdout: "", stderr: "", message: "Slicebug not available", plan: null },
+        svg,
+        matPreset: selectedMatPreset,
+      });
+      return;
+    }
+
+    setImportedPlanLoading(true);
+    try {
+      const plan = await window.cricutCompanion.slicebug.createPlan({
+        svg,
+        fileName: importedSvgs[0]?.fileName ?? "design",
+        materialId: selectedMaterialId,
+        matPreset: selectedMatPreset,
+      });
+      setImportedPlan(plan);
+      setCutPreview({ plan, svg, matPreset: selectedMatPreset });
+    } catch (error) {
+      const plan: SlicebugPlanResult = { ok: false, executable: "", inputSvgPath: "", outputPlanPath: "", stdout: "", stderr: "", message: error instanceof Error ? error.message : "Plan failed", plan: null };
+      setCutPreview({ plan, svg, matPreset: selectedMatPreset });
+    } finally {
+      setImportedPlanLoading(false);
+    }
+  }
+
   async function startCutSession(planPath: string) {
     if (!window.cricutCompanion?.slicebug) {
       return;
@@ -917,6 +965,7 @@ export function App() {
   }
 
   return (
+    <>
     <DesignWorkspace
       language={language}
       measurementUnit={measurementUnit}
@@ -954,6 +1003,7 @@ export function App() {
       onGroupSvgs={handleGroupSvgs}
       onUngroupSvg={handleUngroupSvg}
       onRenameObject={handleRenameObject}
+      onChangeObjectColor={handleChangeObjectColor}
       onUndoSvgs={handleUndoWorkspace}
       onRedoSvgs={handleRedoWorkspace}
       onWorkspaceContextMenu={markWorkspaceContextMenuTarget}
@@ -962,14 +1012,27 @@ export function App() {
       onOpenProject={() => void handleOpenProject()}
       onSaveProject={() => void handleSaveProject()}
       onGenerateSamplePlan={() => void generateSamplePlan()}
-      onStartCut={() => {
-        if (importedPlan?.outputPlanPath) {
-          void startCutSession(importedPlan.outputPlanPath);
-        }
-      }}
+      onStartCut={() => void handleOpenCutPreview()}
       onContinueCut={() => void continueCutSession()}
       onStopCut={() => void stopCutSession()}
     />
+    {cutPreview ? (
+      <CutPreviewModal
+        language={language}
+        preview={cutPreview}
+        cutBusy={cutBusy}
+        cutSession={cutSession}
+        onClose={() => setCutPreview(null)}
+        onConfirmCut={() => {
+          if (cutPreview.plan.outputPlanPath) {
+            void startCutSession(cutPreview.plan.outputPlanPath);
+          }
+        }}
+        onContinueCut={() => void continueCutSession()}
+        onStopCut={() => { void stopCutSession(); setCutPreview(null); }}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -1175,6 +1238,7 @@ function DesignWorkspace({
   onGroupSvgs,
   onUngroupSvg,
   onRenameObject,
+  onChangeObjectColor,
   onUndoSvgs,
   onRedoSvgs,
   onWorkspaceContextMenu,
@@ -1223,6 +1287,7 @@ function DesignWorkspace({
   onGroupSvgs: () => boolean;
   onUngroupSvg: () => boolean;
   onRenameObject: (id: string, newName: string) => void;
+  onChangeObjectColor: (id: string, color: string) => void;
   onUndoSvgs: () => boolean;
   onRedoSvgs: () => boolean;
   onWorkspaceContextMenu: (selectedObjectCount?: number) => void;
@@ -1245,6 +1310,8 @@ function DesignWorkspace({
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const workpieceTransformRef = useRef<HTMLDivElement | null>(null);
   const dragStart = useRef<null | { pointerId: number; pointer: Point; pan: Point }>(null);
+  const recentScrollRef = useRef(false);
+  const recentScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const directItemDragStart = useRef<null | {
     pointerId: number;
     id: string;
@@ -1282,7 +1349,7 @@ function DesignWorkspace({
     pixelsPerInch: WORKSPACE_PIXELS_PER_INCH,
   });
   const canPrepare = Boolean(importedSvg) && !importedPlanLoading;
-  const canCut = Boolean(importedPlan?.ok && importedPlan.plan) && !cutBusy;
+  const canCut = importedSvgs.length > 0 && !importedPlanLoading && !cutBusy;
   const selectedSvgIdSet = useMemo(() => new Set(selectedSvgIds), [selectedSvgIds]);
   const selectedItems = useMemo(() => importedSvgs.filter((item) => selectedSvgIdSet.has(item.id)), [importedSvgs, selectedSvgIdSet]);
   const selectedGroup = selectedItems.length === 1 && selectedItems[0]?.type === "group" ? selectedItems[0] : null;
@@ -1325,10 +1392,20 @@ function DesignWorkspace({
   function handleViewportWheel(event: WheelEvent<HTMLDivElement>) {
     if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
-      const nextZoom = clampZoom(zoom - event.deltaY * 0.0018);
+      const sensitivity = event.deltaMode === 0 ? 0.01 : 0.005;
+      const nextZoom = clampZoom(zoom - event.deltaY * sensitivity);
+      const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const cx = event.clientX - rect.left;
+      const cy = event.clientY - rect.top;
+      const worldX = (cx - pan.x) / zoom;
+      const worldY = (cy - pan.y) / zoom;
       setZoom(nextZoom);
+      setPan({ x: cx - worldX * nextZoom, y: cy - worldY * nextZoom });
       return;
     }
+    recentScrollRef.current = true;
+    if (recentScrollTimerRef.current) clearTimeout(recentScrollTimerRef.current);
+    recentScrollTimerRef.current = setTimeout(() => { recentScrollRef.current = false; }, 300);
     setPan((current) => ({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
   }
 
@@ -1811,7 +1888,7 @@ function DesignWorkspace({
             aria-label={language === "nl" ? "Terug naar projectstart" : "Back to project start"}
             title={language === "nl" ? "Projectstart" : "Project start"}
           >
-            <span aria-hidden="true">⌂</span>
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9.5 10 3l7 6.5"/><path d="M5 8v8a1 1 0 0 0 1 1h3v-4h2v4h3a1 1 0 0 0 1-1V8"/></svg>
           </button>
           <div>
             <p className="eyebrow">{language === "nl" ? "Werkruimte" : "Workspace"}</p>
@@ -1860,16 +1937,16 @@ function DesignWorkspace({
       >
         <aside className="tool-rail no-drag" aria-label={language === "nl" ? "Gereedschappen" : "Tools"}>
           <label className="tool-button tool-button--primary">
-            <span>＋</span>
+            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="16" height="16" rx="2.5"/><path d="M3 14.5 7.5 10l3.5 3.5 2.5-2.5 5.5 5.5"/><circle cx="14.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/><path d="M8 3v1M14 3v1" strokeWidth="1.2"/><line x1="11" y1="3" x2="11" y2="4" strokeWidth="1.2"/></svg>
             {language === "nl" ? "Afbeelding" : "Image"}
             <input type="file" accept=".svg,image/svg+xml" multiple onChange={onSvgFileChange} />
           </label>
           <button className="tool-button" type="button" onClick={onGenerateSamplePlan} disabled={samplePlanLoading}>
-            <span>✦</span>
+            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M11 2v2M11 18v2M2 11h2M18 11h2M4.93 4.93l1.41 1.41M15.66 15.66l1.41 1.41M4.93 17.07l1.41-1.41M15.66 6.34l1.41-1.41"/><circle cx="11" cy="11" r="3.5"/></svg>
             {language === "nl" ? "Voorbeeld" : "Sample"}
           </button>
           <button className="tool-button" type="button" disabled>
-            <span>T</span>
+            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6 5h10M11 5v12M8 17h6"/></svg>
             {language === "nl" ? "Tekst" : "Text"}
           </button>
           <button
@@ -1879,7 +1956,7 @@ function DesignWorkspace({
             aria-expanded={shapeDrawerOpen}
             aria-controls="shape-library-panel"
           >
-            <span>□</span>
+            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="11" width="9" height="9" rx="1.5"/><circle cx="15.5" cy="6.5" r="4.5"/></svg>
             {language === "nl" ? "Vorm" : "Shape"}
           </button>
         </aside>
@@ -1899,7 +1976,6 @@ function DesignWorkspace({
             <strong>{matName}</strong>
             <span>{materialName}</span>
             <span>{matDimensions.width} × {matDimensions.height} in</span>
-            <span>{Math.round(zoom * 100)}%</span>
           </div>
           <div className="ruler-corner">0</div>
           <Ruler axis="x" ticks={xTicks} unit={measurementUnit} />
@@ -1912,7 +1988,7 @@ function DesignWorkspace({
             onPointerMove={handlePointerMove}
             onPointerUp={stopDragging}
             onPointerCancel={stopDragging}
-            onContextMenu={() => onWorkspaceContextMenu()}
+            onContextMenu={(e) => { if (recentScrollRef.current) { e.preventDefault(); return; } onWorkspaceContextMenu(); }}
           >
             <div className="infinite-grid" />
             <div
@@ -1924,7 +2000,6 @@ function DesignWorkspace({
                 className="workpiece-paper"
                 style={{ width: workpieceWidth, height: workpieceHeight }}
               >
-                <span className="origin-marker">0,0</span>
                 {importedSvgs.length === 0 ? (
                   <div className="empty-workpiece">
                     <strong>{language === "nl" ? "Leeg project" : "Blank project"}</strong>
@@ -2006,7 +2081,7 @@ function DesignWorkspace({
           </div>
           <div className="zoom-controls no-drag" aria-label={language === "nl" ? "Zoom" : "Zoom"}>
             <button type="button" onClick={() => setZoom((current) => clampZoom(current - 0.1))}>−</button>
-            <button type="button" onClick={resetZoomToActualSize}>100%</button>
+            <button type="button" onClick={resetZoomToActualSize}>{Math.round(zoom * 100)}%</button>
             <button type="button" onClick={() => setZoom((current) => clampZoom(current + 0.1))}>＋</button>
           </div>
         </section>
@@ -2014,6 +2089,42 @@ function DesignWorkspace({
         <aside className="project-drawer no-drag">
           {projectMessage ? <p className="ok project-message">{projectMessage}</p> : null}
           {importMessage ? <p className="warn">{importMessage}</p> : null}
+
+          <div className="drawer-section">
+            <p className="drawer-section__title">{language === "nl" ? "Geselecteerd" : "Selection"}</p>
+            {(() => {
+              const sel = selectedSvgId ? importedSvgs.find((x) => x.id === selectedSvgId) ?? null : null;
+              if (!sel) return (
+                <div className="object-settings object-settings--empty">
+                  <p>{language === "nl" ? "Geen object geselecteerd" : "No object selected"}</p>
+                </div>
+              );
+              const color = sel.paths[0]?.stroke ?? "#8f4f2b";
+              return (
+                <div className="object-settings">
+                  <p className="object-settings__name">{sel.fileName}</p>
+                  <div className="object-settings__row">
+                    <label className="object-settings__label" htmlFor="obj-color">
+                      {language === "nl" ? "Kleur" : "Color"}
+                    </label>
+                    <div className="object-settings__color-wrap">
+                      <input
+                        id="obj-color"
+                        type="color"
+                        value={color}
+                        onChange={(e) => onChangeObjectColor(sel.id, e.currentTarget.value)}
+                        className="object-settings__color-input"
+                      />
+                      <span className="object-settings__color-hex">{color.toUpperCase()}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          <div className="drawer-section">
+            <p className="drawer-section__title">{language === "nl" ? "Lagen" : "Layers"}</p>
           {importedSvgs.length > 0 ? (
             <>
               <div className="workspace-item-list" aria-label={language === "nl" ? "Onderdelen in dit project" : "Items in this project"}>
@@ -2100,9 +2211,146 @@ function DesignWorkspace({
           ) : (
             <EmptyImportState language={language} />
           )}
+          </div>
         </aside>
       </section>
     </main>
+  );
+}
+
+function CutPreviewModal({
+  language,
+  preview,
+  cutBusy,
+  cutSession,
+  onClose,
+  onConfirmCut,
+  onContinueCut,
+  onStopCut,
+}: {
+  language: Language;
+  preview: { plan: SlicebugPlanResult; svg: string; matPreset: string };
+  cutBusy: boolean;
+  cutSession: CutSessionSnapshot | null;
+  onClose: () => void;
+  onConfirmCut: () => void;
+  onContinueCut: () => void;
+  onStopCut: () => void;
+}) {
+  const nl = language === "nl";
+  const { plan, svg, matPreset } = preview;
+  const matDims = getMatDimensionsInches(matPreset);
+  const aspectRatio = matDims.width / matDims.height;
+  const previewH = 320;
+  const previewW = Math.round(previewH * aspectRatio);
+
+  const isCutting = cutSession !== null && cutSession.status !== "finished" && cutSession.status !== "error" && cutSession.status !== "stopped";
+  const isFinished = cutSession?.status === "finished";
+  const isError = cutSession?.status === "error";
+  const needsContinue = cutSession?.action.requiresContinue ?? false;
+
+  return (
+    <div className="cut-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !isCutting) onClose(); }}>
+      <div className="cut-modal">
+        <div className="cut-modal__header">
+          <h2 className="cut-modal__title">{nl ? "Snijden voorbereiden" : "Prepare cut"}</h2>
+          {!isCutting && (
+            <button type="button" className="cut-modal__close" onClick={onClose} aria-label={nl ? "Sluiten" : "Close"}>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M3 3l10 10M13 3L3 13"/>
+              </svg>
+            </button>
+          )}
+        </div>
+
+        <div className="cut-modal__body">
+          <div className="cut-modal__preview-area">
+            <div
+              className="cut-modal__mat"
+              style={{ width: previewW, height: previewH }}
+              aria-label={nl ? "Matvoorbeeld" : "Mat preview"}
+            >
+              <img
+                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`}
+                width={previewW}
+                height={previewH}
+                alt=""
+                style={{ width: previewW, height: previewH, display: "block" }}
+              />
+            </div>
+            <p className="cut-modal__mat-label">{matDims.width} × {matDims.height} in · {getMatName(matPreset, language)}</p>
+          </div>
+
+          <div className="cut-modal__info">
+            {plan.ok && plan.plan ? (
+              <div className="cut-modal__plan-summary">
+                <div className="cut-modal__plan-row">
+                  <span>{nl ? "Materiaal" : "Material"}</span>
+                  <strong>{MATERIAL_OPTIONS.find((m) => m.id === plan.plan!.material.type)?.name ?? `ID ${plan.plan.material.type}`}</strong>
+                </div>
+                <div className="cut-modal__plan-row">
+                  <span>{nl ? "Paden" : "Paths"}</span>
+                  <strong>{plan.plan.pathCount}</strong>
+                </div>
+                {plan.plan.tools.length > 0 && (
+                  <div className="cut-modal__plan-row">
+                    <span>{nl ? "Gereedschap" : "Tools"}</span>
+                    <strong>{plan.plan.tools.join(", ")}</strong>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="cut-modal__plan-error">{plan.message}</p>
+            )}
+
+            {cutSession && (
+              <div className={`cut-modal__status cut-modal__status--${cutSession.action.tone}`}>
+                <p className="cut-modal__status-title">{cutSession.action.title}</p>
+                {cutSession.action.message && <p className="cut-modal__status-message">{cutSession.action.message}</p>}
+                {cutSession.transcript && (
+                  <pre className="cut-modal__transcript">{cutSession.transcript}</pre>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="cut-modal__footer">
+          {!isCutting && !isFinished && (
+            <>
+              <button type="button" className="cut-modal__btn cut-modal__btn--secondary" onClick={onClose}>
+                {nl ? "Annuleren" : "Cancel"}
+              </button>
+              <button
+                type="button"
+                className="cut-modal__btn cut-modal__btn--primary"
+                disabled={!plan.ok || !plan.plan || cutBusy}
+                onClick={onConfirmCut}
+              >
+                {cutBusy ? (nl ? "Bezig…" : "Working…") : (nl ? "Start snijden" : "Start cutting")}
+              </button>
+            </>
+          )}
+          {isCutting && (
+            <>
+              <button type="button" className="cut-modal__btn cut-modal__btn--secondary" disabled={cutBusy} onClick={onStopCut}>
+                {nl ? "Stop" : "Stop"}
+              </button>
+              {needsContinue && (
+                <button type="button" className="cut-modal__btn cut-modal__btn--primary" disabled={cutBusy} onClick={onContinueCut}>
+                  {nl ? "Doorgaan" : "Continue"}
+                </button>
+              )}
+            </>
+          )}
+          {(isFinished || isError) && (
+            <button type="button" className="cut-modal__btn cut-modal__btn--primary" onClick={onClose}>
+              {nl ? "Sluiten" : "Close"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2277,7 +2525,7 @@ function WorkspaceToolbar({
         />
         {/* Cut — scissors */}
         <ToolbarBtn
-          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="5.5" cy="6" r="2.5"/><circle cx="5.5" cy="14" r="2.5"/><path d="M8 7.5 17 3M8 12.5 17 17"/></svg>}
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="4.5" cy="6" r="2"/><circle cx="4.5" cy="14" r="2"/><path d="M6.5 7.5 17 13"/><path d="M6.5 12.5 17 7"/></svg>}
           label={nl ? "Knippen" : "Cut"}
           onClick={onCut}
           disabled={!canCut}
