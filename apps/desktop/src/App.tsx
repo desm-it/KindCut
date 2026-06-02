@@ -218,6 +218,11 @@ export function App() {
   const [cutPreview, setCutPreview] = useState<{ plan: SlicebugPlanResult; svg: string; matPreset: string } | null>(null);
   const [cutSession, setCutSession] = useState<CutSessionSnapshot | null>(null);
   const [cutBusy, setCutBusy] = useState(false);
+  const [aiSettings, setAiSettings] = useState<AiProviderSettings>(() => loadAiSettings());
+  const [imageLibrary, setImageLibrary] = useState<LibraryImage[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aiGenerateOpen, setAiGenerateOpen] = useState(false);
   const { t } = useMemo(() => createTranslator(language), [language]);
   const importedSvg = useMemo(
     () => importedSvgs.find((item) => item.id === selectedSvgId) ?? importedSvgs[0] ?? null,
@@ -228,6 +233,40 @@ export function App() {
     () => getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading, language),
     [language, slicebugLoading, slicebugStatus],
   );
+
+  async function loadImageLibrary() {
+    if (!window.cricutCompanion?.imageLibrary) {
+      console.warn("[ImageLibrary] IPC bridge not available — shell may need rebuilding");
+      return;
+    }
+    setLibraryLoading(true);
+    try {
+      const items = await window.cricutCompanion.imageLibrary.list();
+      setImageLibrary(items ?? []);
+    } catch (err) {
+      console.error("[ImageLibrary] Failed to list library:", err);
+    } finally {
+      setLibraryLoading(false);
+    }
+  }
+
+  async function saveToLibrary(name: string, svg: string, isAi: boolean): Promise<void> {
+    if (!window.cricutCompanion?.imageLibrary) {
+      console.warn("[ImageLibrary] IPC bridge not available — shell may need rebuilding");
+      return;
+    }
+    try {
+      const savedPath = await window.cricutCompanion.imageLibrary.save({ name, svg, isAi });
+      console.log("[ImageLibrary] Saved:", savedPath);
+    } catch (err) {
+      console.error("[ImageLibrary] Failed to save:", err);
+    }
+  }
+
+  async function deleteFromLibrary(filePath: string): Promise<void> {
+    await window.cricutCompanion?.imageLibrary?.delete(filePath);
+    setImageLibrary((prev) => prev.filter((img) => img.path !== filePath));
+  }
 
   function handleLanguageChange(nextLanguage: Language) {
     setLanguage(nextLanguage);
@@ -634,7 +673,17 @@ export function App() {
   }
 
   function handleDesktopAction(payload: DesktopActionPayload) {
-    if ((payload.action === "edit-undo" || payload.action === "edit-redo") && isEditableKeyboardTarget(document.activeElement)) {
+    if (
+      payload.action.startsWith("edit-") &&
+      isEditableKeyboardTarget(document.activeElement)
+    ) {
+      // Electron intercepted the shortcut before the input got it — forward it manually.
+      switch (payload.action) {
+        case "edit-copy": document.execCommand("copy"); break;
+        case "edit-cut": document.execCommand("cut"); break;
+        case "edit-paste": document.execCommand("paste"); break;
+        case "edit-select-all": (document.activeElement as HTMLInputElement | HTMLTextAreaElement).select?.(); break;
+      }
       return;
     }
     switch (payload.action) {
@@ -1525,6 +1574,15 @@ function DesignWorkspace({
   onStartCut,
   onContinueCut,
   onStopCut,
+  hasActiveAiKey,
+  onOpenSettings,
+  onOpenAiGenerate,
+  onAiGenerateSvg,
+  imageLibrary,
+  imageLibraryLoading,
+  onLoadImageLibrary,
+  onDeleteLibraryImage,
+  onAddLibraryImageToWorkspace,
 }: {
   language: Language;
   measurementUnit: MeasurementUnit;
@@ -1576,11 +1634,32 @@ function DesignWorkspace({
   onStartCut: () => void;
   onContinueCut: () => void;
   onStopCut: () => void;
+  hasActiveAiKey: boolean;
+  onOpenSettings: () => void;
+  onOpenAiGenerate: () => void;
+  onAiGenerateSvg: (input: Omit<AiSvgInput, "settings">) => Promise<void>;
+  imageLibrary: LibraryImage[];
+  imageLibraryLoading: boolean;
+  onLoadImageLibrary: () => void;
+  onDeleteLibraryImage: (path: string) => void;
+  onAddLibraryImageToWorkspace: (img: LibraryImage) => void;
 }) {
   const { t } = createTranslator(language);
   const [zoom, setZoom] = useState(0.85);
   const [pan, setPan] = useState<Point>({ x: 260, y: 90 });
   const [shapeDrawerOpen, setShapeDrawerOpen] = useState(false);
+  const [imageDrawerOpen, setImageDrawerOpen] = useState(false);
+  const drawerOpen = imageDrawerOpen || shapeDrawerOpen;
+
+  function openImageDrawer() {
+    setImageDrawerOpen(true);
+    setShapeDrawerOpen(false);
+    onLoadImageLibrary();
+  }
+  function openShapeDrawer() {
+    setShapeDrawerOpen(true);
+    setImageDrawerOpen(false);
+  }
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const pendingRenameRef = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
@@ -1599,6 +1678,7 @@ function DesignWorkspace({
   const moveableTransformStart = useRef(new Map<string, WorkspaceItemTransform>());
   const moveableGroupCenterStart = useRef<Point | null>(null);
   const latestMoveableTransforms = useRef(new Map<string, WorkspaceItemTransform>());
+  const moveableRef = useRef<Moveable | null>(null);
   const [moveableTargets, setMoveableTargets] = useState<HTMLElement[]>([]);
   const [isDirectItemDragging, setIsDirectItemDragging] = useState(false);
   const matDimensions = getMatDimensionsInches(selectedMatPreset);
@@ -1643,6 +1723,10 @@ function DesignWorkspace({
         .filter((target): target is HTMLElement => Boolean(target)),
     );
   }, [selectedItems]);
+
+  useEffect(() => {
+    requestAnimationFrame(() => { moveableRef.current?.updateRect(); });
+  }, [importedSvgs]);
 
   useEffect(() => {
     if (pendingRenameRef.current) {
@@ -2194,6 +2278,18 @@ function DesignWorkspace({
         />
 
         <div className="design-topbar__controls no-drag">
+          <button
+            className="workspace-home-button no-drag"
+            type="button"
+            onClick={onOpenSettings}
+            aria-label={language === "nl" ? "Instellingen" : "Settings"}
+            title={language === "nl" ? "Instellingen" : "Settings"}
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="10" cy="10" r="2.5"/>
+              <path d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.22 4.22l1.06 1.06M14.72 14.72l1.06 1.06M4.22 15.78l1.06-1.06M14.72 5.28l1.06-1.06"/>
+            </svg>
+          </button>
           <button className="cut-button" type="button" disabled={!canCut} onClick={onStartCut}>
             <span aria-hidden="true">▶</span>
             {cutBusy ? t("buttons.starting") : t("buttons.startCut")}
@@ -2202,18 +2298,18 @@ function DesignWorkspace({
       </header>
 
       <section
-        className={shapeDrawerOpen ? "design-frame design-frame--shape-drawer" : "design-frame"}
+        className={drawerOpen ? "design-frame design-frame--shape-drawer" : "design-frame"}
         aria-label={language === "nl" ? "Ontwerpwerkruimte" : "Design workspace"}
       >
         <aside className="tool-rail no-drag" aria-label={language === "nl" ? "Gereedschappen" : "Tools"}>
-          <label className="tool-button tool-button--primary">
-            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="16" height="16" rx="2.5"/><path d="M3 14.5 7.5 10l3.5 3.5 2.5-2.5 5.5 5.5"/><circle cx="14.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/><path d="M8 3v1M14 3v1" strokeWidth="1.2"/><line x1="11" y1="3" x2="11" y2="4" strokeWidth="1.2"/></svg>
-            {language === "nl" ? "Afbeelding" : "Image"}
-            <input type="file" accept=".svg,image/svg+xml" multiple onChange={onSvgFileChange} />
-          </label>
-          <button className="tool-button" type="button" onClick={onGenerateSamplePlan} disabled={samplePlanLoading}>
-            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M11 2v2M11 18v2M2 11h2M18 11h2M4.93 4.93l1.41 1.41M15.66 15.66l1.41 1.41M4.93 17.07l1.41-1.41M15.66 6.34l1.41-1.41"/><circle cx="11" cy="11" r="3.5"/></svg>
-            {language === "nl" ? "Voorbeeld" : "Sample"}
+          <button
+            className={imageDrawerOpen ? "tool-button tool-button--active" : "tool-button"}
+            type="button"
+            onClick={() => { imageDrawerOpen ? setImageDrawerOpen(false) : openImageDrawer(); }}
+            aria-expanded={imageDrawerOpen}
+          >
+            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="16" height="16" rx="2.5"/><path d="M3 14.5 7.5 10l3.5 3.5 2.5-2.5 5.5 5.5"/><circle cx="14.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
+            {language === "nl" ? "Beeld" : "Image"}
           </button>
           <button className="tool-button" type="button" disabled>
             <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6 5h10M11 5v12M8 17h6"/></svg>
@@ -2222,14 +2318,27 @@ function DesignWorkspace({
           <button
             className={shapeDrawerOpen ? "tool-button tool-button--active" : "tool-button"}
             type="button"
-            onClick={() => setShapeDrawerOpen((current) => !current)}
+            onClick={() => { shapeDrawerOpen ? setShapeDrawerOpen(false) : openShapeDrawer(); }}
             aria-expanded={shapeDrawerOpen}
             aria-controls="shape-library-panel"
           >
             <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="11" width="9" height="9" rx="1.5"/><circle cx="15.5" cy="6.5" r="4.5"/></svg>
-            {language === "nl" ? "Vorm" : "Shape"}
+            {language === "nl" ? "Vormen" : "Shapes"}
           </button>
         </aside>
+
+        {imageDrawerOpen ? (
+          <ImageLibraryPanel
+            language={language}
+            hasActiveAiKey={hasActiveAiKey}
+            images={imageLibrary}
+            loading={imageLibraryLoading}
+            onAskAi={() => { onOpenAiGenerate(); }}
+            onFileImport={onSvgFileChange}
+            onUseImage={(img) => { onAddLibraryImageToWorkspace(img); setImageDrawerOpen(false); }}
+            onDeleteImage={onDeleteLibraryImage}
+          />
+        ) : null}
 
         {shapeDrawerOpen ? (
           <ShapeLibraryPanel
@@ -2307,13 +2416,14 @@ function DesignWorkspace({
                       onPointerCancel={(event) => stopDirectItemDrag(event, item)}
                       onContextMenu={(event) => handleItemContextMenu(event, item)}
                     >
-                      <WorkspaceObjectArtwork item={item} />
+                      <WorkspaceObjectArtwork item={item} tools={tools} />
                     </div>
                   ))
                     )
                   : null}
                 {moveableTargets.length > 0 && !isDirectItemDragging ? (
                   <Moveable
+                    ref={moveableRef}
                     target={moveableTargets.length === 1 ? moveableTargets[0] : moveableTargets}
                     draggable
                     scalable
@@ -2918,6 +3028,146 @@ function Ruler({ axis, ticks, unit }: { axis: "x" | "y"; ticks: ReturnType<typeo
   );
 }
 
+function ImageLibraryPanel({
+  language,
+  hasActiveAiKey,
+  images,
+  loading,
+  onAskAi,
+  onFileImport,
+  onUseImage,
+  onDeleteImage,
+}: {
+  language: Language;
+  hasActiveAiKey: boolean;
+  images: LibraryImage[];
+  loading: boolean;
+  onAskAi: () => void;
+  onFileImport: (event: ChangeEvent<HTMLInputElement>) => void;
+  onUseImage: (img: LibraryImage) => void;
+  onDeleteImage: (path: string) => void;
+}) {
+  const nl = language === "nl";
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "ai" | "uploaded">("all");
+  const [confirmDeletePath, setConfirmDeletePath] = useState<string | null>(null);
+
+  const filtered = images.filter((img) => {
+    if (filter === "ai" && !img.isAi) return false;
+    if (filter === "uploaded" && img.isAi) return false;
+    if (search.trim()) {
+      return img.name.toLowerCase().includes(search.trim().toLowerCase());
+    }
+    return true;
+  });
+
+  function svgPreviewSrc(svg: string): string {
+    try {
+      // Strip fills and force a visible stroke for the library thumbnail.
+      // The actual fill data is preserved in the stored SVG; this is display-only.
+      const stripped = svg
+        .replace(/\sfill="[^"]*"/gi, ' fill="none"')
+        .replace(/\sfill='[^']*'/gi, " fill='none'")
+        .replace(/\sstroke="(?!none)[^"]*"/gi, ' stroke="#5a3a1a"')
+        .replace(/\sstroke='(?!none)[^']*'/gi, " stroke='#5a3a1a'");
+      return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(stripped)))}`;
+    } catch {
+      return "";
+    }
+  }
+
+  return (
+    <aside className="image-library no-drag" aria-label={nl ? "Afbeeldingsbibliotheek" : "Image library"}>
+      <div className="image-library__actions">
+        <button
+          type="button"
+          className={`image-library__action-btn${hasActiveAiKey ? "" : " image-library__action-btn--warn"}`}
+          onClick={onAskAi}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 1L9.5 5.5H14L10.5 8.5L12 13L8 10.5L4 13L5.5 8.5L2 5.5H6.5Z"/></svg>
+          {nl ? "AI genereren" : "Ask AI"}
+        </button>
+        <label className="image-library__action-btn">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M2 10.5 5.5 7l2.5 2.5 2-2 4 4"/><circle cx="10.5" cy="5.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+          {nl ? "Van PC" : "Open from PC"}
+          <input type="file" accept=".svg,image/svg+xml" multiple onChange={onFileImport} />
+        </label>
+      </div>
+
+      <input
+        type="search"
+        className="image-library__search"
+        placeholder={nl ? "Zoeken…" : "Search…"}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+
+      <div className="image-library__filters">
+        {(["all", "ai", "uploaded"] as const).map((f) => (
+          <button
+            key={f}
+            type="button"
+            className={`image-library__filter${filter === f ? " image-library__filter--active" : ""}`}
+            onClick={() => setFilter(f)}
+          >
+            {f === "all" ? (nl ? "Alle" : "All") : f === "ai" ? "AI" : (nl ? "Upload" : "Upload")}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="image-library__empty">{nl ? "Laden…" : "Loading…"}</div>
+      ) : filtered.length === 0 ? (
+        <div className="image-library__empty">
+          {search.trim()
+            ? (nl ? "Geen resultaten" : "No results")
+            : (nl ? "Bibliotheek is leeg" : "Library is empty")}
+        </div>
+      ) : (
+        <div className="image-library__grid">
+          {filtered.map((img) => (
+            <div key={img.path} className="image-tile" onClick={() => { if (confirmDeletePath !== img.path) onUseImage(img); }}>
+              <img
+                className="image-tile__preview"
+                src={svgPreviewSrc(img.svg)}
+                alt={img.name}
+                draggable={false}
+              />
+              <span className="image-tile__badge">
+                {img.isAi
+                  ? <svg viewBox="0 0 12 12" fill="currentColor" aria-label="AI"><path d="M6 0l1.2 3.8H11L7.9 6.2l1.2 3.8L6 7.8 2.9 10l1.2-3.8L1 3.8h3.8Z"/></svg>
+                  : <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" aria-label="Uploaded"><circle cx="6" cy="4" r="2.5"/><path d="M1.5 11c0-2.5 9-2.5 9 0"/></svg>
+                }
+              </span>
+              {confirmDeletePath === img.path ? (
+                <div className="image-tile__confirm" onClick={(e) => e.stopPropagation()}>
+                  <span>{nl ? "Verwijderen?" : "Delete?"}</span>
+                  <button type="button" className="image-tile__confirm-yes" onClick={(e) => { e.stopPropagation(); onDeleteImage(img.path); setConfirmDeletePath(null); }}>
+                    {nl ? "Ja" : "Yes"}
+                  </button>
+                  <button type="button" className="image-tile__confirm-no" onClick={(e) => { e.stopPropagation(); setConfirmDeletePath(null); }}>
+                    {nl ? "Nee" : "No"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="image-tile__delete"
+                  title={nl ? "Verwijderen" : "Delete"}
+                  onClick={(e) => { e.stopPropagation(); setConfirmDeletePath(img.path); }}
+                >
+                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M2 3.5h10M5.5 3.5V2.5h3v1M4 3.5l.7 8h4.6l.7-8"/></svg>
+                </button>
+              )}
+              <span className="image-tile__name">{img.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </aside>
+  );
+}
+
 function ShapeLibraryPanel({
   language,
   onAddShape,
@@ -2953,7 +3203,7 @@ function cssEscape(value: string): string {
   return globalThis.CSS?.escape ? globalThis.CSS.escape(value) : value.replace(/["\\]/g, "\\$&");
 }
 
-function WorkspaceObjectArtwork({ item }: { item: WorkspaceObject }) {
+function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject; tools?: WorkspaceTool[] }) {
   return (
     <svg
       aria-hidden="true"

@@ -52,6 +52,8 @@ ipcRenderer.on("workspace-edit-state:request", (_event: IpcRendererEvent, reques
   });
 });
 
+export type LibraryImageMeta = { name: string; path: string; isAi: boolean; svg: string };
+
 const desktopApi = {
   platform: process.platform,
   versions: {
@@ -75,6 +77,12 @@ const desktopApi = {
   project: {
     save: (input: ProjectSaveInput): Promise<ProjectFileResult> => ipcRenderer.invoke("project:save", input),
     open: (): Promise<ProjectFileResult> => ipcRenderer.invoke("project:open"),
+  },
+  imageLibrary: {
+    list: (): Promise<LibraryImageMeta[]> => ipcRenderer.invoke("library:list"),
+    save: (input: { name: string; svg: string; isAi: boolean }): Promise<string> =>
+      ipcRenderer.invoke("library:save", input),
+    delete: (filePath: string): Promise<void> => ipcRenderer.invoke("library:delete", filePath),
   },
   slicebug: {
     getStatus: (): Promise<SlicebugStatus> => ipcRenderer.invoke("slicebug:get-status"),

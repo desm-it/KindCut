@@ -307,6 +307,65 @@ ipcMain.handle("slicebug:get-cut-session", async (): Promise<CutSessionSnapshot 
 ipcMain.handle("slicebug:continue-cut-session", async (): Promise<CutSessionSnapshot | null> => activeCutSession?.continue() ?? null);
 ipcMain.handle("slicebug:stop-cut-session", async (): Promise<CutSessionSnapshot | null> => activeCutSession?.stop() ?? null);
 
+// ── Image library ─────────────────────────────────────────────────────────────
+
+type LibraryImageMeta = { name: string; path: string; isAi: boolean; svg: string };
+
+function getLibraryDir(): string {
+  return path.join(app.getPath("documents"), "KindCut", "images");
+}
+
+async function ensureLibraryDir(): Promise<void> {
+  await fs.mkdir(getLibraryDir(), { recursive: true });
+}
+
+function sanitizeFileName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9\-_\s]/g, "").trim().replace(/\s+/g, "-").slice(0, 60) || `image-${Date.now()}`;
+}
+
+ipcMain.handle("library:list", async (): Promise<LibraryImageMeta[]> => {
+  await ensureLibraryDir();
+  const dir = getLibraryDir();
+  const files = await fs.readdir(dir);
+  const svgFiles = files.filter((f) => f.toLowerCase().endsWith(".svg")).sort();
+  const items = await Promise.all(
+    svgFiles.map(async (file) => {
+      const filePath = path.join(dir, file);
+      const svg = await fs.readFile(filePath, "utf8");
+      const isAi = file.toLowerCase().endsWith(".ai.svg");
+      const displayName = isAi ? file.slice(0, -7) : file.slice(0, -4);
+      return { name: displayName, path: filePath, isAi, svg };
+    }),
+  );
+  return items;
+});
+
+ipcMain.handle("library:save", async (_event, input: { name: string; svg: string; isAi: boolean }): Promise<string> => {
+  await ensureLibraryDir();
+  const ext = input.isAi ? ".ai.svg" : ".svg";
+  const safe = sanitizeFileName(input.name);
+  let fileName = `${safe}${ext}`;
+  let filePath = path.join(getLibraryDir(), fileName);
+  // Avoid collision
+  let counter = 1;
+  while (true) {
+    try {
+      await fs.access(filePath);
+      fileName = `${safe}-${counter}${ext}`;
+      filePath = path.join(getLibraryDir(), fileName);
+      counter++;
+    } catch {
+      break;
+    }
+  }
+  await fs.writeFile(filePath, input.svg, "utf8");
+  return filePath;
+});
+
+ipcMain.handle("library:delete", async (_event, filePath: string): Promise<void> => {
+  await fs.unlink(filePath);
+});
+
 app.whenReady().then(async () => {
   await createMainWindow();
 
