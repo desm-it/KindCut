@@ -183,7 +183,8 @@ function isDroppedBackgroundRect(element: Element, frame: { width: number; heigh
   const fill = normalizeColor(getInheritedAttribute(element, "fill"));
   const stroke = normalizePaint(getInheritedAttribute(element, "stroke"), "none");
   const coversFrame = Math.abs(x) <= 0.001 && Math.abs(y) <= 0.001 && Math.abs(width - frame.width) <= 0.001 && Math.abs(height - frame.height) <= 0.001;
-  return coversFrame && (fill === "white" || fill === "none" || fill === "transparent") && (stroke === "none" || stroke === "transparent");
+  // Drop any full-size rect (AI backgrounds) or light-colored covering rects
+  return coversFrame || ((fill === "white" || fill === "none" || fill === "transparent") && (stroke === "none" || stroke === "transparent"));
 }
 
 function normalizePaint(value: string | null, fallback: string): string {

@@ -36,6 +36,7 @@ import {
 import { formatFileSize, getFriendlySvgMessages, getSvgSizeCopy, getSvgSizeInfo } from "./svg-import";
 import {
   type WorkspaceObject,
+  type WorkspacePathData,
   type WorkspaceSvgItem,
   buildWorkspaceObjectsSvg,
   buildWorkspaceObjectSvg,
@@ -912,17 +913,19 @@ export function App() {
 
     try {
       const startIndex = importedSvgs.length;
-      const newItems = await Promise.all(
-        svgFiles.map(async (file, fileIndex) =>
-          createWorkspaceSvgItem({
-            id: `svg-${Date.now()}-${startIndex + fileIndex}`,
-            fileName: file.name,
-            fileSize: formatFileSize(file.size),
-            svg: await file.text(),
-            language,
-            index: startIndex + fileIndex,
-          }),
-        ),
+      const loaded = await Promise.all(svgFiles.map(async (file) => ({ file, svg: await file.text() })));
+      // Save each to library (fire-and-forget, non-fatal)
+      void Promise.all(loaded.map(({ file, svg }) => saveToLibrary(file.name.replace(/\.svg$/i, ""), svg, false)))
+        .then(() => loadImageLibrary());
+      const newItems = loaded.map(({ file, svg }, fileIndex) =>
+        createWorkspaceSvgItem({
+          id: `svg-${Date.now()}-${startIndex + fileIndex}`,
+          fileName: file.name,
+          fileSize: formatFileSize(file.size),
+          svg,
+          language,
+          index: startIndex + fileIndex,
+        }),
       );
       pushWorkspaceHistorySnapshot();
       setImportedSvgs((current) => [...current, ...newItems]);
@@ -960,6 +963,7 @@ export function App() {
 
   useEffect(() => {
     void refreshSlicebugStatus();
+    void loadImageLibrary();
   }, []);
 
   useEffect(() => window.cricutCompanion?.onAppAction?.(handleDesktopAction));
@@ -1285,6 +1289,181 @@ function cloneWorkspaceSvgItems(items: WorkspaceSvgItem[]): WorkspaceSvgItem[] {
 
 function workspaceTransformsEqual(a: WorkspaceItemTransform, b: WorkspaceItemTransform): boolean {
   return a.x === b.x && a.y === b.y && a.scaleX === b.scaleX && a.scaleY === b.scaleY && a.rotation === b.rotation;
+}
+
+function normalizeAiSvg(svg: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svg, "image/svg+xml");
+  const root = doc.querySelector("svg");
+  if (!root) return svg;
+
+  const vb = root.getAttribute("viewBox") ?? "";
+  const vbParts = vb.split(/\s+/).map(Number);
+  const vbX = vbParts[0] ?? 0;
+  const vbY = vbParts[1] ?? 0;
+  const vbW = vbParts[2] ?? 0;
+  const vbH = vbParts[3] ?? 0;
+
+  function resolveDim(val: string | null, refSize: number): number {
+    if (!val) return 0;
+    const trimmed = val.trim();
+    if (trimmed.endsWith("%")) return (parseFloat(trimmed) / 100) * refSize;
+    const n = parseFloat(trimmed);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function isLightOrDefault(c: string): boolean {
+    const cleaned = c.trim().toLowerCase();
+    // Empty = SVG default (black) — treat as background candidate
+    return (
+      cleaned === "" || cleaned === "white" || cleaned === "#fff" ||
+      cleaned === "#ffffff" || cleaned === "transparent" || cleaned === "none"
+    );
+  }
+
+  function coversViewBox(el: Element): boolean {
+    const x = resolveDim(el.getAttribute("x"), vbW);
+    const y = resolveDim(el.getAttribute("y"), vbH);
+    const w = resolveDim(el.getAttribute("width"), vbW);
+    const h = resolveDim(el.getAttribute("height"), vbH);
+    if (w === 0 || h === 0 || vbW === 0 || vbH === 0) return false;
+    // Covers ≥ 85 % of viewBox starting near the origin
+    return x <= vbW * 0.1 && y <= vbH * 0.1 && w >= vbW * 0.85 && h >= vbH * 0.85;
+  }
+
+  // Remove ALL rects that are either large background candidates or light-colored.
+  // Also remove any rect whose stroke would be invisible (no stroke = SVG default none on rects).
+  for (const rect of Array.from(root.querySelectorAll("rect"))) {
+    const fill = rect.getAttribute("fill") ?? "";
+    const stroke = rect.getAttribute("stroke") ?? "";
+    // Keep only rects that are small design elements with an explicit dark stroke
+    const isSmall = !coversViewBox(rect);
+    const hasVisibleStroke = stroke && !isLightOrDefault(stroke);
+    const hasDarkFill = fill && !isLightOrDefault(fill);
+    if (!(isSmall && (hasVisibleStroke || hasDarkFill))) {
+      rect.remove();
+    }
+  }
+
+  // Strip inline styles from groups/svg root before processing shapes
+  for (const el of Array.from(root.querySelectorAll("g"))) {
+    el.removeAttribute("style");
+  }
+  root.removeAttribute("style");
+
+  // Normalize all path/shape elements: stroke black, fill none.
+  // Fill for cut-tool paths is applied at render time by WorkspaceObjectArtwork,
+  // NOT baked into the SVG — so any missed background element stays invisible.
+  const shapeSelectors = ["path", "circle", "ellipse", "rect", "line", "polyline", "polygon"];
+  for (const el of Array.from(root.querySelectorAll(shapeSelectors.join(",")))) {
+    el.setAttribute("stroke", "#000000");
+    el.setAttribute("fill", "none");
+    el.removeAttribute("style");
+    el.removeAttribute("stroke-opacity");
+    el.removeAttribute("fill-opacity");
+    el.removeAttribute("opacity");
+    if (!el.getAttribute("stroke-width")) {
+      el.setAttribute("stroke-width", "2");
+    }
+  }
+
+  return new XMLSerializer().serializeToString(doc);
+}
+
+function parseGroupedPathTransform(pathTransform: string | undefined): {
+  dx: number; dy: number; rotation: number; scaleX: number; scaleY: number; original: string;
+} {
+  if (!pathTransform) return { dx: 0, dy: 0, rotation: 0, scaleX: 1, scaleY: 1, original: "" };
+  let rem = pathTransform;
+  const tMatch = rem.match(/^translate\(([-\d.e]+)\s+([-\d.e]+)\)\s*/);
+  const dx = tMatch ? parseFloat(tMatch[1]!) : 0;
+  const dy = tMatch ? parseFloat(tMatch[2]!) : 0;
+  if (tMatch) rem = rem.slice(tMatch[0].length);
+  const rMatch = rem.match(/^rotate\(([-\d.e]+)\)\s*/);
+  const rotation = rMatch ? parseFloat(rMatch[1]!) : 0;
+  if (rMatch) rem = rem.slice(rMatch[0].length);
+  const sMatch = rem.match(/^scale\(([-\d.e]+)\s+([-\d.e]+)\)\s*/);
+  const scaleX = sMatch ? parseFloat(sMatch[1]!) : 1;
+  const scaleY = sMatch ? parseFloat(sMatch[2]!) : 1;
+  if (sMatch) rem = rem.slice(sMatch[0].length);
+  return { dx, dy, rotation, scaleX, scaleY, original: rem.trim() };
+}
+
+function computePathBBoxInDOM(d: string, transform?: string): { x: number; y: number; width: number; height: number } | null {
+  try {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.style.cssText = "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none";
+    const pathEl = document.createElementNS(ns, "path");
+    pathEl.setAttribute("d", d);
+    if (transform) pathEl.setAttribute("transform", transform);
+    svg.appendChild(pathEl);
+    document.body.appendChild(svg);
+    const bbox = pathEl.getBBox();
+    document.body.removeChild(svg);
+    return { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height };
+  } catch {
+    return null;
+  }
+}
+
+function reframeUngroupedChild(child: WorkspaceSvgItem, groupTransform: WorkspaceItemTransform): WorkspaceSvgItem {
+  const firstPath = child.paths[0];
+  if (!firstPath) return child;
+
+  // All paths in a segment share the same item-level transform prefix from createWorkspaceGroup.
+  const { dx, dy, rotation: pathRot, scaleX: pathSx, scaleY: pathSy } = parseGroupedPathTransform(firstPath.pathTransform);
+
+  // Compute bounding box of each path in the item's local space (using original path transform, before group was added).
+  const bboxes = child.paths.map((p) => {
+    const { original } = parseGroupedPathTransform(p.pathTransform);
+    return computePathBBoxInDOM(p.d, original || undefined);
+  });
+  const validBboxes = bboxes.filter((b): b is { x: number; y: number; width: number; height: number } => b !== null && b.width >= 0);
+  if (validBboxes.length === 0) return child;
+
+  const minX = Math.min(...validBboxes.map((b) => b.x));
+  const minY = Math.min(...validBboxes.map((b) => b.y));
+  const maxX = Math.max(...validBboxes.map((b) => b.x + b.width));
+  const maxY = Math.max(...validBboxes.map((b) => b.y + b.height));
+  const naturalWidth = maxX - minX;
+  const naturalHeight = maxY - minY;
+  if (naturalWidth <= 0 || naturalHeight <= 0) return child;
+
+  // Rebuild paths: strip the group-added translate/rotate/scale, keep original, offset to 0,0.
+  const newPaths = child.paths.map((p) => {
+    const { original } = parseGroupedPathTransform(p.pathTransform);
+    const offset = minX !== 0 || minY !== 0 ? `translate(${formatN(-minX)} ${formatN(-minY)})` : "";
+    const newTransform = [offset, original].filter(Boolean).join(" ") || undefined;
+    return { ...p, pathTransform: newTransform };
+  });
+
+  // Reconstruct world transform: combine group world transform with path's local translate(dx, dy) + natural offset.
+  const offsetX = (dx + minX) * groupTransform.scaleX;
+  const offsetY = (dy + minY) * groupTransform.scaleY;
+  const rotated = rotatePoint({ x: offsetX, y: offsetY }, groupTransform.rotation);
+
+  const paths = child.type === "path"
+    ? [newPaths[0]!] as [WorkspacePathData]
+    : newPaths as WorkspacePathData[];
+
+  return {
+    ...child,
+    frame: { width: naturalWidth, height: naturalHeight },
+    sizeCopy: `${Math.round(naturalWidth)} × ${Math.round(naturalHeight)} px`,
+    transform: {
+      x: groupTransform.x + rotated.x,
+      y: groupTransform.y + rotated.y,
+      rotation: groupTransform.rotation + pathRot,
+      scaleX: groupTransform.scaleX * pathSx,
+      scaleY: groupTransform.scaleY * pathSy,
+    },
+    paths,
+  } as WorkspaceSvgItem;
+}
+
+function formatN(value: number): string {
+  return Number(value.toFixed(3)).toString();
 }
 
 function saveMeasurementUnitPreference(unit: MeasurementUnit): void {
@@ -2784,19 +2963,36 @@ function WorkspaceObjectArtwork({ item }: { item: WorkspaceObject }) {
       viewBox={`0 0 ${item.frame.width} ${item.frame.height}`}
       preserveAspectRatio="none"
     >
-      {item.paths.map((path) => (
-        <path
-          key={path.id}
-          d={path.d}
-          fill={path.fill}
-          stroke={path.stroke}
-          strokeWidth={path.strokeWidth}
-          strokeLinecap={path.strokeLinecap as "butt" | "round" | "square" | "inherit" | undefined}
-          strokeLinejoin={path.strokeLinejoin as "miter" | "round" | "bevel" | "inherit" | undefined}
-          transform={path.pathTransform}
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
+      {item.paths.map((path) => {
+        const matchedTool = tools?.find((t) => t.color.toLowerCase() === (path.stroke ?? "").toLowerCase());
+        const isPen = matchedTool?.type === "pen";
+        // For pen: no fill. For cut (or unmatched): use the tool's color as fill so the
+        // silhouette is visible. Fall back to path.fill if it's a non-none value (manually
+        // imported SVGs may carry their own fill), otherwise use stroke color at low opacity.
+        let effectiveFill: string;
+        if (isPen) {
+          effectiveFill = "none";
+        } else if (matchedTool) {
+          effectiveFill = matchedTool.color;
+        } else if (path.fill && path.fill !== "none") {
+          effectiveFill = path.fill;
+        } else {
+          effectiveFill = path.stroke ?? "#000000";
+        }
+        return (
+          <path
+            key={path.id}
+            d={path.d}
+            fill={effectiveFill}
+            stroke={path.stroke}
+            strokeWidth={path.strokeWidth}
+            strokeLinecap={path.strokeLinecap as "butt" | "round" | "square" | "inherit" | undefined}
+            strokeLinejoin={path.strokeLinejoin as "miter" | "round" | "bevel" | "inherit" | undefined}
+            transform={path.pathTransform}
+            vectorEffect="non-scaling-stroke"
+          />
+        );
+      })}
     </svg>
   );
 }
