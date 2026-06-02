@@ -516,11 +516,12 @@ export function App() {
     if (!group) {
       return false;
     }
-    const children = ungroupWorkspaceObject({
+    const rawChildren = ungroupWorkspaceObject({
       group,
       idPrefix: `${group.id}-part-${Date.now()}`,
       labelForIndex: (index) => language === "nl" ? `${group.fileName} onderdeel ${index + 1}` : `${group.fileName} part ${index + 1}`,
     });
+    const children = rawChildren.map((child) => reframeUngroupedChild(child, group.transform));
     pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) => current.flatMap((item) => (item.id === group.id ? children : [item])));
     const childIds = children.map((item) => item.id);

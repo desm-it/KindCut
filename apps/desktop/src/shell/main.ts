@@ -133,15 +133,17 @@ function createEditMenu(): MenuItemConstructorOptions {
   return {
     label: "Edit",
     submenu: [
-      { label: "Undo", accelerator: "CmdOrCtrl+Z", click: () => sendRendererAction("edit-undo") },
-      { label: "Redo", accelerator: process.platform === "darwin" ? "Shift+Cmd+Z" : "Ctrl+Y", click: () => sendRendererAction("edit-redo") },
+      // registerAccelerator: false — let the renderer handle these via keydown events so
+      // the isEditableKeyboardTarget check can suppress them when a text field is focused.
+      { label: "Undo", accelerator: "CmdOrCtrl+Z", registerAccelerator: false, click: () => sendRendererAction("edit-undo") },
+      { label: "Redo", accelerator: process.platform === "darwin" ? "Shift+Cmd+Z" : "Ctrl+Y", registerAccelerator: false, click: () => sendRendererAction("edit-redo") },
       { type: "separator" },
-      { label: "Cut", accelerator: "CmdOrCtrl+X", click: () => sendRendererAction("edit-cut") },
-      { label: "Copy", accelerator: "CmdOrCtrl+C", click: () => sendRendererAction("edit-copy") },
-      { label: "Paste", accelerator: "CmdOrCtrl+V", click: () => sendRendererAction("edit-paste") },
+      { label: "Cut", accelerator: "CmdOrCtrl+X", registerAccelerator: false, click: () => sendRendererAction("edit-cut") },
+      { label: "Copy", accelerator: "CmdOrCtrl+C", registerAccelerator: false, click: () => sendRendererAction("edit-copy") },
+      { label: "Paste", accelerator: "CmdOrCtrl+V", registerAccelerator: false, click: () => sendRendererAction("edit-paste") },
       { type: "separator" },
-      { label: "Select All", accelerator: "CmdOrCtrl+A", click: () => sendRendererAction("edit-select-all") },
-      { label: "Delete", accelerator: "Backspace", click: () => sendRendererAction("edit-delete") },
+      { label: "Select All", accelerator: "CmdOrCtrl+A", registerAccelerator: false, click: () => sendRendererAction("edit-select-all") },
+      { label: "Delete", accelerator: "Backspace", registerAccelerator: false, click: () => sendRendererAction("edit-delete") },
     ],
   };
 }
@@ -245,8 +247,21 @@ async function createMainWindow(): Promise<BrowserWindow> {
     return { action: "deny" };
   });
 
-  mainWindow.webContents.on("context-menu", () => {
-    void showContextMenu(mainWindow);
+  mainWindow.webContents.on("context-menu", (_, params) => {
+    if (params.isEditable) {
+      const { editFlags } = params;
+      const hasSelection = params.selectionText.length > 0;
+      const inputMenu = Menu.buildFromTemplate([
+        { label: "Cut", enabled: hasSelection && editFlags.canCut, click: () => mainWindow.webContents.cut() },
+        { label: "Copy", enabled: hasSelection && editFlags.canCopy, click: () => mainWindow.webContents.copy() },
+        { label: "Paste", enabled: editFlags.canPaste, click: () => mainWindow.webContents.paste() },
+        { type: "separator" },
+        { label: "Select All", enabled: editFlags.canSelectAll, click: () => mainWindow.webContents.selectAll() },
+      ]);
+      inputMenu.popup({ window: mainWindow });
+    } else {
+      void showContextMenu(mainWindow);
+    }
   });
 
   const rendererEntry = resolveRendererEntry({
