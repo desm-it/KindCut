@@ -83,6 +83,18 @@ import {
   getWorkspaceShapeDefinition,
 } from "./workspace-shapes";
 import { createWorkspaceGroup, ungroupWorkspaceObject } from "./workspace-grouping";
+import {
+  type AiProvider,
+  type AiProviderSettings,
+  type AiSvgInput,
+  generateAiSvg,
+  hasActiveApiKey,
+  loadAiSettings,
+  saveAiSettings,
+} from "./ai-svg-generate";
+
+type LibraryImage = { name: string; path: string; isAi: boolean; svg: string };
+
 type SlicebugStatus = {
   ok: boolean;
   executable: string | null;
@@ -544,6 +556,43 @@ export function App() {
     setSelectedSvgId(item.id);
     setSelectedSvgIds([item.id]);
     setImportMessage(null);
+    setImportedPlan(null);
+    setCutSession(null);
+  }
+
+  async function handleAiGenerateSvg(input: Omit<AiSvgInput, "settings">): Promise<void> {
+    const rawSvg = await generateAiSvg({ ...input, settings: aiSettings, language });
+    const svg = normalizeAiSvg(rawSvg);
+    const name = input.prompt.slice(0, 40);
+    // Save to library first so it appears when the drawer refreshes
+    await saveToLibrary(name, svg, true);
+    await loadImageLibrary();
+    addSvgToWorkspace(name, svg);
+  }
+
+  function addSvgToWorkspace(name: string, svg: string, normalizeFirst = false): void {
+    const finalSvg = normalizeFirst ? normalizeAiSvg(svg) : svg;
+    const item = createWorkspaceSvgItem({
+      id: `svg-${Date.now()}`,
+      kind: "image",
+      fileName: name,
+      fileSize: "",
+      svg: finalSvg,
+      language,
+      index: importedSvgs.length,
+    });
+    // Cap to 4 inches max on the longest side
+    const MAX_PX = 4 * WORKSPACE_PIXELS_PER_INCH;
+    const longest = Math.max(item.frame.width, item.frame.height);
+    if (longest > MAX_PX) {
+      const scale = MAX_PX / longest;
+      item.transform.scaleX = scale;
+      item.transform.scaleY = scale;
+    }
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((current) => [...current, item]);
+    setSelectedSvgId(item.id);
+    setSelectedSvgIds([item.id]);
     setImportedPlan(null);
     setCutSession(null);
   }
@@ -1034,7 +1083,33 @@ export function App() {
       onStartCut={() => void handleOpenCutPreview()}
       onContinueCut={() => void continueCutSession()}
       onStopCut={() => void stopCutSession()}
+      hasActiveAiKey={hasActiveApiKey(aiSettings)}
+      onOpenSettings={() => setSettingsOpen(true)}
+      onOpenAiGenerate={() => setAiGenerateOpen(true)}
+      onAiGenerateSvg={handleAiGenerateSvg}
+      imageLibrary={imageLibrary}
+      imageLibraryLoading={libraryLoading}
+      onLoadImageLibrary={() => void loadImageLibrary()}
+      onDeleteLibraryImage={(p) => void deleteFromLibrary(p)}
+      onAddLibraryImageToWorkspace={(img) => addSvgToWorkspace(img.name, img.svg)}
     />
+    {settingsOpen ? (
+      <SettingsModal
+        language={language}
+        settings={aiSettings}
+        onSave={(updated) => { saveAiSettings(updated); setAiSettings(updated); setSettingsOpen(false); }}
+        onClose={() => setSettingsOpen(false)}
+      />
+    ) : null}
+    {aiGenerateOpen ? (
+      <AiGenerateModal
+        language={language}
+        hasApiKey={hasActiveApiKey(aiSettings)}
+        onGenerate={handleAiGenerateSvg}
+        onOpenSettings={() => { setAiGenerateOpen(false); setSettingsOpen(true); }}
+        onClose={() => setAiGenerateOpen(false)}
+      />
+    ) : null}
     {cutPreview ? (
       <CutPreviewModal
         language={language}
@@ -2324,6 +2399,193 @@ function DesignWorkspace({
   );
 }
 
+function SettingsModal({
+  language,
+  settings,
+  onSave,
+  onClose,
+}: {
+  language: Language;
+  settings: AiProviderSettings;
+  onSave: (settings: AiProviderSettings) => void;
+  onClose: () => void;
+}) {
+  const nl = language === "nl";
+  const [draft, setDraft] = useState<AiProviderSettings>(settings);
+
+  return (
+    <div className="cut-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="cut-modal cut-modal--narrow" onKeyDown={(e) => e.stopPropagation()}>
+        <div className="cut-modal__header">
+          <h2 className="cut-modal__title">{nl ? "Instellingen" : "Settings"}</h2>
+          <button type="button" className="cut-modal__close" onClick={onClose} aria-label={nl ? "Sluiten" : "Close"}>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
+          </button>
+        </div>
+        <div className="cut-modal__body cut-modal__body--col">
+          <p className="settings-modal__label">{nl ? "AI-dienst" : "AI service"}</p>
+          <select
+            className="settings-modal__input settings-modal__select"
+            value={draft.activeProvider}
+            onChange={(e) => setDraft((d) => ({ ...d, activeProvider: e.target.value as AiProvider }))}
+          >
+            <option value="openai">OpenAI (o3)</option>
+            <option value="recraft">Recraft (recraftv4_1_vector)</option>
+          </select>
+
+          <p className="settings-modal__label settings-modal__label--mt">OpenAI API key</p>
+          <p className="settings-modal__hint">
+            {nl ? "Vereist voor OpenAI. Alleen lokaal opgeslagen." : "Required for OpenAI. Stored locally only."}
+          </p>
+          <input
+            type="password"
+            className="settings-modal__input"
+            value={draft.openaiKey}
+            onChange={(e) => setDraft((d) => ({ ...d, openaiKey: e.target.value }))}
+            placeholder="sk-..."
+            autoComplete="off"
+            spellCheck={false}
+          />
+
+          <p className="settings-modal__label settings-modal__label--mt">Recraft API key</p>
+          <p className="settings-modal__hint">
+            {nl
+              ? "Vereist voor Recraft. Gespecialiseerde vector-AI. Alleen lokaal opgeslagen."
+              : "Required for Recraft. Dedicated vector AI. Stored locally only."}
+          </p>
+          <input
+            type="password"
+            className="settings-modal__input"
+            value={draft.recraftKey}
+            onChange={(e) => setDraft((d) => ({ ...d, recraftKey: e.target.value }))}
+            placeholder="recraft_..."
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+        <div className="cut-modal__footer">
+          <button type="button" className="cut-modal__btn cut-modal__btn--secondary" onClick={onClose}>
+            {nl ? "Annuleren" : "Cancel"}
+          </button>
+          <button type="button" className="cut-modal__btn cut-modal__btn--primary" onClick={() => onSave(draft)}>
+            {nl ? "Opslaan" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AiGenerateModal({
+  language,
+  hasApiKey,
+  onGenerate,
+  onOpenSettings,
+  onClose,
+}: {
+  language: Language;
+  hasApiKey: boolean;
+  onGenerate: (input: Omit<AiSvgInput, "settings">) => Promise<void>;
+  onOpenSettings: () => void;
+  onClose: () => void;
+}) {
+  const nl = language === "nl";
+  const [prompt, setPrompt] = useState("");
+  const [cutterProof, setCutterProof] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    if (!prompt.trim()) return;
+    setError(null);
+    setLoading(true);
+    try {
+      await onGenerate({ prompt: prompt.trim(), cutterProof, language });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="cut-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}>
+      <div className="cut-modal cut-modal--narrow" onKeyDown={(e) => e.stopPropagation()}>
+        <div className="cut-modal__header">
+          <h2 className="cut-modal__title">{nl ? "AI-ontwerp genereren" : "Generate AI design"}</h2>
+          {!loading && (
+            <button type="button" className="cut-modal__close" onClick={onClose} aria-label={nl ? "Sluiten" : "Close"}>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
+          )}
+        </div>
+        <div className="cut-modal__body cut-modal__body--col">
+          {!hasApiKey && (
+            <div className="ai-modal__no-key">
+              <p>{nl ? "Geen API-sleutel ingesteld." : "No API key configured."}</p>
+              <button type="button" className="cut-modal__btn cut-modal__btn--secondary" onClick={onOpenSettings}>
+                {nl ? "Instellingen openen" : "Open settings"}
+              </button>
+            </div>
+          )}
+          <label className="settings-modal__label" htmlFor="ai-prompt">
+            {nl ? "Beschrijving" : "Description"}
+          </label>
+          <textarea
+            id="ai-prompt"
+            className="ai-modal__prompt"
+            rows={3}
+            placeholder={nl ? "Blije hond, papier-snij stijl…" : "Happy dog, paper-cut style…"}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            disabled={loading}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                void handleGenerate();
+              }
+              e.stopPropagation();
+            }}
+            autoFocus
+          />
+          <label className="ai-modal__checkbox-label">
+            <input
+              type="checkbox"
+              checked={cutterProof}
+              onChange={(e) => setCutterProof(e.target.checked)}
+              disabled={loading}
+            />
+            <span>
+              {nl ? "Snijveilig" : "Cutter-proof"}
+              <em>{nl ? " — ontwerp blijft in één stuk" : " — design stays in one piece"}</em>
+            </span>
+          </label>
+          {loading && (
+            <p className="ai-modal__loading">
+              <span className="ai-modal__spinner" aria-hidden="true" />
+              {nl ? "Ontwerp genereren…" : "Generating design…"}
+            </p>
+          )}
+          {error && <p className="ai-modal__error">{error}</p>}
+        </div>
+        <div className="cut-modal__footer">
+          <button type="button" className="cut-modal__btn cut-modal__btn--secondary" disabled={loading} onClick={onClose}>
+            {nl ? "Annuleren" : "Cancel"}
+          </button>
+          <button
+            type="button"
+            className="cut-modal__btn cut-modal__btn--primary"
+            disabled={loading || !prompt.trim() || !hasApiKey}
+            onClick={() => void handleGenerate()}
+          >
+            {loading ? (nl ? "Bezig…" : "Working…") : (nl ? "Genereren" : "Generate")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CutPreviewModal({
   language,
   preview,
@@ -2357,7 +2619,7 @@ function CutPreviewModal({
 
   return (
     <div className="cut-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !isCutting) onClose(); }}>
-      <div className="cut-modal">
+      <div className="cut-modal" onKeyDown={(e) => e.stopPropagation()}>
         <div className="cut-modal__header">
           <h2 className="cut-modal__title">{nl ? "Snijden voorbereiden" : "Prepare cut"}</h2>
           {!isCutting && (
