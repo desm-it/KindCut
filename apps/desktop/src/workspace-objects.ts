@@ -1,7 +1,19 @@
 import type { WorkspaceShapeKind } from "./workspace-shapes";
 import type { WorkspaceItemFrame, WorkspaceItemTransform } from "./workspace-utils";
 
-export type WorkspaceObjectSourceKind = "image" | "shape";
+export type WorkspaceObjectSourceKind = "image" | "shape" | "text";
+
+export type WorkspaceTextContent = {
+  text: string;
+  fontFamily: string;
+  fontSize: number;       // workspace pixels
+  fontWeight: "normal" | "bold";
+  fontStyle: "normal" | "italic";
+  textDecoration: "none" | "underline";
+  letterSpacing: number;  // extra pixels between characters
+  lineHeight: number;     // multiplier (1.2 = 120%)
+  color: string;          // hex — drives the tool color match
+};
 
 export type WorkspacePathVisual = {
   fill: string;
@@ -14,6 +26,7 @@ export type WorkspacePathVisual = {
 export type WorkspacePathData = WorkspacePathVisual & {
   id: string;
   d: string;
+  fillRule?: string; // "evenodd" | "nonzero" — preserved for compound paths with holes
   pathTransform?: string;
   sourceLabel?: string;
 };
@@ -28,6 +41,7 @@ export type WorkspaceObjectBase = {
   sizeCopy: string;
   transform: WorkspaceItemTransform;
   frame: WorkspaceItemFrame;
+  textContent?: WorkspaceTextContent; // present only for text items
 };
 
 export type WorkspacePathObject = WorkspaceObjectBase & {
@@ -57,13 +71,26 @@ export function getWorkspaceObjectPartCount(item: WorkspaceObject): number {
   return item.paths.length;
 }
 
+export function buildTextContentSvg(tc: WorkspaceTextContent, frame: WorkspaceItemFrame): string {
+  const lineH = tc.fontSize * tc.lineHeight;
+  const lines = tc.text.split("\n");
+  const textEls = lines.map((line, i) =>
+    `<text x="4" y="${4 + tc.fontSize + i * lineH}" font-family="${escapeXml(tc.fontFamily)}" font-size="${tc.fontSize}" font-weight="${tc.fontWeight}" font-style="${tc.fontStyle}" text-decoration="${tc.textDecoration}" fill="${escapeXml(tc.color)}" letter-spacing="${tc.letterSpacing}">${escapeXml(line || " ")}</text>`,
+  ).join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(frame.width)}" height="${formatNumber(frame.height)}" viewBox="0 0 ${formatNumber(frame.width)} ${formatNumber(frame.height)}">${textEls}</svg>`;
+}
+
 export function buildWorkspaceObjectSvg(item: WorkspaceObject): string {
+  if (item.textContent && item.paths.length === 0) {
+    return buildTextContentSvg(item.textContent, item.frame);
+  }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(item.frame.width)}" height="${formatNumber(item.frame.height)}" viewBox="0 0 ${formatNumber(item.frame.width)} ${formatNumber(item.frame.height)}">${item.paths
     .map((path) => {
       const transform = path.pathTransform ? ` transform="${escapeXml(path.pathTransform)}"` : "";
       const strokeLinecap = path.strokeLinecap ? ` stroke-linecap="${escapeXml(path.strokeLinecap)}"` : "";
       const strokeLinejoin = path.strokeLinejoin ? ` stroke-linejoin="${escapeXml(path.strokeLinejoin)}"` : "";
-      return `<path d="${escapeXml(path.d)}" fill="${escapeXml(path.fill)}" stroke="${escapeXml(path.stroke)}" stroke-width="${escapeXml(path.strokeWidth)}"${strokeLinecap}${strokeLinejoin}${transform}/>`;
+      const fillRule = path.fillRule ? ` fill-rule="${escapeXml(path.fillRule)}"` : "";
+      return `<path d="${escapeXml(path.d)}" fill="${escapeXml(path.fill)}"${fillRule} stroke="${escapeXml(path.stroke)}" stroke-width="${escapeXml(path.strokeWidth)}"${strokeLinecap}${strokeLinejoin}${transform}/>`;
     })
     .join("")}</svg>`;
 }
@@ -79,7 +106,8 @@ export function buildWorkspaceCutSvg(items: WorkspaceObject[], matWidthPx: numbe
           const pathTransform = path.pathTransform ? ` transform="${escapeXml(path.pathTransform)}"` : "";
           const strokeLinecap = path.strokeLinecap ? ` stroke-linecap="${escapeXml(path.strokeLinecap)}"` : "";
           const strokeLinejoin = path.strokeLinejoin ? ` stroke-linejoin="${escapeXml(path.strokeLinejoin)}"` : "";
-          return `<path d="${escapeXml(path.d)}" fill="${escapeXml(path.fill)}" stroke="${escapeXml(path.stroke)}" stroke-width="${escapeXml(path.strokeWidth)}"${strokeLinecap}${strokeLinejoin}${pathTransform}/>`;
+          const fillRule = path.fillRule ? ` fill-rule="${escapeXml(path.fillRule)}"` : "";
+          return `<path d="${escapeXml(path.d)}" fill="${escapeXml(path.fill)}"${fillRule} stroke="${escapeXml(path.stroke)}" stroke-width="${escapeXml(path.strokeWidth)}"${strokeLinecap}${strokeLinejoin}${pathTransform}/>`;
         })
         .join("")}</g>`;
     })

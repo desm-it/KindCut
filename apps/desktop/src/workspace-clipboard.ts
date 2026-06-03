@@ -4,8 +4,8 @@ import type { WorkspaceObject, WorkspacePathData } from "./workspace-objects";
 
 export type WorkspaceClipboardSvgItem = {
   type: "path" | "group";
-  kind?: "image" | "shape";
-  sourceKind?: "image" | "shape";
+  kind?: "image" | "shape" | "text";
+  sourceKind?: "image" | "shape" | "text";
   shapeKind?: WorkspaceShapeKind;
   fileName: string;
   fileSize: string;

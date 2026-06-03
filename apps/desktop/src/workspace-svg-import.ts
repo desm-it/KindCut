@@ -33,6 +33,7 @@ export function extractWorkspacePathsFromSvg(svg: string): ExtractedWorkspaceSvg
       return;
     }
     const pathTransform = transformStack.concat(getAttribute(element, "transform") ?? []).filter(Boolean).join(" ");
+    const fillRule = getAttribute(element, "fill-rule") ?? getInheritedAttribute(element, "fill-rule") ?? undefined;
     paths.push({
       id: `path-${paths.length + 1}`,
       d,
@@ -41,6 +42,7 @@ export function extractWorkspacePathsFromSvg(svg: string): ExtractedWorkspaceSvg
       strokeWidth: getInheritedAttribute(element, "stroke-width") ?? "2",
       strokeLinecap: getInheritedAttribute(element, "stroke-linecap") ?? "round",
       strokeLinejoin: getInheritedAttribute(element, "stroke-linejoin") ?? "round",
+      fillRule: fillRule === "evenodd" || fillRule === "nonzero" ? fillRule : undefined,
       pathTransform: pathTransform || undefined,
     });
   });

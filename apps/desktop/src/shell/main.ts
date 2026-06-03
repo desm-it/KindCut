@@ -1,5 +1,24 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const potrace = require("potrace") as {
+  trace: (
+    input: Buffer,
+    options: {
+      threshold?: number; turdSize?: number; optCurve?: boolean;
+      optTolerance?: number; color?: string; background?: string;
+    },
+    cb: (err: Error | null, svg: string) => void,
+  ) => void;
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const Jimp = require("jimp") as {
+  read: (buffer: Buffer) => Promise<{
+    grayscale: () => { contrast: (v: number) => { threshold: (opts: { max: number; replace?: number; autoGreyscale?: boolean }) => { getBufferAsync: (mime: string) => Promise<Buffer> } } };
+    MIME_PNG: string;
+  }>;
+  MIME_PNG: string;
+};
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import type { IpcMainEvent, MenuItemConstructorOptions, OpenDialogOptions, SaveDialogOptions } from "electron";
 import {
@@ -364,6 +383,112 @@ ipcMain.handle("library:save", async (_event, input: { name: string; svg: string
 
 ipcMain.handle("library:delete", async (_event, filePath: string): Promise<void> => {
   await fs.unlink(filePath);
+});
+
+// ── AI silhouette: DALL-E 3 → PNG → Potrace → SVG ────────────────────────────
+
+function buildGptImagePrompt(subject: string, complexity: number): string {
+  // SUBJECT FIRST — GPT Image weights the start of the prompt most heavily.
+  // All 3 levels: filled solid shapes only — no line-art, no drawn outlines.
+  // Potrace traces boundaries of filled dark regions on white.
+
+  // IMPORTANT for all levels: the subject string IS the complete design brief.
+  // Any examples or part names in the instructions are NOT design suggestions — do not
+  // add animals, objects or details that are not explicitly mentioned in the subject.
+  const onlySubject = `Draw ONLY "${subject}" — do not add cats, dogs, or any other subject not mentioned.`;
+
+  if (complexity === 1) {
+    return `${subject}. ${onlySubject} A single solid filled black silhouette on pure white. One completely filled shape with no internal details, no sub-shapes. Like a shadow or paper punch cut-out. One shape, 100% black filled, pure white background.`;
+  }
+
+  if (complexity === 2) {
+    return `${subject}. ${onlySubject} A flat cut-file design on pure white background. Made of 4 to 6 separate solid filled black shapes representing distinct parts of the ${subject}. Every shape must have a visible white gap between it and its neighbours — the gap must be at least as thick as a bold pen stroke, clearly visible, never hair-thin. No shapes touching or overlapping. Each shape is its own solid black island with white space around it. No interior holes inside any shape. Every shape 100% solid black. Pure white background.`;
+  }
+
+  return `${subject}. ${onlySubject} A detailed rubber stamp design on pure white background. One single solid black connected shape with rich recognisable detail of the ${subject}. All features are defined by notches, bumps and curves in the outer boundary — making it immediately recognisable. No holes or cut-outs inside the shape. No floating islands. One highly detailed connected black piece on white. Think linocut print: lots of visible detail, fully one piece.`;
+}
+
+async function preprocessToBlackWhite(pngBuffer: Buffer): Promise<Buffer> {
+  // Convert DALL-E colour image to high-contrast B&W so Potrace gets clean edges.
+  const image = await Jimp.read(pngBuffer);
+  // grayscale → max contrast → threshold at 50%
+  const processed = image
+    .grayscale()
+    .contrast(1)           // push to maximum contrast
+    .threshold({ max: 128, autoGreyscale: false }); // pixels > 128 → white, ≤ 128 → black
+  return processed.getBufferAsync(Jimp.MIME_PNG);
+}
+
+function traceWithPotrace(buffer: Buffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    potrace.trace(buffer, {
+      threshold: 128,    // image is already B&W from Jimp, simple 50% threshold
+      turdSize: 150,     // remove JPEG/PNG noise blobs
+      optCurve: true,
+      optTolerance: 0.2,
+      color: "#000000",
+      background: "transparent",
+    }, (err, svg) => {
+      if (err) reject(err);
+      else resolve(svg);
+    });
+  });
+}
+
+// Split into two handlers so the renderer can show step-by-step progress
+
+ipcMain.handle("ai:dalle-generate-png", async (
+  _event,
+  input: { prompt: string; complexity: number; language: string; apiKey: string; imageModel?: string },
+): Promise<string> => {
+  const { prompt, complexity, apiKey, imageModel = "gpt-image-2" } = input;
+  if (!apiKey.trim()) throw new Error("No OpenAI API key configured.");
+
+  const imagePrompt = buildGptImagePrompt(prompt.trim(), complexity);
+
+  const requestBody = {
+    model: imageModel,   // gpt-image-1 / gpt-image-1.5 / gpt-image-2
+    prompt: imagePrompt,
+    n: 1,
+    size: "1024x1024",
+    quality: "high",     // high = cleanest edges for Jimp threshold + Potrace tracing
+  };
+
+  const imgResponse = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!imgResponse.ok) {
+    let msg = `GPT Image error ${imgResponse.status}`;
+    try {
+      const err = (await imgResponse.json()) as { error?: { message?: string } };
+      if (err?.error?.message) msg = err.error.message;
+    } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+
+  const imgData = (await imgResponse.json()) as { data?: Array<{ b64_json?: string; url?: string }> };
+  const item = imgData.data?.[0];
+
+  // gpt-image-1 returns b64_json directly; dall-e-3 with response_format=b64_json also does
+  if (item?.b64_json) return item.b64_json;
+
+  // Fallback: fetch URL if returned
+  if (item?.url) {
+    const urlRes = await fetch(item.url);
+    const arrayBuf = await urlRes.arrayBuffer();
+    return Buffer.from(arrayBuf).toString("base64");
+  }
+
+  throw new Error("Image generation returned no image data.");
+});
+
+ipcMain.handle("ai:trace-png-to-svg", async (_event, pngBase64: string): Promise<string> => {
+  const rawBuffer = Buffer.from(pngBase64, "base64");
+  const bwBuffer = await preprocessToBlackWhite(rawBuffer);
+  return traceWithPotrace(bwBuffer);
 });
 
 app.whenReady().then(async () => {

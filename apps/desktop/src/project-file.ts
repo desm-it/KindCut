@@ -13,13 +13,13 @@ export type WorkspaceTool = {
 };
 
 export const DEFAULT_TOOLS: WorkspaceTool[] = [
-  { id: "tool-1", color: "#000000", type: "pen" },
+  { id: "tool-1", color: "#000000", type: "cut" },
   { id: "tool-2", color: "#ff0000", type: "cut" },
 ];
 
 export type SavedImportedSvg = {
   id?: string;
-  kind?: "image" | "shape";
+  kind?: "image" | "shape" | "text";
   shapeKind?: WorkspaceShapeKind;
   fileName: string;
   fileSize: string;
@@ -30,14 +30,15 @@ export type SavedImportedSvg = {
 export type SavedWorkspaceObject = {
   id?: string;
   type: "path" | "group";
-  kind?: "image" | "shape";
-  sourceKind?: "image" | "shape";
+  kind?: "image" | "shape" | "text";
+  sourceKind?: "image" | "shape" | "text";
   shapeKind?: WorkspaceShapeKind;
   fileName: string;
   fileSize: string;
   frame: { width: number; height: number };
   paths: WorkspacePathData[];
   transform?: WorkspaceItemTransform;
+  textContent?: import("./workspace-objects").WorkspaceTextContent;
 };
 
 export type KindCutProjectFile = {

@@ -38,9 +38,11 @@ import {
   type WorkspaceObject,
   type WorkspacePathData,
   type WorkspaceSvgItem,
+  type WorkspaceTextContent,
   buildWorkspaceObjectsSvg,
   buildWorkspaceObjectSvg,
   buildWorkspaceCutSvg,
+  buildTextContentSvg,
   cloneWorkspaceObjects,
   getWorkspaceObjectPartCount,
 } from "./workspace-objects";
@@ -85,9 +87,11 @@ import {
 } from "./workspace-shapes";
 import { createWorkspaceGroup, ungroupWorkspaceObject } from "./workspace-grouping";
 import {
+  type AiProgressStep,
   type AiProvider,
   type AiProviderSettings,
   type AiSvgInput,
+  type OpenAiImageModel,
   generateAiSvg,
   hasActiveApiKey,
   loadAiSettings,
@@ -219,6 +223,7 @@ export function App() {
   const [cutSession, setCutSession] = useState<CutSessionSnapshot | null>(null);
   const [cutBusy, setCutBusy] = useState(false);
   const [aiSettings, setAiSettings] = useState<AiProviderSettings>(() => loadAiSettings());
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [imageLibrary, setImageLibrary] = useState<LibraryImage[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -433,6 +438,7 @@ export function App() {
         frame: item.frame,
         paths: item.paths,
         transform: item.transform,
+        textContent: item.textContent,
       })),
       selectedObjectId: selectedSvgId,
       selectedSvgId: null,
@@ -451,8 +457,8 @@ export function App() {
     setCutSession(null);
     setImportMessage(null);
 
-    const restoredItems = projectFile.workspaceObjects.map((item, index) =>
-      createWorkspaceObjectItem({
+    const restoredItems = projectFile.workspaceObjects.map((item, index) => {
+      const base = createWorkspaceObjectItem({
         id: item.id ?? `svg-${index + 1}`,
         type: item.type,
         kind: item.kind ?? "image",
@@ -465,8 +471,10 @@ export function App() {
         language,
         index,
         transform: item.transform,
-      }),
-    );
+      });
+      if (item.textContent) base.textContent = item.textContent;
+      return base;
+    });
     setImportedSvgs(restoredItems);
     const restoredSelectedId = projectFile.selectedObjectId ?? projectFile.selectedSvgId ?? restoredItems[0]?.id ?? null;
     setSelectedSvgId(restoredSelectedId);
@@ -600,11 +608,15 @@ export function App() {
     setCutSession(null);
   }
 
-  async function handleAiGenerateSvg(input: Omit<AiSvgInput, "settings">): Promise<void> {
+  // Step 1: Generate only — returns normalised SVG, does NOT import yet
+  async function handleGenerateAiDesign(input: Omit<AiSvgInput, "settings">): Promise<string> {
     const rawSvg = await generateAiSvg({ ...input, settings: aiSettings, language });
-    const svg = normalizeAiSvg(rawSvg);
-    const name = input.prompt.slice(0, 40);
-    // Save to library first so it appears when the drawer refreshes
+    return normalizeAiSvg(rawSvg);
+  }
+
+  // Step 2: Import — called after user clicks "Import" in the modal
+  async function handleImportAiDesign(svg: string, prompt: string): Promise<void> {
+    const name = prompt.slice(0, 40);
     await saveToLibrary(name, svg, true);
     await loadImageLibrary();
     addSvgToWorkspace(name, svg);
@@ -636,6 +648,83 @@ export function App() {
     setImportedPlan(null);
     setCutSession(null);
   }
+
+  // ── Text ────────────────────────────────────────────────────────────────────
+
+  function measureTextFrame(tc: WorkspaceTextContent): { width: number; height: number } {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    ctx.font = `${tc.fontStyle} ${tc.fontWeight} ${tc.fontSize}px ${tc.fontFamily}`;
+    const lines = tc.text.split("\n");
+    const lineH = tc.fontSize * tc.lineHeight;
+    const maxW = Math.max(
+      10,
+      ...lines.map((l) => {
+        const chars = [...l];
+        if (chars.length === 0) return 0;
+        return chars.reduce((w, c) => w + ctx.measureText(c).width, 0) + Math.max(0, chars.length - 1) * tc.letterSpacing;
+      }),
+    );
+    return { width: Math.ceil(maxW) + 8, height: Math.ceil(lineH * lines.length) + 8 };
+  }
+
+  function createTextItem(tc: WorkspaceTextContent, index: number, existingId?: string): WorkspaceSvgItem {
+    const frame = measureTextFrame(tc);
+    const id = existingId ?? `text-${Date.now()}`;
+    return {
+      id,
+      kind: "text",
+      sourceKind: "text",
+      fileName: tc.text.slice(0, 30) || "Text",
+      fileSize: "",
+      sizeCopy: "",
+      frame,
+      transform: { x: 40 + index * 20, y: 40 + index * 20, scaleX: 1, scaleY: 1, rotation: 0 },
+      type: "path",
+      paths: [] as unknown as [WorkspacePathData],
+      textContent: tc,
+    } satisfies WorkspaceSvgItem;
+  }
+
+  function handleAddText() {
+    const defaultContent: WorkspaceTextContent = {
+      text: language === "nl" ? "Tekst" : "Text",
+      fontFamily: "sans-serif",
+      fontSize: 48,
+      fontWeight: "normal",
+      fontStyle: "normal",
+      textDecoration: "none",
+      letterSpacing: 0,
+      lineHeight: 1.25,
+      color: "#000000",
+    };
+    const item = createTextItem(defaultContent, importedSvgs.length);
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((current) => [...current, item]);
+    setSelectedSvgId(item.id);
+    setSelectedSvgIds([item.id]);
+    setEditingTextId(item.id);
+    setImportedPlan(null);
+  }
+
+  function handleTextContentChange(id: string, patch: Partial<WorkspaceTextContent>) {
+    setImportedSvgs((current) =>
+      current.map((item) => {
+        if (item.id !== id || !item.textContent) return item;
+        const newContent = { ...item.textContent, ...patch };
+        const frame = measureTextFrame(newContent);
+        return { ...item, textContent: newContent, frame, paths: [] as unknown as [WorkspacePathData] };
+      }),
+    );
+  }
+
+  function commitTextEdit(id: string) {
+    setEditingTextId(null);
+    // Re-snapshot so undo captures the committed text
+    pushWorkspaceHistorySnapshot();
+  }
+
+  // ── End text ─────────────────────────────────────────────────────────────────
 
   function handleCutSvgs(): boolean {
     if (!handleCopySvgs()) {
@@ -1113,6 +1202,11 @@ export function App() {
       onToolsChange={setTools}
       onSvgFileChange={(event) => void handleSvgFileChange(event)}
       onAddShape={handleAddWorkspaceShape}
+      onAddText={handleAddText}
+      editingTextId={editingTextId}
+      onEnterTextEdit={setEditingTextId}
+      onExitTextEdit={commitTextEdit}
+      onTextContentChange={handleTextContentChange}
       onSelectSvg={selectSingleSvg}
       onSelectSvgGroup={selectSvgGroup}
       onSelectAllSvgs={handleSelectAllSvgs}
@@ -1139,7 +1233,7 @@ export function App() {
       hasActiveAiKey={hasActiveApiKey(aiSettings)}
       onOpenSettings={() => setSettingsOpen(true)}
       onOpenAiGenerate={() => setAiGenerateOpen(true)}
-      onAiGenerateSvg={handleAiGenerateSvg}
+      onAiGenerateSvg={handleGenerateAiDesign}
       imageLibrary={imageLibrary}
       imageLibraryLoading={libraryLoading}
       onLoadImageLibrary={() => void loadImageLibrary()}
@@ -1158,7 +1252,8 @@ export function App() {
       <AiGenerateModal
         language={language}
         hasApiKey={hasActiveApiKey(aiSettings)}
-        onGenerate={handleAiGenerateSvg}
+        onGenerate={handleGenerateAiDesign}
+        onImport={(svg, prompt) => void handleImportAiDesign(svg, prompt)}
         onOpenSettings={() => { setAiGenerateOpen(false); setSettingsOpen(true); }}
         onClose={() => setAiGenerateOpen(false)}
       />
@@ -1263,8 +1358,8 @@ function createWorkspaceObjectItem({
 }: {
   id: string;
   type: "path" | "group";
-  kind?: "image" | "shape";
-  sourceKind?: "image" | "shape";
+  kind?: "image" | "shape" | "text";
+  sourceKind?: "image" | "shape" | "text";
   shapeKind?: WorkspaceShapeKind;
   fileName: string;
   fileSize: string;
@@ -1400,20 +1495,22 @@ function normalizeAiSvg(svg: string): string {
   }
   root.removeAttribute("style");
 
-  // Normalize all path/shape elements: stroke black, fill none.
-  // Fill for cut-tool paths is applied at render time by WorkspaceObjectArtwork,
-  // NOT baked into the SVG — so any missed background element stays invisible.
+  // Normalize all path/shape elements.
+  // Potrace outputs fill="#000000" stroke="none".
+  // We keep fill="#000000" so the saved SVG file has fill data baked in
+  // (visible in library previews and portable to other tools).
+  // stroke="#000000" is kept for tool color matching in WorkspaceObjectArtwork.
   const shapeSelectors = ["path", "circle", "ellipse", "rect", "line", "polyline", "polygon"];
   for (const el of Array.from(root.querySelectorAll(shapeSelectors.join(",")))) {
     el.setAttribute("stroke", "#000000");
-    el.setAttribute("fill", "none");
+    el.setAttribute("fill", "#000000");
+    el.setAttribute("stroke-width", "1");
+    el.setAttribute("stroke-linecap", "round");
+    el.setAttribute("stroke-linejoin", "round");
     el.removeAttribute("style");
     el.removeAttribute("stroke-opacity");
     el.removeAttribute("fill-opacity");
     el.removeAttribute("opacity");
-    if (!el.getAttribute("stroke-width")) {
-      el.setAttribute("stroke-width", "2");
-    }
   }
 
   return new XMLSerializer().serializeToString(doc);
@@ -1552,6 +1649,11 @@ function DesignWorkspace({
   onToolsChange,
   onSvgFileChange,
   onAddShape,
+  onAddText,
+  editingTextId,
+  onEnterTextEdit,
+  onExitTextEdit,
+  onTextContentChange,
   onSelectSvg,
   onSelectSvgGroup,
   onSelectAllSvgs,
@@ -1637,12 +1739,17 @@ function DesignWorkspace({
   hasActiveAiKey: boolean;
   onOpenSettings: () => void;
   onOpenAiGenerate: () => void;
-  onAiGenerateSvg: (input: Omit<AiSvgInput, "settings">) => Promise<void>;
+  onAiGenerateSvg: (input: Omit<AiSvgInput, "settings">) => Promise<string>;
   imageLibrary: LibraryImage[];
   imageLibraryLoading: boolean;
   onLoadImageLibrary: () => void;
   onDeleteLibraryImage: (path: string) => void;
   onAddLibraryImageToWorkspace: (img: LibraryImage) => void;
+  onAddText: () => void;
+  editingTextId: string | null;
+  onEnterTextEdit: (id: string) => void;
+  onExitTextEdit: (id: string) => void;
+  onTextContentChange: (id: string, patch: Partial<WorkspaceTextContent>) => void;
 }) {
   const { t } = createTranslator(language);
   const [zoom, setZoom] = useState(0.85);
@@ -1708,6 +1815,7 @@ function DesignWorkspace({
   const canPrepare = Boolean(importedSvg) && !importedPlanLoading;
   const canCut = importedSvgs.length > 0 && !importedPlanLoading && !cutBusy;
   const selectedSvgIdSet = useMemo(() => new Set(selectedSvgIds), [selectedSvgIds]);
+  const lastPointerDownItemId = useRef<{ id: string; time: number } | null>(null);
   const selectedItems = useMemo(() => importedSvgs.filter((item) => selectedSvgIdSet.has(item.id)), [importedSvgs, selectedSvgIdSet]);
   const selectedGroup = selectedItems.length === 1 && selectedItems[0]?.type === "group" ? selectedItems[0] : null;
 
@@ -1806,6 +1914,19 @@ function DesignWorkspace({
     if (event.button !== 0) {
       return;
     }
+
+    // Double-click detection → enter text edit mode
+    if (item.textContent) {
+      const now = Date.now();
+      const last = lastPointerDownItemId.current;
+      if (last && last.id === item.id && now - last.time < 400) {
+        lastPointerDownItemId.current = null;
+        onEnterTextEdit(item.id);
+        return;
+      }
+      lastPointerDownItemId.current = { id: item.id, time: now };
+    }
+
     if ((event.metaKey || event.ctrlKey || event.shiftKey) && selectedSvgIdSet.has(item.id) && selectedItems.length > 1) {
       onSelectSvgGroup(selectedSvgIds.filter((id) => id !== item.id));
       return;
@@ -2311,7 +2432,7 @@ function DesignWorkspace({
             <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="16" height="16" rx="2.5"/><path d="M3 14.5 7.5 10l3.5 3.5 2.5-2.5 5.5 5.5"/><circle cx="14.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
             {language === "nl" ? "Beeld" : "Image"}
           </button>
-          <button className="tool-button" type="button" disabled>
+          <button className="tool-button" type="button" onClick={onAddText}>
             <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6 5h10M11 5v12M8 17h6"/></svg>
             {language === "nl" ? "Tekst" : "Text"}
           </button>
@@ -2399,7 +2520,7 @@ function DesignWorkspace({
                       role="button"
                       tabIndex={0}
                       data-workspace-item-id={item.id}
-                      className={`workspace-image-item${selectedSvgIdSet.has(item.id) ? " workspace-image-item--selected" : ""}${item.id === selectedSvgId ? " workspace-image-item--primary-selected" : ""}`}
+                      className={`workspace-image-item${selectedSvgIdSet.has(item.id) ? " workspace-image-item--selected" : ""}${item.id === selectedSvgId ? " workspace-image-item--primary-selected" : ""}${editingTextId === item.id ? " workspace-image-item--text-editing" : ""}`}
                       style={{
                         width: getWorkspaceItemVisualSize(item.frame, item.transform).width,
                         height: getWorkspaceItemVisualSize(item.frame, item.transform).height,
@@ -2416,7 +2537,18 @@ function DesignWorkspace({
                       onPointerCancel={(event) => stopDirectItemDrag(event, item)}
                       onContextMenu={(event) => handleItemContextMenu(event, item)}
                     >
-                      <WorkspaceObjectArtwork item={item} tools={tools} />
+                      {editingTextId === item.id && item.textContent ? (
+                        <TextEditOverlay
+                          item={item}
+                          onCommit={(text) => {
+                            onTextContentChange(item.id, { text });
+                            onExitTextEdit(item.id);
+                          }}
+                          onCancel={() => onExitTextEdit(item.id)}
+                        />
+                      ) : (
+                        <WorkspaceObjectArtwork item={item} tools={tools} />
+                      )}
                     </div>
                   ))
                     )
@@ -2549,7 +2681,85 @@ function DesignWorkspace({
                 </>
               );
 
-              // Object selected — show name + tool picker
+              // Text object selected — show text controls + tool picker
+              if (sel.textContent) {
+                const tc = sel.textContent;
+                const color = tc.color;
+                const matchedTool = tools.find((t) => t.color.toLowerCase() === color.toLowerCase()) ?? null;
+                return (
+                  <>
+                    <p className="drawer-section__title">{nl ? "Tekst" : "Text"}</p>
+                    <div className="object-settings">
+                      <div className="object-settings__row">
+                        <label className="object-settings__label" htmlFor="txt-tool">{nl ? "Gereedschap" : "Tool"}</label>
+                        <select id="txt-tool" className="object-settings__select"
+                          value={matchedTool?.id ?? ""}
+                          onChange={(e) => { const p = tools.find((t) => t.id === e.target.value); if (p) onTextContentChange(sel.id, { color: p.color }); }}
+                        >
+                          {tools.map((t) => (
+                            <option key={t.id} value={t.id}>{t.color.toUpperCase()} — {t.type === "pen" ? "Pen" : (nl ? "Snijden" : "Cut")}</option>
+                          ))}
+                          {!matchedTool && <option value="">— {nl ? "Geen" : "None"} —</option>}
+                        </select>
+                      </div>
+                      <div className="object-settings__row">
+                        <label className="object-settings__label" htmlFor="txt-font">{nl ? "Lettertype" : "Font"}</label>
+                        <select id="txt-font" className="object-settings__select"
+                          value={tc.fontFamily}
+                          onChange={(e) => onTextContentChange(sel.id, { fontFamily: e.target.value })}
+                        >
+                          {["sans-serif","serif","monospace","Arial","Georgia","Courier New","Comic Sans MS","Impact","Verdana","Trebuchet MS"].map((f) => (
+                            <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="object-settings__row">
+                        <label className="object-settings__label">{nl ? "Stijl" : "Style"}</label>
+                        <div className="text-style-btns">
+                          <button type="button" className={`text-style-btn${tc.fontWeight === "bold" ? " text-style-btn--active" : ""}`}
+                            onClick={() => onTextContentChange(sel.id, { fontWeight: tc.fontWeight === "bold" ? "normal" : "bold" })}
+                          ><strong>B</strong></button>
+                          <button type="button" className={`text-style-btn${tc.fontStyle === "italic" ? " text-style-btn--active" : ""}`}
+                            onClick={() => onTextContentChange(sel.id, { fontStyle: tc.fontStyle === "italic" ? "normal" : "italic" })}
+                          ><em>I</em></button>
+                          <button type="button" className={`text-style-btn${tc.textDecoration === "underline" ? " text-style-btn--active" : ""}`}
+                            onClick={() => onTextContentChange(sel.id, { textDecoration: tc.textDecoration === "underline" ? "none" : "underline" })}
+                          ><span style={{ textDecoration: "underline" }}>U</span></button>
+                        </div>
+                      </div>
+                      <div className="object-settings__row">
+                        <label className="object-settings__label" htmlFor="txt-size">{nl ? "Grootte" : "Size"} <em>{tc.fontSize}px</em></label>
+                        <input id="txt-size" type="range" min={10} max={200} step={1} value={tc.fontSize}
+                          onChange={(e) => onTextContentChange(sel.id, { fontSize: Number(e.target.value) })}
+                          className="text-slider"
+                        />
+                      </div>
+                      <div className="object-settings__row">
+                        <label className="object-settings__label" htmlFor="txt-ls">{nl ? "Letterafstand" : "Letter spacing"} <em>{tc.letterSpacing}px</em></label>
+                        <input id="txt-ls" type="range" min={-5} max={30} step={0.5} value={tc.letterSpacing}
+                          onChange={(e) => onTextContentChange(sel.id, { letterSpacing: Number(e.target.value) })}
+                          className="text-slider"
+                        />
+                      </div>
+                      <div className="object-settings__row">
+                        <label className="object-settings__label" htmlFor="txt-lh">{nl ? "Regelafstand" : "Line height"} <em>{tc.lineHeight.toFixed(2)}×</em></label>
+                        <input id="txt-lh" type="range" min={0.8} max={3} step={0.05} value={tc.lineHeight}
+                          onChange={(e) => onTextContentChange(sel.id, { lineHeight: Number(e.target.value) })}
+                          className="text-slider"
+                        />
+                      </div>
+                      <button type="button" className="object-settings__edit-btn"
+                        onClick={() => onEnterTextEdit(sel.id)}
+                      >
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M11 2l3 3-8 8H3v-3z"/></svg>
+                        {nl ? "Tekst bewerken" : "Edit text"}
+                      </button>
+                    </div>
+                  </>
+                );
+              }
+
+              // SVG/shape object selected — show name + tool picker
               const color = sel.paths[0]?.stroke ?? "#000000";
               const matchedTool = tools.find((t) => t.color.toLowerCase() === color.toLowerCase()) ?? null;
               const noToolWarning = !matchedTool;
@@ -2713,13 +2923,18 @@ function SettingsModal({
         </div>
         <div className="cut-modal__body cut-modal__body--col">
           <p className="settings-modal__label">{nl ? "AI-dienst" : "AI service"}</p>
+          <p className="settings-modal__hint">
+            {nl
+              ? "OpenAI: genereert een PNG en vectoriseert automatisch. Recraft: genereert direct een SVG."
+              : "OpenAI: generates a PNG and auto-vectorises. Recraft: generates SVG directly."}
+          </p>
           <select
             className="settings-modal__input settings-modal__select"
             value={draft.activeProvider}
             onChange={(e) => setDraft((d) => ({ ...d, activeProvider: e.target.value as AiProvider }))}
           >
-            <option value="openai">OpenAI (o3)</option>
-            <option value="recraft">Recraft (recraftv4_1_vector)</option>
+            <option value="openai">OpenAI — GPT Image → vectortrace</option>
+            <option value="recraft">Recraft — native SVG (recraftv4_1_vector)</option>
           </select>
 
           <p className="settings-modal__label settings-modal__label--mt">OpenAI API key</p>
@@ -2735,6 +2950,28 @@ function SettingsModal({
             autoComplete="off"
             spellCheck={false}
           />
+
+          {draft.activeProvider === "openai" && (
+            <>
+              <p className="settings-modal__label settings-modal__label--mt">
+                {nl ? "Afbeeldingsmodel" : "Image model"}
+              </p>
+              <p className="settings-modal__hint">
+                {nl
+                  ? "GPT Image genereert een PNG die automatisch wordt gevectoriseerd. Alle complexiteitsniveaus gebruiken dit model."
+                  : "GPT Image generates a PNG that is automatically vectorised. All complexity levels use this model."}
+              </p>
+              <select
+                className="settings-modal__input settings-modal__select"
+                value={draft.openaiImageModel ?? "gpt-image-2"}
+                onChange={(e) => setDraft((d) => ({ ...d, openaiImageModel: e.target.value as OpenAiImageModel }))}
+              >
+                <option value="gpt-image-2">GPT Image 2 — {nl ? "nieuwste" : "latest"}</option>
+                <option value="gpt-image-1.5">GPT Image 1.5</option>
+                <option value="gpt-image-1">GPT Image 1</option>
+              </select>
+            </>
+          )}
 
           <p className="settings-modal__label settings-modal__label--mt">Recraft API key</p>
           <p className="settings-modal__hint">
@@ -2765,50 +3002,239 @@ function SettingsModal({
   );
 }
 
+// Three dog SVG icons illustrating each complexity level
+function ComplexityDogIcon({ level }: { level: 1 | 2 | 3 }) {
+  const fill = "currentColor";
+  if (level === 1) {
+    // Pure silhouette — one single solid filled shape
+    return (
+      <svg viewBox="0 0 64 72" aria-hidden="true">
+        {/* Sitting dog: head+ears+body merged into one shape */}
+        <path fill={fill} d="
+          M22 6 C18 3 12 6 12 12 C12 16 14 18 17 19
+          L16 22 C12 25 10 31 10 38
+          L10 58 C10 61 13 64 16 64
+          L24 64 L24 58 L40 58 L40 64 L48 64
+          C51 64 54 61 54 58 L54 38
+          C54 31 52 25 48 22 L47 19
+          C50 18 52 16 52 12
+          C52 6 46 3 42 6
+          L38 4 C35 1 29 1 26 4 Z
+        "/>
+      </svg>
+    );
+  }
+  if (level === 2) {
+    // Stencil — one connected piece, detail is part of the outer edge (nose/ear bumps), no holes
+    return (
+      <svg viewBox="0 0 64 72" aria-hidden="true">
+        <path fill={fill} d="
+          M22 6 C18 3 12 6 12 12 C12 16 14 18 17 19
+          L16 22 C12 25 10 31 10 38
+          L10 58 C10 61 13 64 16 64
+          L24 64 L24 58 L40 58 L40 64 L48 64
+          C51 64 54 61 54 58 L54 38
+          C54 31 52 25 48 22 L47 19
+          C50 18 52 16 52 12
+          C52 6 46 3 42 6
+          L38 4 C35 1 29 1 26 4 Z
+        "/>
+        {/* Muzzle bump — protrudes from body outline, not a hole */}
+        <path fill={fill} d="M26 36 C26 34 28 32 32 32 C36 32 38 34 38 36 C38 40 36 42 32 43 C28 42 26 40 26 36 Z"/>
+        {/* Tail curl — separate connected bump */}
+        <path fill={fill} d="M54 42 C58 38 62 40 62 46 C62 50 60 53 56 52 C58 50 58 46 54 42 Z"/>
+      </svg>
+    );
+  }
+  // level === 3 — Multi-shape: head, body, tail as distinct separate pieces
+  return (
+    <svg viewBox="0 0 64 72" aria-hidden="true">
+      {/* Body */}
+      <ellipse fill={fill} cx="32" cy="50" rx="20" ry="16"/>
+      {/* Head */}
+      <circle fill={fill} cx="32" cy="22" r="16"/>
+      {/* Left ear */}
+      <ellipse fill={fill} cx="22" cy="10" rx="7" ry="9"/>
+      {/* Right ear */}
+      <ellipse fill={fill} cx="42" cy="10" rx="7" ry="9"/>
+      {/* Tail */}
+      <path fill={fill} d="M50 48 C56 42 62 44 60 52 C58 58 52 58 50 54 Z"/>
+    </svg>
+  );
+}
+
+function aiSvgPreviewSrc(svg: string): string {
+  const c = "#5a3a1a";
+  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(
+    svg
+      .replace(/\sfill="[^"]*"/gi, ` fill="${c}"`)
+      .replace(/\sfill='[^']*'/gi, ` fill='${c}'`)
+      .replace(/\sstroke="[^"]*"/gi, ' stroke="none"')
+      .replace(/\sstroke='[^']*'/gi, " stroke='none'")
+      .replace(/\sstroke-width="[^"]*"/gi, "")
+      .replace(/\sstroke-width='[^']*'/gi, ""),
+  )))}`;
+}
+
+type AiPhase =
+  | { type: "idle" }
+  | { type: "generating"; statusLabel: string }
+  | { type: "png-ready"; pngBase64: string }
+  | { type: "tracing"; pngBase64: string }
+  | { type: "ready"; pngBase64: string; svg: string }
+  | { type: "error"; message: string };
+
 function AiGenerateModal({
   language,
   hasApiKey,
   onGenerate,
+  onImport,
   onOpenSettings,
   onClose,
 }: {
   language: Language;
   hasApiKey: boolean;
-  onGenerate: (input: Omit<AiSvgInput, "settings">) => Promise<void>;
+  onGenerate: (input: Omit<AiSvgInput, "settings">) => Promise<string>;
+  onImport: (svg: string, prompt: string) => void;
   onOpenSettings: () => void;
   onClose: () => void;
 }) {
   const nl = language === "nl";
   const [prompt, setPrompt] = useState("");
   const [cutterProof, setCutterProof] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [complexity, setComplexity] = useState<1 | 2 | 3>(1);
+  const [phase, setPhase] = useState<AiPhase>({ type: "idle" });
+  // displayPct is the visual progress bar percentage (0-100), driven by timers
+  const [displayPct, setDisplayPct] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const complexityLabels = nl
+    ? ["Silhouet", "Stencil", "Multi-vorm"]
+    : ["Silhouette", "Stencil", "Multi-shape"];
+  const complexityDescs = nl
+    ? ["Één gevulde vorm", "Één stuk, weedbaar detail", "2-4 losse vormen"]
+    : ["One filled shape", "One piece, weedable detail", "2-4 separate shapes"];
+
+  function clearTimer() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  }
+
+  // Smoothly animate displayPct toward a target value over duration ms
+  function animateTo(target: number, durationMs: number) {
+    clearTimer();
+    const INTERVAL = 80;
+    const steps = Math.max(1, Math.round(durationMs / INTERVAL));
+    let step = 0;
+    setDisplayPct((current) => {
+      const start = current;
+      const increment = (target - start) / steps;
+      clearTimer();
+      timerRef.current = setInterval(() => {
+        step++;
+        setDisplayPct(start + increment * step);
+        if (step >= steps) { clearTimer(); setDisplayPct(target); }
+      }, INTERVAL);
+      return current;
+    });
+  }
 
   async function handleGenerate() {
-    if (!prompt.trim()) return;
-    setError(null);
-    setLoading(true);
+    if (!prompt.trim() || !hasApiKey) return;
+    clearTimer();
+    setDisplayPct(0);
+
+    // Fake progress: 0 → 79% over 30 seconds while GPT Image API runs
+    const FAKE_DURATION = 30000;
+    const FAKE_TARGET = 79;
+    const INTERVAL = 200;
+    const steps = FAKE_DURATION / INTERVAL;
+    const inc = FAKE_TARGET / steps;
+    let fakeStep = 0;
+    timerRef.current = setInterval(() => {
+      fakeStep++;
+      setDisplayPct(Math.min(FAKE_TARGET, fakeStep * inc));
+      if (fakeStep >= steps) clearTimer();
+    }, INTERVAL);
+
+    const modelLabel = nl ? "Afbeelding genereren…" : "Generating image…";
+    setPhase({ type: "generating", statusLabel: modelLabel });
+
+    let pngBase64Captured = "";
+
     try {
-      await onGenerate({ prompt: prompt.trim(), cutterProof, language });
-      onClose();
+      const svg = await onGenerate({
+        prompt: prompt.trim(),
+        cutterProof,
+        complexity,
+        language,
+        onPreview: (png) => {
+          // PNG received — stop fake timer, animate to 80% over 1s, then show PNG for 2s
+          clearTimer();
+          pngBase64Captured = png;
+          animateTo(80, 1000);
+          setTimeout(() => {
+            setPhase({ type: "png-ready", pngBase64: png });
+            // Tracing starts immediately after (it's already done by now since onPreview
+            // is called from ai-svg-generate right before the SVG return)
+          }, 1000);
+        },
+      });
+
+      // Potrace is done — animate to 90% over 2s, then show both previews
+      clearTimer();
+      setPhase({ type: "tracing", pngBase64: pngBase64Captured });
+      animateTo(100, 2000);
+      setTimeout(() => {
+        setDisplayPct(100);
+        setPhase({ type: "ready", pngBase64: pngBase64Captured, svg });
+      }, 2000);
+
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
+      clearTimer();
+      setPhase({ type: "error", message: e instanceof Error ? e.message : String(e) });
+      setDisplayPct(0);
     }
   }
 
+  function handleImport(svg: string) {
+    onImport(svg, prompt.trim());
+    onClose();
+  }
+
+  function handleRegenerate() {
+    clearTimer();
+    setPhase({ type: "idle" });
+    setDisplayPct(0);
+    void handleGenerate();
+  }
+
+  const isGenerating = phase.type === "generating" || phase.type === "png-ready" || phase.type === "tracing";
+  const showBar = phase.type !== "idle" && phase.type !== "error";
+  const isReady = phase.type === "ready";
+
+  const statusLabel = (() => {
+    if (phase.type === "generating") return phase.statusLabel;
+    if (phase.type === "png-ready") return nl ? "Afbeelding ontvangen — vectorpaden traceren…" : "Image received — tracing vector paths…";
+    if (phase.type === "tracing") return nl ? "Vectorpaden traceren…" : "Tracing vector paths…";
+    if (phase.type === "ready") return nl ? "Klaar — bekijk en importeer het ontwerp" : "Ready — review and import the design";
+    return "";
+  })();
+
   return (
-    <div className="cut-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}>
+    <div
+      className="cut-modal-backdrop"
+      onClick={(e) => { if (e.target === e.currentTarget && !isGenerating) onClose(); }}
+    >
       <div className="cut-modal cut-modal--narrow" onKeyDown={(e) => e.stopPropagation()}>
         <div className="cut-modal__header">
           <h2 className="cut-modal__title">{nl ? "AI-ontwerp genereren" : "Generate AI design"}</h2>
-          {!loading && (
+          {!isGenerating && (
             <button type="button" className="cut-modal__close" onClick={onClose} aria-label={nl ? "Sluiten" : "Close"}>
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
             </button>
           )}
         </div>
+
         <div className="cut-modal__body cut-modal__body--col">
           {!hasApiKey && (
             <div className="ai-modal__no-key">
@@ -2818,6 +3244,7 @@ function AiGenerateModal({
               </button>
             </div>
           )}
+
           <label className="settings-modal__label" htmlFor="ai-prompt">
             {nl ? "Beschrijving" : "Description"}
           </label>
@@ -2825,50 +3252,118 @@ function AiGenerateModal({
             id="ai-prompt"
             className="ai-modal__prompt"
             rows={3}
-            placeholder={nl ? "Blije hond, papier-snij stijl…" : "Happy dog, paper-cut style…"}
+            placeholder={nl ? "Blije hond…" : "Happy dog…"}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            disabled={loading}
+            disabled={isGenerating}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                void handleGenerate();
-              }
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !isGenerating) void handleGenerate();
               e.stopPropagation();
             }}
-            autoFocus
+            autoFocus={!isGenerating}
           />
+
+          <div className="ai-modal__complexity">
+            <span className="settings-modal__label">{nl ? "Complexiteit" : "Complexity"}</span>
+            <div className="ai-modal__complexity-toggles">
+              {([1, 2, 3] as const).map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  disabled={isGenerating}
+                  className={`ai-modal__complexity-btn${complexity === lvl ? " ai-modal__complexity-btn--active" : ""}`}
+                  onClick={() => setComplexity(lvl)}
+                  title={`${complexityLabels[lvl - 1]} — ${complexityDescs[lvl - 1]}`}
+                >
+                  <ComplexityDogIcon level={lvl} />
+                  <span className="ai-modal__complexity-btn-label">{complexityLabels[lvl - 1]}</span>
+                  <span className="ai-modal__complexity-btn-desc">{complexityDescs[lvl - 1]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <label className="ai-modal__checkbox-label">
-            <input
-              type="checkbox"
-              checked={cutterProof}
-              onChange={(e) => setCutterProof(e.target.checked)}
-              disabled={loading}
-            />
+            <input type="checkbox" checked={cutterProof} onChange={(e) => setCutterProof(e.target.checked)} disabled={isGenerating} />
             <span>
               {nl ? "Snijveilig" : "Cutter-proof"}
               <em>{nl ? " — ontwerp blijft in één stuk" : " — design stays in one piece"}</em>
             </span>
           </label>
-          {loading && (
-            <p className="ai-modal__loading">
-              <span className="ai-modal__spinner" aria-hidden="true" />
-              {nl ? "Ontwerp genereren…" : "Generating design…"}
-            </p>
+
+          {/* Progress bar */}
+          {showBar && (
+            <div className="ai-modal__progress">
+              <div className="ai-modal__progress-label">
+                {isGenerating && <span className="ai-modal__spinner" aria-hidden="true" />}
+                <span>{statusLabel}</span>
+              </div>
+              <div className="ai-modal__progress-bar-track">
+                <div className="ai-modal__progress-bar-fill" style={{ width: `${displayPct}%`, transition: "width 0.4s ease" }} />
+              </div>
+              <div className="ai-modal__progress-pct">{Math.round(displayPct)}%</div>
+            </div>
           )}
-          {error && <p className="ai-modal__error">{error}</p>}
+
+          {/* Previews — PNG and/or SVG side by side */}
+          {(phase.type === "png-ready" || phase.type === "tracing" || phase.type === "ready") && (
+            <div className={`ai-modal__previews${phase.type === "ready" ? " ai-modal__previews--dual" : ""}`}>
+              <div className="ai-modal__preview-col">
+                <img
+                  src={`data:image/png;base64,${(phase as { pngBase64: string }).pngBase64}`}
+                  className="ai-modal__preview-img"
+                  alt={nl ? "AI afbeelding" : "AI image"}
+                />
+                <span className="ai-modal__preview-label">
+                  {nl ? "AI afbeelding" : "AI image"}
+                </span>
+              </div>
+              {phase.type === "ready" && (
+                <div className="ai-modal__preview-col">
+                  <img
+                    src={aiSvgPreviewSrc(phase.svg)}
+                    className="ai-modal__preview-img"
+                    alt={nl ? "Vectortracering" : "Vector trace"}
+                  />
+                  <span className="ai-modal__preview-label">
+                    {nl ? "Vector tracering" : "Vector trace"}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {phase.type === "error" && <p className="ai-modal__error">{phase.message}</p>}
         </div>
+
         <div className="cut-modal__footer">
-          <button type="button" className="cut-modal__btn cut-modal__btn--secondary" disabled={loading} onClick={onClose}>
-            {nl ? "Annuleren" : "Cancel"}
-          </button>
-          <button
-            type="button"
-            className="cut-modal__btn cut-modal__btn--primary"
-            disabled={loading || !prompt.trim() || !hasApiKey}
-            onClick={() => void handleGenerate()}
-          >
-            {loading ? (nl ? "Bezig…" : "Working…") : (nl ? "Genereren" : "Generate")}
-          </button>
+          {isReady ? (
+            <>
+              <button type="button" className="cut-modal__btn cut-modal__btn--secondary" onClick={onClose}>
+                {nl ? "Annuleren" : "Cancel"}
+              </button>
+              <button type="button" className="cut-modal__btn cut-modal__btn--secondary" onClick={handleRegenerate}>
+                {nl ? "Opnieuw" : "Regenerate"}
+              </button>
+              <button type="button" className="cut-modal__btn cut-modal__btn--primary" onClick={() => handleImport((phase as { svg: string }).svg)}>
+                {nl ? "Importeren" : "Import"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="cut-modal__btn cut-modal__btn--secondary" disabled={isGenerating} onClick={onClose}>
+                {nl ? "Annuleren" : "Cancel"}
+              </button>
+              <button
+                type="button"
+                className="cut-modal__btn cut-modal__btn--primary"
+                disabled={isGenerating || !prompt.trim() || !hasApiKey}
+                onClick={() => void handleGenerate()}
+              >
+                {isGenerating ? (nl ? "Bezig…" : "Working…") : (nl ? "Genereren" : "Generate")}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -3063,14 +3558,20 @@ function ImageLibraryPanel({
 
   function svgPreviewSrc(svg: string): string {
     try {
-      // Strip fills and force a visible stroke for the library thumbnail.
-      // The actual fill data is preserved in the stored SVG; this is display-only.
-      const stripped = svg
-        .replace(/\sfill="[^"]*"/gi, ' fill="none"')
-        .replace(/\sfill='[^']*'/gi, " fill='none'")
-        .replace(/\sstroke="(?!none)[^"]*"/gi, ' stroke="#5a3a1a"')
-        .replace(/\sstroke='(?!none)[^']*'/gi, " stroke='#5a3a1a'");
-      return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(stripped)))}`;
+      // Render the thumbnail filled with the app brown (#5a3a1a) and no stroke,
+      // respecting fill-rule so compound paths (e.g. eyes as holes) display correctly.
+      const PREVIEW_COLOR = "#5a3a1a";
+      // Replace ALL fill values (including "none") with the preview colour.
+      // Holes in compound paths are transparent via fill-rule="evenodd", not via fill="none".
+      // Stroke-based (older) images also become visible this way.
+      const styled = svg
+        .replace(/\sfill="[^"]*"/gi, ` fill="${PREVIEW_COLOR}"`)
+        .replace(/\sfill='[^']*'/gi, ` fill='${PREVIEW_COLOR}'`)
+        .replace(/\sstroke="[^"]*"/gi, ' stroke="none"')
+        .replace(/\sstroke='[^']*'/gi, " stroke='none'")
+        .replace(/\sstroke-width="[^"]*"/gi, "")
+        .replace(/\sstroke-width='[^']*'/gi, "");
+      return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(styled)))}`;
     } catch {
       return "";
     }
@@ -3203,7 +3704,70 @@ function cssEscape(value: string): string {
   return globalThis.CSS?.escape ? globalThis.CSS.escape(value) : value.replace(/["\\]/g, "\\$&");
 }
 
+function TextEditOverlay({
+  item,
+  onCommit,
+  onCancel,
+}: {
+  item: WorkspaceObject;
+  onCommit: (text: string) => void;
+  onCancel: () => void;
+}) {
+  const tc = item.textContent!;
+  const [value, setValue] = useState(tc.text);
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    e.stopPropagation();
+    if (e.key === "Escape") { onCancel(); }
+  }
+
+  return (
+    <textarea
+      autoFocus
+      className="text-edit-overlay"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={handleKeyDown}
+      onBlur={() => onCommit(value)}
+      style={{
+        fontFamily: tc.fontFamily,
+        fontSize: tc.fontSize,
+        fontWeight: tc.fontWeight,
+        fontStyle: tc.fontStyle,
+        textDecoration: tc.textDecoration,
+        letterSpacing: tc.letterSpacing,
+        lineHeight: tc.lineHeight,
+        color: tc.color,
+        width: "100%",
+        height: "100%",
+      }}
+    />
+  );
+}
+
 function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject; tools?: WorkspaceTool[] }) {
+  // Text items: render using SVG <text> elements for live display
+  if (item.textContent && item.paths.length === 0) {
+    const tc = item.textContent;
+    const lineH = tc.fontSize * tc.lineHeight;
+    const matchedTool = tools?.find((t) => t.color.toLowerCase() === tc.color.toLowerCase());
+    const displayColor = matchedTool ? matchedTool.color : tc.color;
+    return (
+      <svg aria-hidden="true" focusable="false" width="100%" height="100%"
+        viewBox={`0 0 ${item.frame.width} ${item.frame.height}`} preserveAspectRatio="xMinYMin meet"
+      >
+        {tc.text.split("\n").map((line, i) => (
+          <text key={i} x={4} y={4 + tc.fontSize + i * lineH}
+            fontFamily={tc.fontFamily} fontSize={tc.fontSize}
+            fontWeight={tc.fontWeight} fontStyle={tc.fontStyle}
+            textDecoration={tc.textDecoration}
+            fill={displayColor} letterSpacing={tc.letterSpacing}
+          >{line || " "}</text>
+        ))}
+      </svg>
+    );
+  }
+
   return (
     <svg
       aria-hidden="true"
@@ -3234,6 +3798,7 @@ function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject; tools?
             key={path.id}
             d={path.d}
             fill={effectiveFill}
+            fillRule={path.fillRule as "evenodd" | "nonzero" | undefined}
             stroke={path.stroke}
             strokeWidth={path.strokeWidth}
             strokeLinecap={path.strokeLinecap as "butt" | "round" | "square" | "inherit" | undefined}

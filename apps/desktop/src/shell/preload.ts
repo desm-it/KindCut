@@ -84,6 +84,13 @@ const desktopApi = {
       ipcRenderer.invoke("library:save", input),
     delete: (filePath: string): Promise<void> => ipcRenderer.invoke("library:delete", filePath),
   },
+  ai: {
+    dalleGeneratePng: (input: {
+      prompt: string; complexity: number; language: string; apiKey: string; imageModel: string;
+    }): Promise<string> => ipcRenderer.invoke("ai:dalle-generate-png", input),
+    tracePngToSvg: (pngBase64: string): Promise<string> =>
+      ipcRenderer.invoke("ai:trace-png-to-svg", pngBase64),
+  },
   slicebug: {
     getStatus: (): Promise<SlicebugStatus> => ipcRenderer.invoke("slicebug:get-status"),
     generateSamplePlan: (choices?: { materialId?: number; matPreset?: string }): Promise<SlicebugPlanResult> =>

@@ -20,6 +20,7 @@
     "@cricut-companion/slicebug-bridge": "*",
     "@cricut-companion/svg-preflight": "*",
     "@xmldom/xmldom": "^0.8.13",
+    "potrace": "^2.1.8",
     "react": "latest",
     "react-dom": "latest",
     "react-moveable": "^0.56.0"
