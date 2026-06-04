@@ -163,7 +163,9 @@ type DesktopActionPayload = {
     | "edit-undo"
     | "edit-redo"
     | "edit-group"
-    | "edit-ungroup";
+    | "edit-ungroup"
+    | "edit-flip-x"
+    | "edit-flip-y";
   value?: string;
 };
 
@@ -571,6 +573,46 @@ export function App() {
     return true;
   }
 
+  function handleFlipX(): boolean {
+    if (selectedSvgIds.length === 0) return false;
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((current) =>
+      current.map((item) => {
+        if (!selectedSvgIds.includes(item.id)) return item;
+        const newMirrorX = !item.transform.mirrorX;
+        // transform-origin: top left → scale(-1,1) mirrors around left edge.
+        // Compensate by +W (enabling mirror) or -W (disabling) rotated to item's axis.
+        const W = item.frame.width * item.transform.scaleX;
+        const rawOffset = { x: newMirrorX ? W : -W, y: 0 };
+        const offset = rotatePoint(rawOffset, item.transform.rotation);
+        return {
+          ...item,
+          transform: { ...item.transform, mirrorX: newMirrorX, x: item.transform.x + offset.x, y: item.transform.y + offset.y },
+        };
+      }),
+    );
+    return true;
+  }
+
+  function handleFlipY(): boolean {
+    if (selectedSvgIds.length === 0) return false;
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((current) =>
+      current.map((item) => {
+        if (!selectedSvgIds.includes(item.id)) return item;
+        const newMirrorY = !item.transform.mirrorY;
+        const H = item.frame.height * item.transform.scaleY;
+        const rawOffset = { x: 0, y: newMirrorY ? H : -H };
+        const offset = rotatePoint(rawOffset, item.transform.rotation);
+        return {
+          ...item,
+          transform: { ...item.transform, mirrorY: newMirrorY, x: item.transform.x + offset.x, y: item.transform.y + offset.y },
+        };
+      }),
+    );
+    return true;
+  }
+
   function handleUngroupSvg(): boolean {
     const group = importedSvgs.find((item) => item.id === selectedSvgId && item.type === "group");
     if (!group) {
@@ -665,7 +707,88 @@ export function App() {
         return chars.reduce((w, c) => w + ctx.measureText(c).width, 0) + Math.max(0, chars.length - 1) * tc.letterSpacing;
       }),
     );
-    return { width: Math.ceil(maxW) + 8, height: Math.ceil(lineH * lines.length) + 8 };
+    return { width: Math.ceil(maxW) + 2, height: Math.ceil(lineH * lines.length) + 2 };
+  }
+
+  function renderTextToCanvas(tc: WorkspaceTextContent): string {
+    // Render text at 3× scale for clean Potrace input, return base64 PNG
+    const SCALE = 3;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    const fontStr = `${tc.fontStyle === "italic" ? "italic " : ""}${tc.fontWeight === "bold" ? "bold " : ""}${tc.fontSize * SCALE}px ${tc.fontFamily}`;
+    ctx.font = fontStr;
+    const lines = tc.text.split("\n");
+    const lineH = tc.fontSize * SCALE * tc.lineHeight;
+    const widths = lines.map((l) => {
+      const chars = [...l];
+      if (!chars.length) return 0;
+      return chars.reduce((w, c) => w + ctx.measureText(c).width, 0) + Math.max(0, chars.length - 1) * tc.letterSpacing * SCALE;
+    });
+    const maxW = Math.max(10, ...widths);
+    const PAD = 8 * SCALE;
+    canvas.width = Math.ceil(maxW) + PAD * 2;
+    canvas.height = Math.ceil(lineH * lines.length) + PAD * 2;
+    // White background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Re-set font after resize
+    ctx.font = fontStr;
+    ctx.fillStyle = "#000000";
+    ctx.textBaseline = "top";
+    lines.forEach((line, i) => {
+      const y = PAD + i * lineH;
+      const lineW = widths[i] ?? 0;
+      const xStart = tc.textAlign === "center"
+        ? (canvas.width - lineW) / 2
+        : tc.textAlign === "right"
+          ? canvas.width - PAD - lineW
+          : PAD;
+      let x = xStart;
+      for (const char of [...line]) {
+        ctx.fillText(char, x, y);
+        x += ctx.measureText(char).width + tc.letterSpacing * SCALE;
+      }
+      if (tc.textDecoration === "underline") {
+        const ulY = y + tc.fontSize * SCALE + 2 * SCALE;
+        ctx.fillRect(xStart, ulY, lineW, Math.max(2, tc.fontSize * SCALE * 0.06));
+      }
+    });
+    return canvas.toDataURL("image/png").replace("data:image/png;base64,", "");
+  }
+
+  async function resolveTextItemsForCutting(items: WorkspaceSvgItem[]): Promise<WorkspaceSvgItem[]> {
+    // Convert any text items (no paths) to path-based items via canvas → Potrace
+    return Promise.all(items.map(async (item) => {
+      if (!item.textContent || item.paths.length > 0) return item;
+      try {
+        const pngBase64 = renderTextToCanvas(item.textContent);
+        const rawSvg = await window.cricutCompanion?.ai?.tracePngToSvg(pngBase64);
+        if (!rawSvg) return item;
+        const svg = normalizeAiSvg(rawSvg);
+        const extracted = extractWorkspacePathsFromSvg(svg);
+        // The canvas was rendered at 3× scale, so Potrace paths are 3× too large.
+        // Scale them back down to fit the original text item frame.
+        const scaleX = item.frame.width / extracted.frame.width;
+        const scaleY = item.frame.height / extracted.frame.height;
+        const color = item.textContent.color;
+        const paths = extracted.paths.map((p) => ({
+          ...p,
+          stroke: color,
+          fill: color,
+          // Prepend the scale-down transform; preserve any existing pathTransform
+          pathTransform: p.pathTransform
+            ? `scale(${scaleX} ${scaleY}) ${p.pathTransform}`
+            : `scale(${scaleX} ${scaleY})`,
+        }));
+        return {
+          ...item,
+          // Keep original frame — the scale transform brings paths into that space
+          paths: paths as unknown as [WorkspacePathData],
+        };
+      } catch {
+        return item; // fall back to text element if tracing fails
+      }
+    }));
   }
 
   function createTextItem(tc: WorkspaceTextContent, index: number, existingId?: string): WorkspaceSvgItem {
@@ -694,6 +817,7 @@ export function App() {
       fontWeight: "normal",
       fontStyle: "normal",
       textDecoration: "none",
+      textAlign: "left",
       letterSpacing: 0,
       lineHeight: 1.25,
       color: "#000000",
@@ -819,6 +943,12 @@ export function App() {
         break;
       case "edit-ungroup":
         handleUngroupSvg();
+        break;
+      case "edit-flip-x":
+        handleFlipX();
+        break;
+      case "edit-flip-y":
+        handleFlipY();
         break;
     }
   }
@@ -966,7 +1096,9 @@ export function App() {
     const matDims = getMatDimensionsInches(selectedMatPreset);
     const matW = matDims.width * WORKSPACE_PIXELS_PER_INCH;
     const matH = matDims.height * WORKSPACE_PIXELS_PER_INCH;
-    const svg = buildWorkspaceCutSvg(importedSvgs, matW, matH);
+    // Convert any text items to traced paths so slicebug can cut them
+    const resolvedItems = await resolveTextItemsForCutting(importedSvgs);
+    const svg = buildWorkspaceCutSvg(resolvedItems, matW, matH, tools, WORKSPACE_PIXELS_PER_INCH);
     const colorMap = buildToolColorMap();
 
     if (!window.cricutCompanion?.slicebug) {
@@ -1217,6 +1349,8 @@ export function App() {
       onDeleteSvgs={handleDeleteSvgs}
       onGroupSvgs={handleGroupSvgs}
       onUngroupSvg={handleUngroupSvg}
+      onFlipX={handleFlipX}
+      onFlipY={handleFlipY}
       onRenameObject={handleRenameObject}
       onChangeObjectColor={handleChangeObjectColor}
       onUndoSvgs={handleUndoWorkspace}
@@ -1283,8 +1417,8 @@ const MEASUREMENT_UNIT_STORAGE_KEY = "kindcutMeasurementUnit";
 const WORKSPACE_PIXELS_PER_INCH = 80;
 const WORKSPACE_MIN_ZOOM = 0.45;
 const WORKSPACE_MAX_ZOOM = 3;
-const WORKSPACE_STAGE_LEFT_OFFSET = 42;
-const WORKSPACE_STAGE_TOP_OFFSET = 74;
+const WORKSPACE_STAGE_LEFT_OFFSET = 42; // width of the Y ruler
+const WORKSPACE_STAGE_TOP_OFFSET = 32;  // height of the X ruler (statusbar handled by grid layout)
 const WORKSPACE_HISTORY_LIMIT = 50;
 const ROTATION_SNAP_INTERVAL_DEGREES = 45;
 const ROTATION_SNAP_THRESHOLD_DEGREES = 4;
@@ -1296,6 +1430,79 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   }
   const tagName = target.tagName.toLowerCase();
   return target.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select";
+}
+
+/**
+ * Computes the tight bounding box of all paths in a workspace item using DOM getBBox().
+ * Shifts paths so content starts at (0,0) and adjusts the item's frame and position
+ * so no visual change occurs — the bounding box just snugly wraps the actual content.
+ */
+function computeSnugFrame(item: WorkspaceSvgItem): WorkspaceSvgItem {
+  if (item.textContent) return item;
+  const validPaths = item.paths.filter((p) => p.d);
+  if (validPaths.length === 0) return item;
+
+  // Batch all paths into a single off-screen SVG for efficiency
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.style.cssText = "position:absolute;left:-9999px;top:-9999px;width:0;height:0;visibility:hidden;overflow:visible";
+  svg.setAttribute("viewBox", "0 0 100000 100000");
+  document.body.appendChild(svg);
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  try {
+    for (const path of validPaths) {
+      const el = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      el.setAttribute("d", path.d);
+      if (path.pathTransform) el.setAttribute("transform", path.pathTransform);
+      svg.appendChild(el);
+      const bb = el.getBBox();
+      if (bb.width > 0 || bb.height > 0) {
+        minX = Math.min(minX, bb.x);
+        minY = Math.min(minY, bb.y);
+        maxX = Math.max(maxX, bb.x + bb.width);
+        maxY = Math.max(maxY, bb.y + bb.height);
+      }
+    }
+  } finally {
+    document.body.removeChild(svg);
+  }
+
+  if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return item;
+
+  const newWidth = Math.max(1, maxX - minX);
+  const newHeight = Math.max(1, maxY - minY);
+
+  // Already snug — skip
+  if (Math.abs(minX) < 0.5 && Math.abs(minY) < 0.5 &&
+      Math.abs(newWidth - item.frame.width) < 0.5 &&
+      Math.abs(newHeight - item.frame.height) < 0.5) {
+    return item;
+  }
+
+  // Shift all paths so content begins at (0,0) in SVG coordinate space
+  const needsShift = Math.abs(minX) >= 0.5 || Math.abs(minY) >= 0.5;
+  const updatedPaths = validPaths.map((p) => ({
+    ...p,
+    pathTransform: needsShift
+      ? (p.pathTransform
+          ? `translate(${-minX} ${-minY}) ${p.pathTransform}`
+          : `translate(${-minX} ${-minY})`)
+      : p.pathTransform,
+  }));
+
+  // Adjust world-position so the object doesn't appear to move (handles rotation)
+  const cropOffset = rotatePoint(
+    { x: minX * item.transform.scaleX, y: minY * item.transform.scaleY },
+    item.transform.rotation,
+  );
+
+  return {
+    ...item,
+    frame: { width: newWidth, height: newHeight },
+    transform: { ...item.transform, x: item.transform.x + cropOffset.x, y: item.transform.y + cropOffset.y },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    paths: updatedPaths as any,
+  } as WorkspaceSvgItem;
 }
 
 function createWorkspaceSvgItem({
@@ -1332,14 +1539,10 @@ function createWorkspaceSvgItem({
     frame: extracted.frame,
     transform: transform ?? { x: 32 + index * 24, y: 32 + index * 24, scaleX: 1, scaleY: 1, rotation: 0 },
   };
-  if (extracted.paths.length === 1) {
-    return { ...base, type: "path", paths: [extracted.paths[0]!] };
-  }
-  return {
-    ...base,
-    type: "group",
-    paths: extracted.paths,
-  };
+  const item: WorkspaceSvgItem = extracted.paths.length === 1
+    ? { ...base, type: "path", paths: [extracted.paths[0]!] }
+    : { ...base, type: "group", paths: extracted.paths };
+  return computeSnugFrame(item);
 }
 
 function createWorkspaceObjectItem({
@@ -1663,6 +1866,8 @@ function DesignWorkspace({
   onDeleteSvgs,
   onGroupSvgs,
   onUngroupSvg,
+  onFlipX,
+  onFlipY,
   onRenameObject,
   onChangeObjectColor,
   onUndoSvgs,
@@ -1723,6 +1928,8 @@ function DesignWorkspace({
   onDeleteSvgs: () => boolean;
   onGroupSvgs: () => boolean;
   onUngroupSvg: () => boolean;
+  onFlipX: () => boolean;
+  onFlipY: () => boolean;
   onRenameObject: (id: string, newName: string) => void;
   onChangeObjectColor: (id: string, color: string) => void;
   onUndoSvgs: () => boolean;
@@ -1816,6 +2023,12 @@ function DesignWorkspace({
   const canCut = importedSvgs.length > 0 && !importedPlanLoading && !cutBusy;
   const selectedSvgIdSet = useMemo(() => new Set(selectedSvgIds), [selectedSvgIds]);
   const lastPointerDownItemId = useRef<{ id: string; time: number } | null>(null);
+  const [systemFonts, setSystemFonts] = useState<string[]>([]);
+  useEffect(() => {
+    void window.cricutCompanion?.system?.getFonts().then((fonts) => {
+      if (fonts && fonts.length > 0) setSystemFonts(fonts.sort());
+    });
+  }, []);
   const selectedItems = useMemo(() => importedSvgs.filter((item) => selectedSvgIdSet.has(item.id)), [importedSvgs, selectedSvgIdSet]);
   const selectedGroup = selectedItems.length === 1 && selectedItems[0]?.type === "group" ? selectedItems[0] : null;
 
@@ -2386,6 +2599,7 @@ function DesignWorkspace({
           canDelete={selectedSvgIds.length > 0}
           canGroup={selectedSvgIds.length >= 2}
           canUngroup={selectedGroup !== null}
+          canFlip={selectedSvgIds.length > 0}
           projectSaving={projectSaving}
           projectOpening={projectOpening}
           onOpen={onOpenProject}
@@ -2396,6 +2610,8 @@ function DesignWorkspace({
           onDelete={onDeleteSvgs}
           onGroup={onGroupSvgs}
           onUngroup={onUngroupSvg}
+          onFlipX={onFlipX}
+          onFlipY={onFlipY}
         />
 
         <div className="design-topbar__controls no-drag">
@@ -2498,7 +2714,24 @@ function DesignWorkspace({
             >
               <div
                 className="workpiece-paper"
-                style={{ width: workpieceWidth, height: workpieceHeight }}
+                style={{
+                  width: workpieceWidth,
+                  height: workpieceHeight,
+                  // Grid size = 1 ruler subdivision in workspace pixels (unit-dependent).
+                  // in: 0.25in = 20px  |  cm: 0.5cm ≈ 15.75px  |  mm: 5mm ≈ 15.75px
+                  // Parent workpiece-transform applies zoom so no multiplication needed.
+                  backgroundImage: "linear-gradient(rgba(127,96,66,0.08) 1px,transparent 1px),linear-gradient(90deg,rgba(127,96,66,0.08) 1px,transparent 1px)",
+                  ...(() => {
+                    const gridPx = measurementUnit === "in"
+                      ? WORKSPACE_PIXELS_PER_INCH * 0.25
+                      : measurementUnit === "cm"
+                        ? WORKSPACE_PIXELS_PER_INCH * 0.5 / 2.54
+                        : WORKSPACE_PIXELS_PER_INCH * 5 / 25.4;
+                    // The mat has border: 1px which shifts the CSS background inward by 1px.
+                    // Compensate so grid line 0 is exactly at the mat's visual edge (= ruler 0).
+                    return { backgroundSize: `${gridPx}px ${gridPx}px`, backgroundPosition: "-1px -1px" };
+                  })(),
+                }}
               >
                 {importedSvgs.length === 0 ? (
                   <div className="empty-workpiece">
@@ -2708,9 +2941,24 @@ function DesignWorkspace({
                           value={tc.fontFamily}
                           onChange={(e) => onTextContentChange(sel.id, { fontFamily: e.target.value })}
                         >
-                          {["sans-serif","serif","monospace","Arial","Georgia","Courier New","Comic Sans MS","Impact","Verdana","Trebuchet MS"].map((f) => (
-                            <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
-                          ))}
+                          <optgroup label={nl ? "Generiek" : "Generic"}>
+                            {["sans-serif","serif","monospace","cursive","fantasy"].map((f) => (
+                              <option key={f} value={f}>{f}</option>
+                            ))}
+                          </optgroup>
+                          {systemFonts.length > 0 ? (
+                            <optgroup label={nl ? "Systeemlettertypen" : "System fonts"}>
+                              {systemFonts.map((f) => (
+                                <option key={f} value={f}>{f}</option>
+                              ))}
+                            </optgroup>
+                          ) : (
+                            <optgroup label={nl ? "Veelgebruikt" : "Common"}>
+                              {["Arial","Arial Black","Helvetica","Helvetica Neue","Verdana","Tahoma","Trebuchet MS","Georgia","Times New Roman","Palatino","Garamond","Courier New","Lucida Console","Monaco","Menlo","Impact","Comic Sans MS","Gill Sans","Optima","Futura","Century Gothic","Calibri","Cambria","Segoe UI","Franklin Gothic Medium"].map((f) => (
+                                <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+                              ))}
+                            </optgroup>
+                          )}
                         </select>
                       </div>
                       <div className="object-settings__row">
@@ -2725,6 +2973,19 @@ function DesignWorkspace({
                           <button type="button" className={`text-style-btn${tc.textDecoration === "underline" ? " text-style-btn--active" : ""}`}
                             onClick={() => onTextContentChange(sel.id, { textDecoration: tc.textDecoration === "underline" ? "none" : "underline" })}
                           ><span style={{ textDecoration: "underline" }}>U</span></button>
+                          <span className="text-style-divider"/>
+                          {(["left","center","right"] as const).map((align) => (
+                            <button key={align} type="button" className={`text-style-btn${(tc.textAlign ?? "left") === align ? " text-style-btn--active" : ""}`}
+                              onClick={() => onTextContentChange(sel.id, { textAlign: align })}
+                              title={align}
+                            >
+                              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                                {align === "left"   && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="2" y1="6" x2="9" y2="6"/><line x1="2" y1="9" x2="11" y2="9"/><line x1="2" y1="12" x2="7" y2="12"/></>}
+                                {align === "center" && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="4" y1="6" x2="10" y2="6"/><line x1="3" y1="9" x2="11" y2="9"/><line x1="5" y1="12" x2="9" y2="12"/></>}
+                                {align === "right"  && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="5" y1="6" x2="12" y2="6"/><line x1="3" y1="9" x2="12" y2="9"/><line x1="7" y1="12" x2="12" y2="12"/></>}
+                              </svg>
+                            </button>
+                          ))}
                         </div>
                       </div>
                       <div className="object-settings__row">
@@ -3715,6 +3976,21 @@ function TextEditOverlay({
 }) {
   const tc = item.textContent!;
   const [value, setValue] = useState(tc.text);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Font size in CSS pixels: item div is sized to frame*scaleX, so fontSize*scaleX matches SVG.
+  const scaledFontSize = tc.fontSize * item.transform.scaleX;
+
+  // Click anywhere outside the overlay commits and exits edit mode
+  useEffect(() => {
+    function handleGlobalDown(e: globalThis.PointerEvent) {
+      if (textareaRef.current && !textareaRef.current.contains(e.target as Node)) {
+        onCommit(value);
+      }
+    }
+    document.addEventListener("pointerdown", handleGlobalDown, { capture: true });
+    return () => document.removeEventListener("pointerdown", handleGlobalDown, { capture: true });
+  }, [value, onCommit]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     e.stopPropagation();
@@ -3723,19 +3999,20 @@ function TextEditOverlay({
 
   return (
     <textarea
+      ref={textareaRef}
       autoFocus
       className="text-edit-overlay"
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={handleKeyDown}
-      onBlur={() => onCommit(value)}
       style={{
         fontFamily: tc.fontFamily,
-        fontSize: tc.fontSize,
+        fontSize: scaledFontSize,
         fontWeight: tc.fontWeight,
         fontStyle: tc.fontStyle,
         textDecoration: tc.textDecoration,
-        letterSpacing: tc.letterSpacing,
+        textAlign: tc.textAlign ?? "left",
+        letterSpacing: (tc.letterSpacing * item.transform.scaleX) + "px",
         lineHeight: tc.lineHeight,
         color: tc.color,
         width: "100%",
@@ -3752,15 +4029,17 @@ function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject; tools?
     const lineH = tc.fontSize * tc.lineHeight;
     const matchedTool = tools?.find((t) => t.color.toLowerCase() === tc.color.toLowerCase());
     const displayColor = matchedTool ? matchedTool.color : tc.color;
+    const anchorX = tc.textAlign === "center" ? item.frame.width / 2 : tc.textAlign === "right" ? item.frame.width - 1 : 1;
+    const textAnchor = tc.textAlign === "center" ? "middle" : tc.textAlign === "right" ? "end" : "start";
     return (
       <svg aria-hidden="true" focusable="false" width="100%" height="100%"
         viewBox={`0 0 ${item.frame.width} ${item.frame.height}`} preserveAspectRatio="xMinYMin meet"
       >
         {tc.text.split("\n").map((line, i) => (
-          <text key={i} x={4} y={4 + tc.fontSize + i * lineH}
+          <text key={i} x={anchorX} y={tc.fontSize + i * lineH}
             fontFamily={tc.fontFamily} fontSize={tc.fontSize}
             fontWeight={tc.fontWeight} fontStyle={tc.fontStyle}
-            textDecoration={tc.textDecoration}
+            textDecoration={tc.textDecoration} textAnchor={textAnchor}
             fill={displayColor} letterSpacing={tc.letterSpacing}
           >{line || " "}</text>
         ))}
@@ -3845,6 +4124,7 @@ function WorkspaceToolbar({
   canDelete,
   canGroup,
   canUngroup,
+  canFlip,
   projectSaving,
   projectOpening,
   onOpen,
@@ -3855,6 +4135,8 @@ function WorkspaceToolbar({
   onDelete,
   onGroup,
   onUngroup,
+  onFlipX,
+  onFlipY,
 }: {
   language: Language;
   canCopy: boolean;
@@ -3863,6 +4145,7 @@ function WorkspaceToolbar({
   canDelete: boolean;
   canGroup: boolean;
   canUngroup: boolean;
+  canFlip: boolean;
   projectSaving: boolean;
   projectOpening: boolean;
   onOpen: () => void;
@@ -3873,6 +4156,8 @@ function WorkspaceToolbar({
   onDelete: () => boolean;
   onGroup: () => boolean;
   onUngroup: () => boolean;
+  onFlipX: () => boolean;
+  onFlipY: () => boolean;
 }) {
   const nl = language === "nl";
   return (
@@ -3939,6 +4224,41 @@ function WorkspaceToolbar({
           label={nl ? "Groep opheffen" : "Ungroup"}
           onClick={onUngroup}
           disabled={!canUngroup}
+        />
+      </div>
+      <div className="toolbar-sep" aria-hidden="true" />
+      <div className="toolbar-group">
+        {/* Flip horizontal — vertical axis, triangles pointing left and right (Tabler pattern) */}
+        <ToolbarBtn
+          icon={
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              {/* Vertical dashed axis */}
+              <line x1="10" y1="2" x2="10" y2="18" strokeDasharray="2 1.5" strokeWidth="1.2"/>
+              {/* Left triangle — flat base on axis, tip pointing left */}
+              <path d="M9 5 L9 15 L3 10 Z" fill="currentColor" stroke="none"/>
+              {/* Right triangle — flat base on axis, tip pointing right (reflection) */}
+              <path d="M11 5 L11 15 L17 10 Z" fill="currentColor" stroke="none" fillOpacity="0.35"/>
+            </svg>
+          }
+          label={nl ? "Spiegelen horizontaal" : "Flip horizontal"}
+          onClick={onFlipX}
+          disabled={!canFlip}
+        />
+        {/* Flip vertical — horizontal axis, triangles pointing up and down */}
+        <ToolbarBtn
+          icon={
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              {/* Horizontal dashed axis */}
+              <line x1="2" y1="10" x2="18" y2="10" strokeDasharray="2 1.5" strokeWidth="1.2"/>
+              {/* Top triangle — flat base on axis, tip pointing up */}
+              <path d="M5 9 L15 9 L10 3 Z" fill="currentColor" stroke="none"/>
+              {/* Bottom triangle — flat base on axis, tip pointing down (reflection) */}
+              <path d="M5 11 L15 11 L10 17 Z" fill="currentColor" stroke="none" fillOpacity="0.35"/>
+            </svg>
+          }
+          label={nl ? "Spiegelen verticaal" : "Flip vertical"}
+          onClick={onFlipY}
+          disabled={!canFlip}
         />
       </div>
     </nav>
