@@ -10,6 +10,7 @@ export type WorkspaceTextContent = {
   fontWeight: "normal" | "bold";
   fontStyle: "normal" | "italic";
   textDecoration: "none" | "underline";
+  textAlign: "left" | "center" | "right";
   letterSpacing: number;  // extra pixels between characters
   lineHeight: number;     // multiplier (1.2 = 120%)
   color: string;          // hex — drives the tool color match
@@ -74,8 +75,10 @@ export function getWorkspaceObjectPartCount(item: WorkspaceObject): number {
 export function buildTextContentSvg(tc: WorkspaceTextContent, frame: WorkspaceItemFrame): string {
   const lineH = tc.fontSize * tc.lineHeight;
   const lines = tc.text.split("\n");
+  const anchorX = tc.textAlign === "center" ? frame.width / 2 : tc.textAlign === "right" ? frame.width - 1 : 1;
+  const anchor = tc.textAlign === "center" ? "middle" : tc.textAlign === "right" ? "end" : "start";
   const textEls = lines.map((line, i) =>
-    `<text x="4" y="${4 + tc.fontSize + i * lineH}" font-family="${escapeXml(tc.fontFamily)}" font-size="${tc.fontSize}" font-weight="${tc.fontWeight}" font-style="${tc.fontStyle}" text-decoration="${tc.textDecoration}" fill="${escapeXml(tc.color)}" letter-spacing="${tc.letterSpacing}">${escapeXml(line || " ")}</text>`,
+    `<text x="${anchorX}" y="${tc.fontSize + i * lineH}" text-anchor="${anchor}" font-family="${escapeXml(tc.fontFamily)}" font-size="${tc.fontSize}" font-weight="${tc.fontWeight}" font-style="${tc.fontStyle}" text-decoration="${tc.textDecoration}" fill="${escapeXml(tc.color)}" letter-spacing="${tc.letterSpacing}">${escapeXml(line || " ")}</text>`,
   ).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(frame.width)}" height="${formatNumber(frame.height)}" viewBox="0 0 ${formatNumber(frame.width)} ${formatNumber(frame.height)}">${textEls}</svg>`;
 }
@@ -95,24 +98,69 @@ export function buildWorkspaceObjectSvg(item: WorkspaceObject): string {
     .join("")}</svg>`;
 }
 
-export function buildWorkspaceCutSvg(items: WorkspaceObject[], matWidthPx: number, matHeightPx: number): string {
-  const w = formatNumber(Math.max(1, matWidthPx));
-  const h = formatNumber(Math.max(1, matHeightPx));
+type CutTool = { color: string; type: "pen" | "cut" };
+
+function buildItemInnerSvg(item: WorkspaceObject, tools?: CutTool[]): string {
+  // Text items with no paths: emit <text> elements
+  if (item.textContent && item.paths.length === 0) {
+    const tc = item.textContent;
+    const lineH = tc.fontSize * tc.lineHeight;
+    const anchorX = tc.textAlign === "center" ? item.frame.width / 2 : tc.textAlign === "right" ? item.frame.width - 1 : 1;
+    const anchor = tc.textAlign === "center" ? "middle" : tc.textAlign === "right" ? "end" : "start";
+    return tc.text.split("\n").map((line, i) =>
+      `<text x="${anchorX}" y="${tc.fontSize + i * lineH}" text-anchor="${anchor}" font-family="${escapeXml(tc.fontFamily)}" font-size="${tc.fontSize}" font-weight="${tc.fontWeight}" font-style="${tc.fontStyle}" text-decoration="${tc.textDecoration}" fill="${escapeXml(tc.color)}" stroke="none" letter-spacing="${tc.letterSpacing}">${escapeXml(line || " ")}</text>`,
+    ).join("");
+  }
+  // SVG path items
+  return item.paths.map((path) => {
+    const pathTransform = path.pathTransform ? ` transform="${escapeXml(path.pathTransform)}"` : "";
+    const strokeLinecap = path.strokeLinecap ? ` stroke-linecap="${escapeXml(path.strokeLinecap)}"` : "";
+    const strokeLinejoin = path.strokeLinejoin ? ` stroke-linejoin="${escapeXml(path.strokeLinejoin)}"` : "";
+    const fillRule = path.fillRule ? ` fill-rule="${escapeXml(path.fillRule)}"` : "";
+
+    // Determine cut vs pen using the tools list (same logic as WorkspaceObjectArtwork).
+    const matchedTool = tools?.find((t) => t.color.toLowerCase() === (path.stroke ?? "").toLowerCase());
+    const isPen = matchedTool?.type === "pen";
+    const toolColor = path.stroke && path.stroke !== "none" ? path.stroke : path.fill;
+
+    // Pen paths: outline only — fill=none, stroke=tool colour (slicebug reads stroke for tool detection)
+    // Cut paths: filled shape  — fill=tool colour AND stroke=tool colour so slicebug can detect the colour
+    const displayFill = isPen ? "none" : toolColor;
+    const displayStroke = toolColor;   // always keep stroke so slicebug can read the tool colour
+    const displayStrokeWidth = isPen ? path.strokeWidth : "0.5"; // thin stroke for cut paths (visual only)
+
+    return `<path d="${escapeXml(path.d)}" fill="${escapeXml(displayFill)}"${fillRule} stroke="${escapeXml(displayStroke)}" stroke-width="${escapeXml(displayStrokeWidth)}"${strokeLinecap}${strokeLinejoin}${pathTransform}/>`;
+  }).join("");
+}
+
+export function buildWorkspaceCutSvg(
+  items: WorkspaceObject[],
+  matWidthPx: number,
+  matHeightPx: number,
+  tools?: CutTool[],
+  pixelsPerInch = 80,
+): string {
+  const vbW = formatNumber(Math.max(1, matWidthPx));
+  const vbH = formatNumber(Math.max(1, matHeightPx));
+  // Express width/height in physical inches so cutters never misinterpret the DPI.
+  // viewBox keeps the internal coordinate system in workspace pixels.
+  const physW = formatNumber(matWidthPx / pixelsPerInch);
+  const physH = formatNumber(matHeightPx / pixelsPerInch);
   const paths = items
     .map((item) => {
-      const transform = `translate(${formatNumber(item.transform.x)} ${formatNumber(item.transform.y)}) rotate(${formatNumber(item.transform.rotation)}) scale(${formatNumber(item.transform.scaleX)} ${formatNumber(item.transform.scaleY)})`;
-      return `<g transform="${transform}">${item.paths
-        .map((path) => {
-          const pathTransform = path.pathTransform ? ` transform="${escapeXml(path.pathTransform)}"` : "";
-          const strokeLinecap = path.strokeLinecap ? ` stroke-linecap="${escapeXml(path.strokeLinecap)}"` : "";
-          const strokeLinejoin = path.strokeLinejoin ? ` stroke-linejoin="${escapeXml(path.strokeLinejoin)}"` : "";
-          const fillRule = path.fillRule ? ` fill-rule="${escapeXml(path.fillRule)}"` : "";
-          return `<path d="${escapeXml(path.d)}" fill="${escapeXml(path.fill)}"${fillRule} stroke="${escapeXml(path.stroke)}" stroke-width="${escapeXml(path.strokeWidth)}"${strokeLinecap}${strokeLinejoin}${pathTransform}/>`;
-        })
-        .join("")}</g>`;
+      const mx = item.transform.mirrorX ? -1 : 1;
+      const my = item.transform.mirrorY ? -1 : 1;
+      const W = item.frame.width * item.transform.scaleX;
+      const H = item.frame.height * item.transform.scaleY;
+      // mirror is applied last (innermost) — compensate position so content cuts at correct location
+      const mirrorOffset = mx !== 1 || my !== 1
+        ? ` translate(${mx !== 1 ? formatNumber(W) : 0} ${my !== 1 ? formatNumber(H) : 0}) scale(${mx} ${my})`
+        : "";
+      const transform = `translate(${formatNumber(item.transform.x)} ${formatNumber(item.transform.y)}) rotate(${formatNumber(item.transform.rotation)}) scale(${formatNumber(item.transform.scaleX)} ${formatNumber(item.transform.scaleY)})${mirrorOffset}`;
+      return `<g transform="${transform}">${buildItemInnerSvg(item, tools)}</g>`;
     })
     .join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${paths}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${physW}in" height="${physH}in" viewBox="0 0 ${vbW} ${vbH}">${paths}</svg>`;
 }
 
 export function buildWorkspaceObjectsSvg(items: WorkspaceObject[]): string {
@@ -126,12 +174,7 @@ export function buildWorkspaceObjectsSvg(items: WorkspaceObject[]): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(width)}" height="${formatNumber(height)}" viewBox="0 0 ${formatNumber(width)} ${formatNumber(height)}">${items
     .map((item) => {
       const transform = `translate(${formatNumber(item.transform.x)} ${formatNumber(item.transform.y)}) rotate(${formatNumber(item.transform.rotation)}) scale(${formatNumber(item.transform.scaleX)} ${formatNumber(item.transform.scaleY)})`;
-      return `<g transform="${transform}">${item.paths
-        .map((path) => {
-          const pathTransform = path.pathTransform ? ` transform="${escapeXml(path.pathTransform)}"` : "";
-          return `<path d="${escapeXml(path.d)}" fill="${escapeXml(path.fill)}" stroke="${escapeXml(path.stroke)}" stroke-width="${escapeXml(path.strokeWidth)}"${pathTransform}/>`;
-        })
-        .join("")}</g>`;
+      return `<g transform="${transform}">${buildItemInnerSvg(item)}</g>`;
     })
     .join("")}</svg>`;
 }
