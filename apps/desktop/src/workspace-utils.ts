@@ -1,3 +1,14 @@
+export const MEASUREMENT_UNIT_STORAGE_KEY = "kindcutMeasurementUnit";
+export const WORKSPACE_PIXELS_PER_INCH = 80;
+export const WORKSPACE_MIN_ZOOM = 0.45;
+export const WORKSPACE_MAX_ZOOM = 3;
+export const WORKSPACE_STAGE_LEFT_OFFSET = 42; // width of the Y ruler
+export const WORKSPACE_STAGE_TOP_OFFSET = 32;  // height of the X ruler (statusbar handled by grid layout)
+export const WORKSPACE_HISTORY_LIMIT = 50;
+export const ROTATION_SNAP_INTERVAL_DEGREES = 45;
+export const ROTATION_SNAP_THRESHOLD_DEGREES = 4;
+export const MOVEABLE_CENTER_DIRECTION = [0, 0] as const;
+
 export type MeasurementUnit = "in" | "cm" | "mm";
 export type RulerAxis = "x" | "y";
 
@@ -301,3 +312,23 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+export function formatN(value: number): string {
+  return Number(value.toFixed(3)).toString();
+}
+
+export function loadMeasurementUnitPreference(): MeasurementUnit {
+  try {
+    const saved = window.localStorage.getItem(MEASUREMENT_UNIT_STORAGE_KEY);
+    return saved === "in" || saved === "cm" || saved === "mm" ? saved : "cm";
+  } catch {
+    return "cm";
+  }
+}
+
+export function saveMeasurementUnitPreference(unit: MeasurementUnit): void {
+  try {
+    window.localStorage.setItem(MEASUREMENT_UNIT_STORAGE_KEY, unit);
+  } catch {
+    // localStorage can be unavailable in constrained renderer contexts.
+  }
+}

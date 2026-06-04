@@ -388,3 +388,8 @@ function parseTools(value: unknown): WorkspaceTool[] {
   }
   return tools.length > 0 ? tools : DEFAULT_TOOLS;
 }
+
+export function getSafeProjectFileName(name: string): string {
+  const withoutExtension = name.replace(/\.kindcut$/i, "").replace(/\.svg$/i, "");
+  return withoutExtension.replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "") || "kindcut-project";
+}
