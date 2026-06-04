@@ -577,16 +577,28 @@ export function DesignWorkspace({
     zoomAroundPoint(nextZoomRaw, (rect?.width ?? 0) / 2, (rect?.height ?? 0) / 2);
   }
 
-  function resetZoomToActualSize() {
+  // Centre the mat in the viewport at a given zoom (pan accounts for the ruler offsets).
+  function centerMatInViewport(z: number) {
     const rect = viewportRef.current?.getBoundingClientRect();
     const viewportWidth = rect?.width ?? workpieceWidth + WORKSPACE_STAGE_LEFT_OFFSET * 2;
     const viewportHeight = rect?.height ?? workpieceHeight + WORKSPACE_STAGE_TOP_OFFSET * 2;
-    setZoom(1);
     setPan({
-      x: (viewportWidth - workpieceWidth) / 2 - WORKSPACE_STAGE_LEFT_OFFSET,
-      y: (viewportHeight - workpieceHeight) / 2 - WORKSPACE_STAGE_TOP_OFFSET,
+      x: (viewportWidth - workpieceWidth * z) / 2 - WORKSPACE_STAGE_LEFT_OFFSET,
+      y: (viewportHeight - workpieceHeight * z) / 2 - WORKSPACE_STAGE_TOP_OFFSET,
     });
   }
+
+  function resetZoomToActualSize() {
+    setZoom(1);
+    centerMatInViewport(1);
+  }
+
+  // Centre the mat when the workspace first opens (after layout is measured).
+  useEffect(() => {
+    const id = requestAnimationFrame(() => centerMatInViewport(zoom));
+    return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleViewportWheel(event: WheelEvent<HTMLDivElement>) {
     if (event.ctrlKey || event.metaKey) {
@@ -1774,7 +1786,12 @@ export function DesignWorkspace({
                             />
                           ) : (
                             <span>
-                              {item.fileName}
+                              {(() => {
+                                // Text layers show their actual text; everything else its name.
+                                const text = item.textContent?.text?.replace(/\s+/g, " ").trim();
+                                if (text) return text.length > 28 ? `${text.slice(0, 28)}…` : text;
+                                return item.fileName;
+                              })()}
                               {(() => {
                                 const stroke = item.paths[0]?.stroke ?? "";
                                 const hasMatch = tools.some((t) => t.color.toLowerCase() === stroke.toLowerCase());

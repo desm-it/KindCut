@@ -11,7 +11,7 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
     const anchorX = tc.textAlign === "center" ? item.frame.width / 2 : tc.textAlign === "right" ? item.frame.width - 1 : 1;
     const textAnchor = tc.textAlign === "center" ? "middle" : tc.textAlign === "right" ? "end" : "start";
     return (
-      <svg aria-hidden="true" focusable="false" width="100%" height="100%"
+      <svg aria-hidden="true" focusable="false" width="100%" height="100%" overflow="visible"
         viewBox={`0 0 ${item.frame.width} ${item.frame.height}`} preserveAspectRatio="xMinYMin meet"
       >
         {tc.text.split("\n").map((line, i) => (
@@ -32,6 +32,7 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
       focusable="false"
       width="100%"
       height="100%"
+      overflow="visible"
       viewBox={`0 0 ${item.frame.width} ${item.frame.height}`}
       preserveAspectRatio="none"
     >

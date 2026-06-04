@@ -49,7 +49,7 @@ hints for where to start, not exhaustive.
   → `buildWorkspaceCutSvg` in `workspace-objects.ts`, `handleOpenCutPreview` /
   `resolveTextItemsForCutting` in `App.tsx`, `CutPreviewModal`.
 
-- [ ] **Bounding box clips the shape.** The snug bounding box hugs the path's
+- [x] **Bounding box clips the shape.** The snug bounding box hugs the path's
   geometry (DOM `getBBox`, which excludes stroke width), so the shape's stroke/edges
   can get cut off at the frame — the artwork SVG / item box clips at the tight bounds.
   Either let the shape overflow its frame (SVG `overflow: visible`, no clipping on the
@@ -90,7 +90,7 @@ hints for where to start, not exhaustive.
   → Layers list in `components/workspace/DesignWorkspace.tsx`, context menu in
   `shell/main.ts`, `App.tsx` reorder handlers.
 
-- [ ] **Layer name reflects text content.** In the Layers pane, text boxes should
+- [x] **Layer name reflects text content.** In the Layers pane, text boxes should
   show their actual text (e.g. truncated first line like "Happy Birthday") instead of a
   generic "Text" label, so layers are easy to tell apart. Fall back to the generic name
   when the text is empty.
@@ -127,7 +127,7 @@ hints for where to start, not exhaustive.
   → cut-path generation alongside `buildWorkspaceCutSvg`; card sizes in `workspace-utils`
   (`CARD_GUIDES`); behind/insert colour model.
 
-- [ ] **Start new projects with the mat centered.** When entering the workspace
+- [x] **Start new projects with the mat centered.** When entering the workspace
   (new project / open), the mat should be centered and sensibly zoomed in the viewport
   instead of using the fixed default pan/zoom. Reuse the existing `resetZoomToActualSize`
   centering logic on workspace entry.
