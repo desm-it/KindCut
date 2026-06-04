@@ -196,17 +196,20 @@ function parseWorkspaceObject(value: unknown, fallbackId: string): SavedWorkspac
   ) {
     throw new Error("This is not a valid KindCut project file.");
   }
+  const kind = value.kind === "shape" ? "shape" : value.kind === "text" ? "text" : "image";
+  const sourceKind = value.sourceKind === "shape" ? "shape" : value.sourceKind === "text" ? "text" : "image";
   return normalizeSavedWorkspaceObject({
     id: typeof value.id === "string" && value.id.trim() ? value.id : fallbackId,
     type: value.type,
-    kind: value.kind === "shape" ? "shape" : "image",
-    sourceKind: value.sourceKind === "shape" ? "shape" : "image",
+    kind,
+    sourceKind,
     shapeKind: isWorkspaceShapeKind(value.shapeKind) ? value.shapeKind : undefined,
     fileName: value.fileName,
     fileSize: value.fileSize,
     frame: { width: value.frame.width, height: value.frame.height },
     paths: value.paths.map(parseWorkspacePath),
     transform: parseTransform(value.transform),
+    textContent: isRecord(value.textContent) ? value.textContent as import("./workspace-objects").WorkspaceTextContent : undefined,
   });
 }
 
@@ -228,6 +231,7 @@ function parseWorkspacePath(value: unknown): WorkspacePathData {
 }
 
 function normalizeSavedWorkspaceObject(value: SavedWorkspaceObject): SavedWorkspaceObject {
+  const isTextItem = value.kind === "text" || Boolean(value.textContent);
   const paths = value.paths.map((path, index) => ({
     id: path.id || `path-${index + 1}`,
     d: path.d,
@@ -236,18 +240,22 @@ function normalizeSavedWorkspaceObject(value: SavedWorkspaceObject): SavedWorksp
     strokeWidth: path.strokeWidth || "2",
     strokeLinecap: path.strokeLinecap,
     strokeLinejoin: path.strokeLinejoin,
+    fillRule: path.fillRule,
     pathTransform: path.pathTransform,
     sourceLabel: path.sourceLabel,
   }));
-  if (paths.length === 0 || (value.type === "path" && paths.length !== 1)) {
+  // Text items have no paths (they render live from textContent) — that is valid
+  if (!isTextItem && (paths.length === 0 || (value.type === "path" && paths.length !== 1))) {
     throw new Error("This is not a valid KindCut project file.");
   }
+  const kind = value.kind === "shape" ? "shape" : value.kind === "text" ? "text" : "image";
+  const sourceKind = value.sourceKind === "shape" ? "shape" : value.sourceKind === "text" ? "text" : "image";
   return {
     id: value.id,
     type: value.type,
-    kind: value.kind === "shape" ? "shape" : "image",
-    sourceKind: value.sourceKind === "shape" ? "shape" : "image",
-    shapeKind: value.kind === "shape" && isWorkspaceShapeKind(value.shapeKind) ? value.shapeKind : undefined,
+    kind,
+    sourceKind,
+    shapeKind: kind === "shape" && isWorkspaceShapeKind(value.shapeKind) ? value.shapeKind : undefined,
     fileName: value.fileName,
     fileSize: value.fileSize,
     frame: {
@@ -256,6 +264,7 @@ function normalizeSavedWorkspaceObject(value: SavedWorkspaceObject): SavedWorksp
     },
     paths,
     transform: value.transform ? normalizeTransform(value.transform) : undefined,
+    textContent: value.textContent,
   };
 }
 
@@ -337,7 +346,7 @@ function parseTransform(value: unknown): WorkspaceItemTransform | undefined {
     if (typeof scaleX !== "number" || typeof scaleY !== "number" || typeof rotation !== "number") {
       throw new Error("This is not a valid KindCut project file.");
     }
-    return normalizeTransform({ x, y, scaleX, scaleY, rotation });
+    return normalizeTransform({ x, y, scaleX, scaleY, rotation, mirrorX: Boolean(value.mirrorX), mirrorY: Boolean(value.mirrorY) });
   }
   if (typeof scale !== "number") {
     throw new Error("This is not a valid KindCut project file.");
@@ -352,6 +361,8 @@ function normalizeTransform(transform: WorkspaceItemTransform): WorkspaceItemTra
     scaleX: Number.isFinite(transform.scaleX) && transform.scaleX > 0 ? transform.scaleX : 1,
     scaleY: Number.isFinite(transform.scaleY) && transform.scaleY > 0 ? transform.scaleY : 1,
     rotation: Number.isFinite(transform.rotation) ? transform.rotation : 0,
+    mirrorX: Boolean(transform.mirrorX),
+    mirrorY: Boolean(transform.mirrorY),
   };
 }
 

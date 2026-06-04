@@ -14,9 +14,11 @@ export type MatDimensions = {
 export type WorkspaceItemTransform = {
   x: number;
   y: number;
-  scaleX: number;
-  scaleY: number;
+  scaleX: number;   // always positive — magnitude only
+  scaleY: number;   // always positive — magnitude only
   rotation: number;
+  mirrorX?: boolean; // horizontal flip (applied last, independent of scale)
+  mirrorY?: boolean; // vertical flip
 };
 
 export type WorkspaceItemFrame = {
@@ -72,13 +74,15 @@ export function getViewportTransform({ zoom, pan }: { zoom: number; pan: Point }
   return `translate(${roundCss(pan.x)}px, ${roundCss(pan.y)}px) scale(${roundCss(zoom)})`;
 }
 
-export function getWorkspaceItemTransform({ x, y, rotation }: WorkspaceItemTransform): string {
-  return `translate3d(${roundCss(x)}px, ${roundCss(y)}px, 0) rotate(${roundCss(rotation)}deg)`;
+export function getWorkspaceItemTransform({ x, y, rotation, scaleX, scaleY, mirrorX, mirrorY }: WorkspaceItemTransform): string {
+  // mirrorX/mirrorY are independent of scale — appended last so Moveable's scale math is unaffected.
+  const mirror = (mirrorX || mirrorY) ? ` scale(${mirrorX ? -1 : 1}, ${mirrorY ? -1 : 1})` : "";
+  return `translate3d(${roundCss(x)}px, ${roundCss(y)}px, 0) rotate(${roundCss(rotation)}deg)${mirror}`;
 }
 
 export function getWorkspaceItemVisualSize(frame: WorkspaceItemFrame, transform: WorkspaceItemTransform): { width: number; height: number } {
   return {
-    width: frame.width * transform.scaleX,
+    width: frame.width * transform.scaleX,   // scaleX is always positive
     height: frame.height * transform.scaleY,
   };
 }
@@ -87,8 +91,10 @@ export function normalizeWorkspaceItemTransform(transform: WorkspaceItemTransfor
   return {
     x: roundCss(Number.isFinite(transform.x) ? transform.x : 0),
     y: roundCss(Number.isFinite(transform.y) ? transform.y : 0),
-    scaleX: clamp(roundCss(transform.scaleX), 0.1, 4),
-    scaleY: clamp(roundCss(transform.scaleY), 0.1, 4),
+    scaleX: clamp(roundCss(Math.abs(transform.scaleX)), 0.01, 100),
+    scaleY: clamp(roundCss(Math.abs(transform.scaleY)), 0.01, 100),
+    mirrorX: Boolean(transform.mirrorX),
+    mirrorY: Boolean(transform.mirrorY),
     rotation: normalizeRotation(Number.isFinite(transform.rotation) ? roundCss(transform.rotation) : 0),
   };
 }
@@ -124,8 +130,9 @@ export function scaleWorkspaceItemTransformFromAnchor(
   scaleX: number,
   scaleY: number,
 ): WorkspaceItemTransform {
-  const nextScaleX = transform.scaleX * scaleX;
-  const nextScaleY = transform.scaleY * scaleY;
+  // Clamp to positive minimum — prevents mirroring through drag and keeps position math stable.
+  const nextScaleX = Math.max(0.01, transform.scaleX * scaleX);
+  const nextScaleY = Math.max(0.01, transform.scaleY * scaleY);
 
   // Convert the screen-space anchor back to the object's local pixel space so we
   // can re-apply it correctly after the new scale (screen-space scaling breaks for
@@ -293,3 +300,4 @@ function normalizeRotation(value: number): number {
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
+
