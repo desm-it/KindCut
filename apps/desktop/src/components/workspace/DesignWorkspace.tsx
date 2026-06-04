@@ -37,16 +37,17 @@ import {
   type MeasurementUnit,
   type Point,
   type WorkspaceItemTransform,
+  clampWorkspaceItemTransform,
   getMatDimensionsInches,
   getMeasurementTicks,
   getViewportTransform,
   getWorkspaceItemTransform,
   getWorkspaceItemVisualSize,
   getWorkspaceSelectionBounds,
-  normalizeWorkspaceItemTransform,
-  rotatePoint,
+  localOffsetToWorld,
   rotateWorkspaceItemTransformAroundPoint,
   scaleWorkspaceItemTransformFromAnchor,
+  snapScaleFactorToAspect,
 } from "../../workspace-utils";
 import type { WorkspaceShapeKind } from "../../workspace-shapes";
 import type { AiSvgInput } from "../../ai-svg-generate";
@@ -411,7 +412,7 @@ export function DesignWorkspace({
     if (Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5) {
       drag.moved = true;
     }
-    const next = normalizeWorkspaceItemTransform({
+    const next = clampWorkspaceItemTransform({
       ...drag.transform,
       x: drag.transform.x + deltaX,
       y: drag.transform.y + deltaY,
@@ -431,7 +432,7 @@ export function DesignWorkspace({
     }
     const deltaX = (event.clientX - drag.pointer.x) / zoom;
     const deltaY = (event.clientY - drag.pointer.y) / zoom;
-    const next = normalizeWorkspaceItemTransform({
+    const next = clampWorkspaceItemTransform({
       ...drag.transform,
       x: drag.transform.x + deltaX,
       y: drag.transform.y + deltaY,
@@ -598,7 +599,9 @@ export function DesignWorkspace({
       return;
     }
     const start = moveableTransformStart.current.get(item.id) ?? item.transform;
-    applyMoveableTargetTransform(target, item.id, normalizeWorkspaceItemTransform({ ...start, ...transformPart }));
+    // Live frame → clamp (sub-pixel), not normalize (0.01 quantised) so the element
+    // tracks Moveable's control box exactly. Commit re-rounds via handleSvgTransformsCommit.
+    applyMoveableTargetTransform(target, item.id, clampWorkspaceItemTransform({ ...start, ...transformPart }));
   }
 
   function updateMoveableTargetScale(
@@ -624,6 +627,22 @@ export function DesignWorkspace({
       scaleFactorX = 1;
     } else if (direction[1] === 0) {
       scaleFactorY = 1;
+    }
+    // Single item + single-axis resize: snap to the item's natural proportions when
+    // the dragged dimension passes near them. (Groups keep their relative layout, so
+    // per-item aspect snapping would break them — skip when groupBounds is set.)
+    if (!groupBounds && !isCornerScaleDirection(direction)) {
+      const snapped = snapScaleFactorToAspect({
+        axis: direction[1] === 0 ? "x" : "y",
+        startScaleX: start.scaleX,
+        startScaleY: start.scaleY,
+        scaleFactorX,
+        scaleFactorY,
+        frame: item.frame,
+        zoom,
+      });
+      scaleFactorX = snapped.scaleFactorX;
+      scaleFactorY = snapped.scaleFactorY;
     }
     const anchor = groupBounds
       ? getScaleAnchorForBounds(groupBounds, direction, fromCenter)
@@ -678,9 +697,9 @@ export function DesignWorkspace({
   }
 
   function getWorkspaceItemCenterPoint(transform: WorkspaceItemTransform, frame: { width: number; height: number }): Point {
-    const centerOffset = rotatePoint(
+    const centerOffset = localOffsetToWorld(
       { x: (frame.width * transform.scaleX) / 2, y: (frame.height * transform.scaleY) / 2 },
-      transform.rotation,
+      transform,
     );
     return { x: transform.x + centerOffset.x, y: transform.y + centerOffset.y };
   }
@@ -708,8 +727,10 @@ export function DesignWorkspace({
       x: direction[0] === -1 ? width : direction[0] === 1 ? 0 : width / 2,
       y: direction[1] === -1 ? height : direction[1] === 1 ? 0 : height / 2,
     };
-    const rotatedAnchor = rotatePoint(localAnchor, transform.rotation);
-    return { x: transform.x + rotatedAnchor.x, y: transform.y + rotatedAnchor.y };
+    // Mirror-aware: when the item is flipped, the fixed local edge maps to the
+    // opposite world side, so scaling a mirrored item keeps the correct edge pinned.
+    const worldAnchor = localOffsetToWorld(localAnchor, transform);
+    return { x: transform.x + worldAnchor.x, y: transform.y + worldAnchor.y };
   }
 
   function getScaleAnchorForBounds(

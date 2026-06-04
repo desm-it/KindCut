@@ -8,6 +8,9 @@ export const WORKSPACE_HISTORY_LIMIT = 50;
 export const ROTATION_SNAP_INTERVAL_DEGREES = 45;
 export const ROTATION_SNAP_THRESHOLD_DEGREES = 4;
 export const MOVEABLE_CENTER_DIRECTION = [0, 0] as const;
+// How close (in SCREEN pixels) a single-axis resize must come to the item's natural
+// proportions before it snaps to them. Small so it only catches near-misses.
+export const ASPECT_RATIO_SNAP_SCREEN_PX = 8;
 
 export type MeasurementUnit = "in" | "cm" | "mm";
 export type RulerAxis = "x" | "y";
@@ -98,6 +101,29 @@ export function getWorkspaceItemVisualSize(frame: WorkspaceItemFrame, transform:
   };
 }
 
+/**
+ * Sanitises a transform for LIVE use during a drag/scale/rotate gesture:
+ * clamps scale, coerces mirror flags, normalises rotation range, and removes
+ * floating-point noise at a sub-pixel precision (1e-6) — but does NOT quantise
+ * to 0.01 like commit-time rounding does. Keeping live values near-exact lets the
+ * rendered element track Moveable's control box without shimmer/jitter.
+ */
+export function clampWorkspaceItemTransform(transform: WorkspaceItemTransform): WorkspaceItemTransform {
+  return {
+    x: roundFine(Number.isFinite(transform.x) ? transform.x : 0),
+    y: roundFine(Number.isFinite(transform.y) ? transform.y : 0),
+    scaleX: clamp(roundFine(Math.abs(transform.scaleX)), 0.01, 100),
+    scaleY: clamp(roundFine(Math.abs(transform.scaleY)), 0.01, 100),
+    mirrorX: Boolean(transform.mirrorX),
+    mirrorY: Boolean(transform.mirrorY),
+    rotation: normalizeRotation(Number.isFinite(transform.rotation) ? roundFine(transform.rotation) : 0),
+  };
+}
+
+/**
+ * Sanitises a transform for COMMIT/persistence: clamp + quantise to 0.01 so the
+ * saved project file stays tidy. Use clampWorkspaceItemTransform for live frames.
+ */
 export function normalizeWorkspaceItemTransform(transform: WorkspaceItemTransform): WorkspaceItemTransform {
   return {
     x: roundCss(Number.isFinite(transform.x) ? transform.x : 0),
@@ -107,6 +133,38 @@ export function normalizeWorkspaceItemTransform(transform: WorkspaceItemTransfor
     mirrorX: Boolean(transform.mirrorX),
     mirrorY: Boolean(transform.mirrorY),
     rotation: normalizeRotation(Number.isFinite(transform.rotation) ? roundCss(transform.rotation) : 0),
+  };
+}
+
+/**
+ * Maps a point in the item's local box space (origin = top-left, range
+ * [0,W]×[0,H]) to a world-space offset from the item's (x,y) origin, applying
+ * BOTH the mirror reflection and the rotation exactly as CSS renders them:
+ *   worldOffset = R(rotation) · M · localOffset      (M = mirror diagonal)
+ * This is the single source of truth for "where does a corner/anchor land".
+ */
+export function localOffsetToWorld(
+  offset: Point,
+  transform: Pick<WorkspaceItemTransform, "rotation" | "mirrorX" | "mirrorY">,
+): Point {
+  const mirroredX = transform.mirrorX ? -offset.x : offset.x;
+  const mirroredY = transform.mirrorY ? -offset.y : offset.y;
+  return rotatePoint({ x: mirroredX, y: mirroredY }, transform.rotation);
+}
+
+/**
+ * Inverse of localOffsetToWorld: given a world-space offset from the item origin,
+ * recover the local box coordinates. Mirror is its own inverse, so:
+ *   localOffset = M · R(-rotation) · worldOffset
+ */
+export function worldOffsetToLocal(
+  offset: Point,
+  transform: Pick<WorkspaceItemTransform, "rotation" | "mirrorX" | "mirrorY">,
+): Point {
+  const unrotated = rotatePoint(offset, -transform.rotation);
+  return {
+    x: transform.mirrorX ? -unrotated.x : unrotated.x,
+    y: transform.mirrorY ? -unrotated.y : unrotated.y,
   };
 }
 
@@ -145,12 +203,13 @@ export function scaleWorkspaceItemTransformFromAnchor(
   const nextScaleX = Math.max(0.01, transform.scaleX * scaleX);
   const nextScaleY = Math.max(0.01, transform.scaleY * scaleY);
 
-  // Convert the screen-space anchor back to the object's local pixel space so we
-  // can re-apply it correctly after the new scale (screen-space scaling breaks for
-  // rotated objects because local X/Y no longer align with screen X/Y).
-  const localAnchorStart = rotatePoint(
+  // Convert the screen-space anchor back to the object's local box space so we can
+  // re-apply it correctly after the new scale. Uses worldOffsetToLocal so it stays
+  // correct for rotated AND mirrored objects (mirror flips which local edge the
+  // anchor maps to — without this, scaling a mirrored object jumps to the wrong side).
+  const localAnchorStart = worldOffsetToLocal(
     { x: anchor.x - transform.x, y: anchor.y - transform.y },
-    -transform.rotation,
+    transform,
   );
   const startWidth = frame.width * transform.scaleX;
   const startHeight = frame.height * transform.scaleY;
@@ -161,15 +220,59 @@ export function scaleWorkspaceItemTransformFromAnchor(
     x: anchorNormX * frame.width * nextScaleX,
     y: anchorNormY * frame.height * nextScaleY,
   };
-  const rotatedAnchorNew = rotatePoint(localAnchorNew, transform.rotation);
+  const worldAnchorNew = localOffsetToWorld(localAnchorNew, transform);
 
-  return normalizeWorkspaceItemTransform({
+  return clampWorkspaceItemTransform({
     ...transform,
-    x: anchor.x - rotatedAnchorNew.x,
-    y: anchor.y - rotatedAnchorNew.y,
+    x: anchor.x - worldAnchorNew.x,
+    y: anchor.y - worldAnchorNew.y,
     scaleX: nextScaleX,
     scaleY: nextScaleY,
   });
+}
+
+/**
+ * Aspect-ratio snap for a single-axis (side handle) resize. The item is at its
+ * natural/original proportions when scaleX === scaleY (visual aspect === frame
+ * aspect). While dragging one axis, if the resulting dimension comes within
+ * `thresholdScreenPx` (screen px, zoom-corrected) of that natural value, snap the
+ * dragged axis's scale factor so the proportions lock exactly.
+ *
+ * Returns the (possibly adjusted) scale factors plus whether a snap occurred.
+ */
+export function snapScaleFactorToAspect(params: {
+  axis: "x" | "y";
+  startScaleX: number;
+  startScaleY: number;
+  scaleFactorX: number;
+  scaleFactorY: number;
+  frame: WorkspaceItemFrame;
+  zoom: number;
+  thresholdScreenPx?: number;
+}): { scaleFactorX: number; scaleFactorY: number; snapped: boolean } {
+  const {
+    axis, startScaleX, startScaleY, scaleFactorX, scaleFactorY, frame, zoom,
+    thresholdScreenPx = ASPECT_RATIO_SNAP_SCREEN_PX,
+  } = params;
+  const prelimScaleX = Math.max(0.01, startScaleX * scaleFactorX);
+  const prelimScaleY = Math.max(0.01, startScaleY * scaleFactorY);
+  const snapWorkspacePx = thresholdScreenPx / Math.max(0.01, zoom);
+
+  if (axis === "x") {
+    // Natural proportions: scaleX should equal the (fixed) scaleY.
+    const targetScaleX = prelimScaleY;
+    const widthDelta = frame.width * (prelimScaleX - targetScaleX);
+    if (Math.abs(widthDelta) <= snapWorkspacePx) {
+      return { scaleFactorX: targetScaleX / Math.max(0.001, startScaleX), scaleFactorY, snapped: true };
+    }
+  } else {
+    const targetScaleY = prelimScaleX;
+    const heightDelta = frame.height * (prelimScaleY - targetScaleY);
+    if (Math.abs(heightDelta) <= snapWorkspacePx) {
+      return { scaleFactorX, scaleFactorY: targetScaleY / Math.max(0.001, startScaleY), snapped: true };
+    }
+  }
+  return { scaleFactorX, scaleFactorY, snapped: false };
 }
 
 export function rotateWorkspaceItemTransformAroundPoint(
@@ -181,12 +284,13 @@ export function rotateWorkspaceItemTransformAroundPoint(
   const itemCenter = getWorkspaceItemCenter({ transform, frame });
   const nextCenter = addPoint(center, rotatePoint({ x: itemCenter.x - center.x, y: itemCenter.y - center.y }, degrees));
   const nextRotation = transform.rotation + degrees;
-  const nextCenterOffset = rotatePoint(
+  // Offset from the item origin to its centre under the NEW rotation, mirror-aware.
+  const nextCenterOffset = localOffsetToWorld(
     { x: (frame.width * transform.scaleX) / 2, y: (frame.height * transform.scaleY) / 2 },
-    nextRotation,
+    { ...transform, rotation: nextRotation },
   );
 
-  return normalizeWorkspaceItemTransform({
+  return clampWorkspaceItemTransform({
     ...transform,
     x: nextCenter.x - nextCenterOffset.x,
     y: nextCenter.y - nextCenterOffset.y,
@@ -264,7 +368,7 @@ function displayValueToInches(value: number, unit: MeasurementUnit): number {
 function getWorkspaceItemCenter({ transform, frame }: WorkspaceTransformableItem): Point {
   return addPoint(
     { x: transform.x, y: transform.y },
-    rotatePoint({ x: (frame.width * transform.scaleX) / 2, y: (frame.height * transform.scaleY) / 2 }, transform.rotation),
+    localOffsetToWorld({ x: (frame.width * transform.scaleX) / 2, y: (frame.height * transform.scaleY) / 2 }, transform),
   );
 }
 
@@ -275,9 +379,9 @@ function getWorkspaceItemCorners({ transform, frame }: WorkspaceTransformableIte
 
   return [
     topLeft,
-    addPoint(topLeft, rotatePoint({ x: width, y: 0 }, transform.rotation)),
-    addPoint(topLeft, rotatePoint({ x: width, y: height }, transform.rotation)),
-    addPoint(topLeft, rotatePoint({ x: 0, y: height }, transform.rotation)),
+    addPoint(topLeft, localOffsetToWorld({ x: width, y: 0 }, transform)),
+    addPoint(topLeft, localOffsetToWorld({ x: width, y: height }, transform)),
+    addPoint(topLeft, localOffsetToWorld({ x: 0, y: height }, transform)),
   ];
 }
 
@@ -301,6 +405,12 @@ function roundMeasurement(value: number): number {
 
 function roundCss(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+// Sub-pixel precision for live gestures: erases float noise (~1e-16) while staying
+// 10000× finer than commit rounding, so live tracking never visibly quantises.
+function roundFine(value: number): number {
+  return Math.round(value * 1e6) / 1e6;
 }
 
 function normalizeRotation(value: number): number {

@@ -1,16 +1,37 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type WorkspaceItemFrame,
+  type WorkspaceItemTransform,
   getWorkspaceSelectionBounds,
   getMatDimensionsInches,
   getMeasurementTicks,
   getViewportTransform,
   getWorkspaceItemTransform,
   inchesToDisplayValue,
+  localOffsetToWorld,
   normalizeWorkspaceItemTransform,
   rotateWorkspaceItemTransformAroundPoint,
   scaleWorkspaceItemTransformFromAnchor,
+  snapScaleFactorToAspect,
+  worldOffsetToLocal,
 } from "./workspace-utils";
+
+// Screen position of a normalised local box point (0..1, 0..1) under a transform,
+// matching exactly how CSS renders translate(x,y) rotate(θ) scale(±1,±1) with
+// transform-origin: top left.
+function worldPointOf(
+  transform: WorkspaceItemTransform,
+  frame: WorkspaceItemFrame,
+  normX: number,
+  normY: number,
+): { x: number; y: number } {
+  const offset = localOffsetToWorld(
+    { x: normX * frame.width * transform.scaleX, y: normY * frame.height * transform.scaleY },
+    transform,
+  );
+  return { x: transform.x + offset.x, y: transform.y + offset.y };
+}
 
 describe("workspace measurement helpers", () => {
   it("resolves known Cricut Joy mat presets to workpiece sizes in inches", () => {
@@ -145,5 +166,85 @@ describe("workspace measurement helpers", () => {
     expect(result.scaleY).toBeCloseTo(1);
     expect(anchorX).toBeCloseTo(-50);
     expect(anchorY).toBeCloseTo(100);
+  });
+
+  it("round-trips local↔world offsets including mirror and rotation", () => {
+    const transform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 37, mirrorX: true, mirrorY: false };
+    const original = { x: 42, y: -17 };
+    const roundTripped = worldOffsetToLocal(localOffsetToWorld(original, transform), transform);
+    expect(roundTripped.x).toBeCloseTo(original.x);
+    expect(roundTripped.y).toBeCloseTo(original.y);
+  });
+
+  it("keeps the grabbed edge pinned when scaling a horizontally mirrored object", () => {
+    // Mirrored object: its visual LEFT edge corresponds to local x = width.
+    // Dragging the east handle fixes local x = 0 (direction[0] === 1), which for a
+    // mirrored item is the visual RIGHT edge. Whichever edge we pin must stay put.
+    const frame = { width: 100, height: 60 };
+    const start: WorkspaceItemTransform = { x: 200, y: 50, scaleX: 1, scaleY: 1, rotation: 0, mirrorX: true, mirrorY: false };
+
+    // Pin the local-left edge (normX 0) at its current world position, then scale X up.
+    const anchor = worldPointOf(start, frame, 0, 0.5);
+    const scaled = scaleWorkspaceItemTransformFromAnchor(start, frame, anchor, 2, 1);
+
+    // The same normalised local point must still land on the original anchor.
+    const after = worldPointOf(scaled, frame, 0, 0.5);
+    expect(after.x).toBeCloseTo(anchor.x);
+    expect(after.y).toBeCloseTo(anchor.y);
+    expect(scaled.scaleX).toBeCloseTo(2);
+    expect(scaled.mirrorX).toBe(true);
+  });
+
+  it("keeps the anchor fixed when scaling a mirrored, rotated object", () => {
+    const frame = { width: 80, height: 120 };
+    const start: WorkspaceItemTransform = { x: 10, y: 20, scaleX: 1.5, scaleY: 1, rotation: 33, mirrorX: true, mirrorY: true };
+    const anchor = worldPointOf(start, frame, 1, 0); // a specific corner
+    const scaled = scaleWorkspaceItemTransformFromAnchor(start, frame, anchor, 1.7, 0.6);
+    const after = worldPointOf(scaled, frame, 1, 0);
+    expect(after.x).toBeCloseTo(anchor.x);
+    expect(after.y).toBeCloseTo(anchor.y);
+  });
+
+  describe("snapScaleFactorToAspect", () => {
+    const frame = { width: 100, height: 100 };
+
+    it("snaps the X axis to natural proportions when within the threshold", () => {
+      // start undistorted (1:1); drag X to 1.05 → 5px from natural at zoom 1 (< 8px).
+      const result = snapScaleFactorToAspect({
+        axis: "x", startScaleX: 1, startScaleY: 1, scaleFactorX: 1.05, scaleFactorY: 1, frame, zoom: 1,
+      });
+      expect(result.snapped).toBe(true);
+      expect(result.scaleFactorX).toBeCloseTo(1); // snapped back to scaleY
+    });
+
+    it("does not snap when the dragged axis is well past the threshold", () => {
+      const result = snapScaleFactorToAspect({
+        axis: "x", startScaleX: 1, startScaleY: 1, scaleFactorX: 1.2, scaleFactorY: 1, frame, zoom: 1,
+      });
+      expect(result.snapped).toBe(false);
+      expect(result.scaleFactorX).toBe(1.2);
+    });
+
+    it("widens the snap window in workspace space when zoomed out", () => {
+      // 12px from natural: skipped at zoom 1, caught at zoom 0.5 (threshold → 16 workspace px).
+      const zoomedIn = snapScaleFactorToAspect({
+        axis: "x", startScaleX: 1, startScaleY: 1, scaleFactorX: 1.12, scaleFactorY: 1, frame, zoom: 1,
+      });
+      expect(zoomedIn.snapped).toBe(false);
+      const zoomedOut = snapScaleFactorToAspect({
+        axis: "x", startScaleX: 1, startScaleY: 1, scaleFactorX: 1.12, scaleFactorY: 1, frame, zoom: 0.5,
+      });
+      expect(zoomedOut.snapped).toBe(true);
+    });
+
+    it("snaps the Y axis toward the fixed X scale (already-distorted item)", () => {
+      // Item distorted to scaleX 2; drag Y near 2 → should lock to 2:1 → undistorted.
+      const result = snapScaleFactorToAspect({
+        axis: "y", startScaleX: 2, startScaleY: 1, scaleFactorX: 1, scaleFactorY: 1.97, frame, zoom: 1,
+      });
+      expect(result.snapped).toBe(true);
+      // nextScaleY = startScaleY * factor = 1 * 2 = 2 === scaleX
+      expect(result.scaleFactorY * 1).toBeCloseTo(2);
+    });
   });
 });
