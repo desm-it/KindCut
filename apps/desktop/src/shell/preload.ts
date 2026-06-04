@@ -84,6 +84,9 @@ const desktopApi = {
       ipcRenderer.invoke("library:save", input),
     delete: (filePath: string): Promise<void> => ipcRenderer.invoke("library:delete", filePath),
   },
+  system: {
+    getFonts: (): Promise<string[]> => ipcRenderer.invoke("system:fonts"),
+  },
   ai: {
     dalleGeneratePng: (input: {
       prompt: string; complexity: number; language: string; apiKey: string; imageModel: string;

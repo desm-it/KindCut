@@ -47,7 +47,9 @@ type RendererAction =
   | "edit-undo"
   | "edit-redo"
   | "edit-group"
-  | "edit-ungroup";
+  | "edit-ungroup"
+  | "edit-flip-x"
+  | "edit-flip-y";
 
 type ProjectSaveInput = {
   content: string;
@@ -248,6 +250,9 @@ async function showContextMenu(window: BrowserWindow): Promise<void> {
     { label: "Group", enabled: editState.canGroup, click: () => sendRendererAction("edit-group") },
     { label: "Ungroup", enabled: editState.canUngroup, click: () => sendRendererAction("edit-ungroup") },
     { type: "separator" },
+    { label: "Flip Horizontal", enabled: hasSelection, click: () => sendRendererAction("edit-flip-x") },
+    { label: "Flip Vertical", enabled: hasSelection, click: () => sendRendererAction("edit-flip-y") },
+    { type: "separator" },
     { label: "Select All", accelerator: "CmdOrCtrl+A", enabled: hasObjects, click: () => sendRendererAction("edit-select-all") },
   ]);
   contextMenu.popup({ window });
@@ -383,6 +388,17 @@ ipcMain.handle("library:save", async (_event, input: { name: string; svg: string
 
 ipcMain.handle("library:delete", async (_event, filePath: string): Promise<void> => {
   await fs.unlink(filePath);
+});
+
+ipcMain.handle("system:fonts", async (): Promise<string[]> => {
+  try {
+    // app.getSystemFonts() available in Electron 26+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fonts = await (app as any).getSystemFonts?.();
+    return Array.isArray(fonts) ? fonts : [];
+  } catch {
+    return [];
+  }
 });
 
 // ── AI silhouette: DALL-E 3 → PNG → Potrace → SVG ────────────────────────────
