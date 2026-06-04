@@ -72,6 +72,13 @@ export function getMatDimensionsInches(matPreset: string): MatDimensions {
   return MAT_DIMENSIONS_INCHES[matPreset] ?? { width: 4.5, height: 12 };
 }
 
+export type MatKind = "standard" | "card";
+
+/** Physical mat family for visuals: the card mat is blue, the rest are the green Standard mat. */
+export function getMatKind(matPreset: string): MatKind {
+  return matPreset === "joy-card" ? "card" : "standard";
+}
+
 export function inchesToDisplayValue(valueInInches: number, unit: MeasurementUnit): number {
   switch (unit) {
     case "cm":

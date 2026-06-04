@@ -46,6 +46,7 @@ import {
   type WorkspaceItemTransform,
   clampWorkspaceItemTransform,
   getMatDimensionsInches,
+  getMatKind,
   getMeasurementTicks,
   getViewportTransform,
   getWorkspaceItemTransform,
@@ -177,6 +178,140 @@ function SwatchPicker({ tools, selectedColor, onPick, language }: {
         })}
       </div>
     </div>
+  );
+}
+
+// Card-size guide rectangles (physical card blanks), drawn as dotted outlines on
+// the CardMat. Sizes in inches → workspace px via WORKSPACE_PIXELS_PER_INCH.
+const CARD_GUIDES = [
+  { w: 4.25 * WORKSPACE_PIXELS_PER_INCH, h: 5.5 * WORKSPACE_PIXELS_PER_INCH }, // 108 × 140 mm
+  { w: 3.5 * WORKSPACE_PIXELS_PER_INCH, h: 4.9 * WORKSPACE_PIXELS_PER_INCH },  // 89 × 124 mm
+];
+
+/**
+ * Decorative representation of the physical Cricut Joy mat, framing the paper.
+ * Purely visual (pointer-events:none); sits behind the paper inside the zoom/pan
+ * transform so it scales and moves with the workpiece. `width`/`height` are the
+ * paper's pixel size; the mat extends beyond it by fixed bands.
+ */
+function WorkspaceMat({ kind, width, height }: { kind: "standard" | "card"; width: number; height: number }) {
+  const SIDE = 33;
+  const TOP = kind === "card" ? 90 : 80;
+  const BOTTOM = kind === "card" ? 78 : 80;
+  const style = {
+    top: -TOP,
+    left: -SIDE,
+    width: width + SIDE * 2,
+    height: height + TOP + BOTTOM,
+  };
+  if (kind === "card") {
+    return (
+      <div className="workpiece-mat workpiece-mat--card" style={style} aria-hidden="true">
+        {/* Raised bands align with the paper column, not the full mat width */}
+        <div className="workpiece-mat__band workpiece-mat__band--top" style={{ height: TOP, left: SIDE, width }}>
+          <span className="workpiece-mat__arrow">▲</span>
+          <span className="workpiece-mat__label workpiece-mat__label--right">CardMat</span>
+        </div>
+        <div className="workpiece-mat__band workpiece-mat__band--bottom" style={{ height: BOTTOM, left: SIDE, width }} />
+      </div>
+    );
+  }
+  return (
+    <div className="workpiece-mat workpiece-mat--standard" style={style} aria-hidden="true">
+      {/* Labels align to the paper edges on the x-axis (inset by SIDE). */}
+      <span className="workpiece-mat__label workpiece-mat__label--right" style={{ top: (TOP - 20) / 2, right: SIDE }}>Standard</span>
+      <span className="workpiece-mat__label workpiece-mat__label--bottom-left" style={{ bottom: (BOTTOM - 20) / 2, left: SIDE }}>Standard</span>
+    </div>
+  );
+}
+
+/**
+ * CardMat card-size guides, drawn as dotted rectangles ON the paper (above it,
+ * below the design items). Anchored at the paper's top-left (0,0) corner — cards
+ * align to that corner — and nested from there.
+ */
+function WorkspaceCardGuides({ width, height }: { width: number; height: number }) {
+  return (
+    <div className="workpiece-card-guides" style={{ width, height }} aria-hidden="true">
+      {CARD_GUIDES.map((g, i) => (
+        <div
+          key={i}
+          className="workpiece-mat__card-guide"
+          style={{ width: g.w, height: g.h, left: 0, top: 0 }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Tiny mat illustration for the mat picker buttons. Green long/short show a gridded
+ * green middle; the blue card shows raised bands + a white middle. Both have a small
+ * white line where the mat text sits.
+ */
+function MatIcon({ variant }: { variant: "long" | "short" | "card" }) {
+  const height = variant === "long" ? 80 : variant === "short" ? 43 : 42;
+  if (variant === "card") {
+    return (
+      <span className="mat-icon mat-icon--card" style={{ height }} aria-hidden="true">
+        <span className="mat-icon__band mat-icon__band--top" />
+        <span className="mat-icon__paper" />
+        <span className="mat-icon__band mat-icon__band--bottom" />
+        <span className="mat-icon__line" />
+      </span>
+    );
+  }
+  return (
+    <span className={`mat-icon mat-icon--${variant}`} style={{ height }} aria-hidden="true">
+      <span className="mat-icon__grid" />
+      <span className="mat-icon__line" />
+    </span>
+  );
+}
+
+// Material categories → slicebug material IDs.
+const PAPER_MATERIAL_IDS = [218, 19, 211]; // light, medium, heavy
+const MATERIAL_INSERT_ID = 535;
+const MATERIAL_VINYL_ID = 20;
+
+function materialCategoryOf(id: number): "paper" | "insert" | "vinyl" {
+  if (id === MATERIAL_INSERT_ID) return "insert";
+  if (id === MATERIAL_VINYL_ID) return "vinyl";
+  return "paper";
+}
+
+/** Colored glyph for a material category. */
+function MaterialIcon({ kind }: { kind: "paper" | "insert" | "vinyl" }) {
+  return (
+    <span className={`material-icon material-icon--${kind}`} aria-hidden="true">
+      {kind === "paper" && (
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 3h7l3 3v11H5z"/><path d="M12 3v3h3"/></svg>
+      )}
+      {kind === "insert" && (
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 6 C8 4.8 5.5 4.8 3.5 5.5 L3.5 14.5 C5.5 13.8 8 13.8 10 15"/><path d="M10 6 C12 4.8 14.5 4.8 16.5 5.5 L16.5 14.5 C14.5 13.8 12 13.8 10 15"/></svg>
+      )}
+      {kind === "vinyl" && (
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <g transform="rotate(-45 10 10)">
+            <path d="M6 6 H12.5"/>
+            <path d="M6 14 H12.5"/>
+            <path d="M12.5 6 A2 4 0 0 1 12.5 14"/>
+            <ellipse cx="6" cy="10" rx="2" ry="4"/>
+            <ellipse cx="6" cy="10" rx="0.8" ry="1.7"/>
+          </g>
+        </svg>
+      )}
+    </span>
+  );
+}
+
+/** Stacked-sheet thickness glyph for a paper weight. */
+function WeightIcon({ level }: { level: "light" | "medium" | "heavy" }) {
+  const layers = level === "light" ? 1 : level === "medium" ? 2 : 3;
+  return (
+    <span className="weight-icon" aria-hidden="true">
+      {Array.from({ length: layers }).map((_, i) => <span key={i} className="weight-icon__layer" />)}
+    </span>
   );
 }
 
@@ -1103,11 +1238,14 @@ export function DesignWorkspace({
               className="workpiece-transform"
               style={{ transform: getViewportTransform({ zoom, pan }) }}
             >
+              <WorkspaceMat kind={getMatKind(selectedMatPreset)} width={workpieceWidth} height={workpieceHeight} />
               <div
                 className="workpiece-paper"
                 style={{
                   width: workpieceWidth,
                   height: workpieceHeight,
+                  // Card stock has square corners; the standard mat keeps the soft radius.
+                  borderRadius: getMatKind(selectedMatPreset) === "card" ? 0 : undefined,
                   backgroundColor: paperColor,
                   backgroundImage: "linear-gradient(rgba(127,96,66,0.08) 1px,transparent 1px),linear-gradient(90deg,rgba(127,96,66,0.08) 1px,transparent 1px)",
                   ...(() => {
@@ -1127,6 +1265,9 @@ export function DesignWorkspace({
                   </div>
                 ) : null}
               </div>
+              {getMatKind(selectedMatPreset) === "card" ? (
+                <WorkspaceCardGuides width={workpieceWidth} height={workpieceHeight} />
+              ) : null}
               <div
                 className="workspace-image-layer"
                 style={{ width: workpieceWidth, height: workpieceHeight }}
@@ -1233,17 +1374,76 @@ export function DesignWorkspace({
                 <>
                   <p className="drawer-section__title">{nl ? "Werkstuk" : "Workpiece"}</p>
                   <div className="object-settings">
-                    <div className="object-settings__row object-settings__row--first">
-                      <label className="object-settings__label" htmlFor="wp-material">{nl ? "Materiaal" : "Material"}</label>
-                      <select id="wp-material" className="object-settings__select" value={selectedMaterialId} onChange={(e) => onMaterialChange(Number(e.target.value))}>
-                        {MATERIAL_OPTIONS.map((m) => <option key={m.id} value={m.id}>{getMaterialName(m.id, language) ?? m.name}</option>)}
-                      </select>
+                    <div className="object-settings__row object-settings__row--mat object-settings__row--first">
+                      <label className="object-settings__label">{nl ? "Materiaal" : "Material"}</label>
+                      <div className="mat-picker" role="group">
+                        {([
+                          { key: "paper" as const, label: nl ? "Papier" : "Paper", defaultId: 218 },
+                          { key: "insert" as const, label: nl ? "Inlegkaart" : "Insert card", defaultId: MATERIAL_INSERT_ID },
+                          { key: "vinyl" as const, label: "Vinyl", defaultId: MATERIAL_VINYL_ID },
+                        ]).map((c) => {
+                          const active = materialCategoryOf(selectedMaterialId) === c.key;
+                          return (
+                            <button
+                              key={c.key}
+                              type="button"
+                              className={`material-btn${active ? " material-btn--active" : ""}`}
+                              onClick={() => onMaterialChange(c.key === "paper" && PAPER_MATERIAL_IDS.includes(selectedMaterialId) ? selectedMaterialId : c.defaultId)}
+                              aria-pressed={active}
+                              title={c.label}
+                            >
+                              <MaterialIcon kind={c.key} />
+                              <span className="mat-btn__label">{c.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {materialCategoryOf(selectedMaterialId) === "paper" ? (
+                        <div className="weight-picker">
+                          <span className="weight-picker__caption">{nl ? "Dikte" : "Weight"}</span>
+                          <div className="weight-seg" role="group">
+                            {([
+                              { id: 218, label: nl ? "Licht" : "Light", level: "light" as const },
+                              { id: 19, label: nl ? "Middel" : "Medium", level: "medium" as const },
+                              { id: 211, label: nl ? "Zwaar" : "Heavy", level: "heavy" as const },
+                            ]).map((w) => (
+                              <button
+                                key={w.id}
+                                type="button"
+                                className={`weight-seg__btn${selectedMaterialId === w.id ? " weight-seg__btn--active" : ""}`}
+                                onClick={() => onMaterialChange(w.id)}
+                                aria-pressed={selectedMaterialId === w.id}
+                                title={w.label}
+                              >
+                                <WeightIcon level={w.level} />
+                                <span>{w.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="object-settings__row">
-                      <label className="object-settings__label" htmlFor="wp-mat">{nl ? "Mat" : "Mat"}</label>
-                      <select id="wp-mat" className="object-settings__select" value={selectedMatPreset} onChange={(e) => onMatChange(e.target.value)}>
-                        {MAT_PRESETS.map((m) => <option key={m.id} value={m.id}>{getMatName(m.id, language) ?? m.name}</option>)}
-                      </select>
+                    <div className="object-settings__row object-settings__row--mat">
+                      <label className="object-settings__label">{nl ? "Mat" : "Mat"}</label>
+                      <div className="mat-picker" role="group">
+                        {([
+                          { id: "joy-standard", variant: "long" as const, label: nl ? "Lang" : "Long" },
+                          { id: "joy-standard-short", variant: "short" as const, label: nl ? "Kort" : "Short" },
+                          { id: "joy-card", variant: "card" as const, label: nl ? "Kaart" : "Card" },
+                        ]).map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            className={`mat-btn${selectedMatPreset === m.id ? " mat-btn--active" : ""}`}
+                            onClick={() => onMatChange(m.id)}
+                            aria-pressed={selectedMatPreset === m.id}
+                            title={getMatName(m.id, language) ?? m.id}
+                          >
+                            <span className="mat-btn__icon"><MatIcon variant={m.variant} /></span>
+                            <span className="mat-btn__label">{m.label}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
