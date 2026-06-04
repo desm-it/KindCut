@@ -35,6 +35,7 @@ export function WorkspaceToolbar({
   canGroup,
   canUngroup,
   canFlip,
+  canReorder,
   projectSaving,
   projectOpening,
   onOpen,
@@ -47,6 +48,8 @@ export function WorkspaceToolbar({
   onUngroup,
   onFlipX,
   onFlipY,
+  onBringForward,
+  onSendBackward,
 }: {
   language: Language;
   canCopy: boolean;
@@ -56,6 +59,7 @@ export function WorkspaceToolbar({
   canGroup: boolean;
   canUngroup: boolean;
   canFlip: boolean;
+  canReorder: boolean;
   projectSaving: boolean;
   projectOpening: boolean;
   onOpen: () => void;
@@ -66,6 +70,8 @@ export function WorkspaceToolbar({
   onDelete: () => boolean;
   onGroup: () => boolean;
   onUngroup: () => boolean;
+  onBringForward: () => boolean;
+  onSendBackward: () => boolean;
   onFlipX: () => boolean;
   onFlipY: () => boolean;
 }) {
@@ -163,6 +169,23 @@ export function WorkspaceToolbar({
           label={nl ? "Spiegelen verticaal" : "Flip vertical"}
           onClick={onFlipY}
           disabled={!canFlip}
+        />
+      </div>
+      <div className="toolbar-sep" aria-hidden="true" />
+      <div className="toolbar-group">
+        {/* Bring forward — stacked squares, front one raised */}
+        <ToolbarBtn
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="3" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/><path d="M3 8.5v6.5a1.5 1.5 0 0 0 1.5 1.5H11"/></svg>}
+          label={nl ? "Naar voren" : "Bring forward"}
+          onClick={onBringForward}
+          disabled={!canReorder}
+        />
+        {/* Send backward — stacked squares, back one lowered */}
+        <ToolbarBtn
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5h6.5A1.5 1.5 0 0 1 17 6.5V13"/><rect x="3" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/></svg>}
+          label={nl ? "Naar achteren" : "Send backward"}
+          onClick={onSendBackward}
+          disabled={!canReorder}
         />
       </div>
     </nav>

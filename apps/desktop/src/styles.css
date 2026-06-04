@@ -2626,6 +2626,16 @@ a {
 .workspace-item-list__row {
   display: flex;
   flex-direction: column;
+  border-radius: 7px;
+}
+
+/* Drag-to-reorder feedback */
+.workspace-item-list__row--dragging {
+  opacity: 0.4;
+}
+
+.workspace-item-list__row--dragover {
+  box-shadow: inset 0 2px 0 0 #7a5233;
 }
 
 .workspace-item-list__item {
@@ -3088,7 +3098,7 @@ a {
   min-height: 0;
   padding: 0;
   border: none;
-  border-radius: 0;
+  border-radius: 10px;
   background: none;
   cursor: pointer;
   flex-shrink: 0;
@@ -3114,9 +3124,13 @@ a {
   opacity: 0;
 }
 
+/* Same soft rounded-tint hover as the object-settings pen hexes (.pen-hex-btn) —
+   no white box, no global-button shadow bleed. */
 .pen-hex:hover {
+  background: rgba(121, 82, 51, 0.07);
   transform: none;
-  filter: brightness(0.97);
+  box-shadow: none;
+  filter: none;
 }
 
 .pen-hex--add {
@@ -3124,11 +3138,11 @@ a {
   justify-content: center;
 }
 
-/* Override the global button:hover dark-brown fill for the add hex. */
 .pen-hex--add:hover:not(:disabled) {
-  background: none;
+  background: rgba(121, 82, 51, 0.07);
   transform: none;
-  filter: brightness(0.97);
+  box-shadow: none;
+  filter: none;
 }
 
 /* Small remove circle, top-right, shown on hover of the hex. */

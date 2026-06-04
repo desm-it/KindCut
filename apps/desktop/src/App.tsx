@@ -118,7 +118,11 @@ type DesktopActionPayload = {
     | "edit-group"
     | "edit-ungroup"
     | "edit-flip-x"
-    | "edit-flip-y";
+    | "edit-flip-y"
+    | "edit-bring-forward"
+    | "edit-send-backward"
+    | "edit-bring-to-front"
+    | "edit-send-to-back";
   value?: string;
 };
 
@@ -503,6 +507,49 @@ export function App() {
     setImportedPlan(null);
     setCutSession(null);
     return true;
+  }
+
+  // ── Layer order ───────────────────────────────────────────────────────────
+  // The array order IS the z-order: index 0 = back/bottom, last = front/top.
+  // The Layers pane shows it reversed (front on top), so reorder math is done in
+  // that reversed "display" space and flipped back to the stored array.
+
+  type LayerMove = "forward" | "backward" | "front" | "back";
+
+  function moveLayer(id: string, mode: LayerMove): boolean {
+    const display = [...importedSvgs].reverse();
+    const idx = display.findIndex((item) => item.id === id);
+    if (idx < 0) return false;
+    const target = mode === "front" ? 0 : mode === "back" ? display.length - 1 : mode === "forward" ? idx - 1 : idx + 1;
+    const clamped = Math.max(0, Math.min(display.length - 1, target));
+    if (clamped === idx) return false;
+    const [item] = display.splice(idx, 1);
+    display.splice(clamped, 0, item!);
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs([...display].reverse());
+    setImportedPlan(null);
+    return true;
+  }
+
+  // Move the (single) selected layer; used by toolbar + right-click menu.
+  function handleMoveSelectedLayer(mode: LayerMove): boolean {
+    const id = selectedSvgId ?? (selectedSvgIds.length === 1 ? selectedSvgIds[0] : null);
+    return id ? moveLayer(id, mode) : false;
+  }
+
+  // Drag-to-reorder in the Layers pane: drop `draggedId` onto `targetId`'s row.
+  function handleReorderLayerToTarget(draggedId: string, targetId: string) {
+    if (draggedId === targetId) return;
+    const display = [...importedSvgs].reverse();
+    const from = display.findIndex((item) => item.id === draggedId);
+    const to = display.findIndex((item) => item.id === targetId);
+    if (from < 0 || to < 0) return;
+    const [item] = display.splice(from, 1);
+    const targetIdx = display.findIndex((entry) => entry.id === targetId);
+    display.splice(from < to ? targetIdx + 1 : targetIdx, 0, item!);
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs([...display].reverse());
+    setImportedPlan(null);
   }
 
   function handleGroupSvgs(): boolean {
@@ -920,6 +967,18 @@ export function App() {
       case "edit-flip-y":
         handleFlipY();
         break;
+      case "edit-bring-forward":
+        handleMoveSelectedLayer("forward");
+        break;
+      case "edit-send-backward":
+        handleMoveSelectedLayer("backward");
+        break;
+      case "edit-bring-to-front":
+        handleMoveSelectedLayer("front");
+        break;
+      case "edit-send-to-back":
+        handleMoveSelectedLayer("back");
+        break;
     }
   }
 
@@ -1221,6 +1280,7 @@ export function App() {
         hasInternalClipboard: workspaceClipboard.current.length > 0,
         canGroup: selCount >= 2,
         canUngroup: selectedObjects.some((item) => item.type === "group"),
+        canReorder: selCount === 1 && importedSvgs.length > 1,
       };
     });
   }, [importedSvgs, screen, selectedSvgIds]);
@@ -1324,6 +1384,8 @@ export function App() {
       onUngroupSvg={handleUngroupSvg}
       onFlipX={handleFlipX}
       onFlipY={handleFlipY}
+      onMoveLayer={handleMoveSelectedLayer}
+      onReorderLayerToTarget={handleReorderLayerToTarget}
       onRenameObject={handleRenameObject}
       onChangeObjectColor={handleChangeObjectColor}
       onUndoSvgs={handleUndoWorkspace}

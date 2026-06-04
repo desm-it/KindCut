@@ -34,6 +34,9 @@ export type WorkspaceEditState = {
   selectedObjectCount: number;
   objectCount: number;
   hasInternalClipboard: boolean;
+  canGroup: boolean;
+  canUngroup: boolean;
+  canReorder: boolean;
 };
 
 const emptyEditState: WorkspaceEditState = {
@@ -41,6 +44,9 @@ const emptyEditState: WorkspaceEditState = {
   selectedObjectCount: 0,
   objectCount: 0,
   hasInternalClipboard: false,
+  canGroup: false,
+  canUngroup: false,
+  canReorder: false,
 };
 
 let editStateProvider: (() => WorkspaceEditState) | null = null;

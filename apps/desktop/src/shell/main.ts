@@ -49,7 +49,11 @@ type RendererAction =
   | "edit-group"
   | "edit-ungroup"
   | "edit-flip-x"
-  | "edit-flip-y";
+  | "edit-flip-y"
+  | "edit-bring-forward"
+  | "edit-send-backward"
+  | "edit-bring-to-front"
+  | "edit-send-to-back";
 
 type ProjectSaveInput = {
   content: string;
@@ -68,6 +72,7 @@ type WorkspaceEditState = {
   hasInternalClipboard: boolean;
   canGroup: boolean;
   canUngroup: boolean;
+  canReorder: boolean;
 };
 
 const PROJECT_FILE_FILTER = { name: "KindCut Projects", extensions: ["kindcut"] };
@@ -249,6 +254,11 @@ async function showContextMenu(window: BrowserWindow): Promise<void> {
     { type: "separator" },
     { label: "Group", enabled: editState.canGroup, click: () => sendRendererAction("edit-group") },
     { label: "Ungroup", enabled: editState.canUngroup, click: () => sendRendererAction("edit-ungroup") },
+    { type: "separator" },
+    { label: "Bring to Front", enabled: editState.canReorder, click: () => sendRendererAction("edit-bring-to-front") },
+    { label: "Bring Forward", enabled: editState.canReorder, click: () => sendRendererAction("edit-bring-forward") },
+    { label: "Send Backward", enabled: editState.canReorder, click: () => sendRendererAction("edit-send-backward") },
+    { label: "Send to Back", enabled: editState.canReorder, click: () => sendRendererAction("edit-send-to-back") },
     { type: "separator" },
     { label: "Flip Horizontal", enabled: hasSelection, click: () => sendRendererAction("edit-flip-x") },
     { label: "Flip Vertical", enabled: hasSelection, click: () => sendRendererAction("edit-flip-y") },

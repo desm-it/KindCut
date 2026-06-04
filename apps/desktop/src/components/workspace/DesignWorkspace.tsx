@@ -362,6 +362,8 @@ export function DesignWorkspace({
   onUngroupSvg,
   onFlipX,
   onFlipY,
+  onMoveLayer,
+  onReorderLayerToTarget,
   onRenameObject,
   onChangeObjectColor,
   onUndoSvgs,
@@ -426,6 +428,8 @@ export function DesignWorkspace({
   onUngroupSvg: () => boolean;
   onFlipX: () => boolean;
   onFlipY: () => boolean;
+  onMoveLayer: (mode: "forward" | "backward" | "front" | "back") => boolean;
+  onReorderLayerToTarget: (draggedId: string, targetId: string) => void;
   onRenameObject: (id: string, newName: string) => void;
   onChangeObjectColor: (id: string, color: string) => void;
   onUndoSvgs: () => boolean;
@@ -472,6 +476,8 @@ export function DesignWorkspace({
   }
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [dragLayerId, setDragLayerId] = useState<string | null>(null);
+  const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
   const pendingRenameRef = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const workpieceTransformRef = useRef<HTMLDivElement | null>(null);
@@ -555,6 +561,22 @@ export function DesignWorkspace({
     return Math.min(WORKSPACE_MAX_ZOOM, Math.max(WORKSPACE_MIN_ZOOM, nextZoom));
   }
 
+  // Zoom while keeping the world point under (cx, cy) — viewport-local pixels — fixed.
+  function zoomAroundPoint(nextZoomRaw: number, cx: number, cy: number) {
+    const nextZoom = clampZoom(nextZoomRaw);
+    if (nextZoom === zoom) return;
+    const worldX = (cx - pan.x) / zoom;
+    const worldY = (cy - pan.y) / zoom;
+    setZoom(nextZoom);
+    setPan({ x: cx - worldX * nextZoom, y: cy - worldY * nextZoom });
+  }
+
+  // Zoom buttons: anchor on the centre of the viewport, not the paper's top-left origin.
+  function zoomFromCenter(nextZoomRaw: number) {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    zoomAroundPoint(nextZoomRaw, (rect?.width ?? 0) / 2, (rect?.height ?? 0) / 2);
+  }
+
   function resetZoomToActualSize() {
     const rect = viewportRef.current?.getBoundingClientRect();
     const viewportWidth = rect?.width ?? workpieceWidth + WORKSPACE_STAGE_LEFT_OFFSET * 2;
@@ -570,14 +592,8 @@ export function DesignWorkspace({
     if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
       const sensitivity = event.deltaMode === 0 ? 0.01 : 0.005;
-      const nextZoom = clampZoom(zoom - event.deltaY * sensitivity);
       const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-      const cx = event.clientX - rect.left;
-      const cy = event.clientY - rect.top;
-      const worldX = (cx - pan.x) / zoom;
-      const worldY = (cy - pan.y) / zoom;
-      setZoom(nextZoom);
-      setPan({ x: cx - worldX * nextZoom, y: cy - worldY * nextZoom });
+      zoomAroundPoint(zoom - event.deltaY * sensitivity, event.clientX - rect.left, event.clientY - rect.top);
       return;
     }
     recentScrollRef.current = true;
@@ -1126,6 +1142,7 @@ export function DesignWorkspace({
           canGroup={selectedSvgIds.length >= 2}
           canUngroup={selectedGroup !== null}
           canFlip={selectedSvgIds.length > 0}
+          canReorder={selectedSvgIds.length === 1 && importedSvgs.length > 1}
           projectSaving={projectSaving}
           projectOpening={projectOpening}
           onOpen={onOpenProject}
@@ -1138,6 +1155,8 @@ export function DesignWorkspace({
           onUngroup={onUngroupSvg}
           onFlipX={onFlipX}
           onFlipY={onFlipY}
+          onBringForward={() => onMoveLayer("forward")}
+          onSendBackward={() => onMoveLayer("backward")}
         />
 
         <div className="design-topbar__controls no-drag">
@@ -1353,9 +1372,9 @@ export function DesignWorkspace({
             </div>
           </div>
           <div className="zoom-controls no-drag" aria-label={language === "nl" ? "Zoom" : "Zoom"}>
-            <button type="button" onClick={() => setZoom((current) => clampZoom(current - 0.1))}>−</button>
+            <button type="button" onClick={() => zoomFromCenter(zoom - 0.1)}>−</button>
             <button type="button" onClick={resetZoomToActualSize}>{Math.round(zoom * 100)}%</button>
-            <button type="button" onClick={() => setZoom((current) => clampZoom(current + 0.1))}>＋</button>
+            <button type="button" onClick={() => zoomFromCenter(zoom + 0.1)}>＋</button>
           </div>
         </section>
 
@@ -1680,12 +1699,27 @@ export function DesignWorkspace({
           {importedSvgs.length > 0 ? (
             <>
               <div className="workspace-item-list" aria-label={language === "nl" ? "Onderdelen in dit project" : "Items in this project"}>
-                {importedSvgs.map((item) => {
+                {/* Shown front-to-back (top of list = front layer), reverse of the array. */}
+                {[...importedSvgs].reverse().map((item) => {
                   const isSelected = selectedSvgIdSet.has(item.id);
                   const isExpanded = expandedGroups.has(item.id);
                   const isRenaming = renamingId === item.id;
                   return (
-                    <div key={item.id} className="workspace-item-list__row">
+                    <div
+                      key={item.id}
+                      className={`workspace-item-list__row${dragOverLayerId === item.id ? " workspace-item-list__row--dragover" : ""}${dragLayerId === item.id ? " workspace-item-list__row--dragging" : ""}`}
+                      draggable={!isRenaming}
+                      onDragStart={(e) => { setDragLayerId(item.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", item.id); }}
+                      onDragOver={(e) => { if (dragLayerId && dragLayerId !== item.id) { e.preventDefault(); setDragOverLayerId(item.id); } }}
+                      onDragLeave={() => setDragOverLayerId((cur) => (cur === item.id ? null : cur))}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (dragLayerId && dragLayerId !== item.id) onReorderLayerToTarget(dragLayerId, item.id);
+                        setDragLayerId(null);
+                        setDragOverLayerId(null);
+                      }}
+                      onDragEnd={() => { setDragLayerId(null); setDragOverLayerId(null); }}
+                    >
                       <div
                         className={`workspace-item-list__item${isSelected ? " workspace-item-list__item--selected" : ""}`}
                       >
