@@ -104,7 +104,9 @@ export function createWorkspaceShapeItem({
   const definition = getWorkspaceShapeDefinition(shapeKind);
   const label = language === "nl" ? definition.labelNl : definition.labelEn;
   const shape = buildWorkspaceShapePathObject(shapeKind);
-  return createWorkspaceObjectItem({
+  // Tighten the frame to the actual path bounds (same as imported SVGs) so the
+  // selection box hugs the shape instead of its nominal definition frame.
+  return computeSnugFrame(createWorkspaceObjectItem({
     id: `shape-${timestamp}-${index}`,
     type: "path",
     kind: "shape",
@@ -116,7 +118,7 @@ export function createWorkspaceShapeItem({
     paths: [shape.path],
     language,
     index,
-  });
+  }));
 }
 
 export function cloneWorkspaceSvgItems(items: WorkspaceSvgItem[]): WorkspaceSvgItem[] {
