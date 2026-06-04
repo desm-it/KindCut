@@ -11,8 +11,11 @@ import {
 import {
   type KindCutProjectFile,
   type WorkspaceTool,
+  DEFAULT_PAPER_COLOR,
   DEFAULT_TOOLS,
   buildProjectFile,
+  getBehindColor,
+  getPens,
   getSafeProjectFileName,
   parseProjectFile,
   serializeProjectFile,
@@ -168,10 +171,11 @@ export function App() {
   const [selectedMaterialId, setSelectedMaterialId] = useState(218);
   const [selectedMatPreset, setSelectedMatPreset] = useState("joy-standard");
   const [tools, setTools] = useState<WorkspaceTool[]>(DEFAULT_TOOLS);
+  const [paperColor, setPaperColor] = useState<string>(DEFAULT_PAPER_COLOR);
   const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>(() => loadMeasurementUnitPreference());
   const [importedPlan, setImportedPlan] = useState<SlicebugPlanResult | null>(null);
   const [importedPlanLoading, setImportedPlanLoading] = useState(false);
-  const [cutPreview, setCutPreview] = useState<{ plan: SlicebugPlanResult; svg: string; matPreset: string } | null>(null);
+  const [cutPreview, setCutPreview] = useState<{ plan: SlicebugPlanResult; svg: string; matPreset: string; paperColor: string } | null>(null);
   const [cutSession, setCutSession] = useState<CutSessionSnapshot | null>(null);
   const [cutBusy, setCutBusy] = useState(false);
   const [aiSettings, setAiSettings] = useState<AiProviderSettings>(() => loadAiSettings());
@@ -311,6 +315,8 @@ export function App() {
     setProjectMessage(null);
     setCurrentProjectPath(null);
     setCutSession(null);
+    setTools(DEFAULT_TOOLS);
+    setPaperColor(DEFAULT_PAPER_COLOR);
     enterWorkspace();
   }
 
@@ -377,6 +383,7 @@ export function App() {
       selectedMatPreset,
       measurementUnit,
       tools,
+      paperColor,
       importedSvg: null,
       importedSvgs: [],
       workspaceObjects: importedSvgs.map((item) => ({
@@ -402,6 +409,7 @@ export function App() {
     setSelectedMatPreset(projectFile.workspace.selectedMatPreset);
     setMeasurementUnit(projectFile.workspace.measurementUnit);
     setTools(projectFile.workspace.tools);
+    setPaperColor(projectFile.workspace.paperColor);
     saveMeasurementUnitPreference(projectFile.workspace.measurementUnit);
     setCurrentProjectPath(projectPath);
     setImportedPlan(null);
@@ -585,12 +593,15 @@ export function App() {
   }
 
   function handleAddWorkspaceShape(shapeKind: WorkspaceShapeKind) {
-    const item = createWorkspaceShapeItem({
-      shapeKind,
-      language,
-      index: importedSvgs.length,
-      timestamp: Date.now(),
-    });
+    const item = recolorItem(
+      createWorkspaceShapeItem({
+        shapeKind,
+        language,
+        index: importedSvgs.length,
+        timestamp: Date.now(),
+      }),
+      getBehindColor(tools),
+    );
     pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) => [...current, item]);
     setSelectedSvgId(item.id);
@@ -633,8 +644,10 @@ export function App() {
       item.transform.scaleX = scale;
       item.transform.scaleY = scale;
     }
+    // New artwork defaults to "Cut" — shown filled in the behind colour.
+    const cutItem = recolorItem(item, getBehindColor(tools));
     pushWorkspaceHistorySnapshot();
-    setImportedSvgs((current) => [...current, item]);
+    setImportedSvgs((current) => [...current, cutItem]);
     setSelectedSvgId(item.id);
     setSelectedSvgIds([item.id]);
     setImportedPlan(null);
@@ -759,6 +772,12 @@ export function App() {
     } satisfies WorkspaceSvgItem;
   }
 
+  // Recolour every path of an item to a single colour (used to make new artwork
+  // default to the "Cut" / behind colour).
+  function recolorItem(item: WorkspaceSvgItem, color: string): WorkspaceSvgItem {
+    return { ...item, paths: item.paths.map((p) => ({ ...p, stroke: color })) } as WorkspaceSvgItem;
+  }
+
   function handleAddText() {
     const defaultContent: WorkspaceTextContent = {
       text: language === "nl" ? "Tekst" : "Text",
@@ -770,7 +789,8 @@ export function App() {
       textAlign: "left",
       letterSpacing: 0,
       lineHeight: 1.25,
-      color: "#000000",
+      // New text defaults to the first pen — sentiments are written, not cut.
+      color: getPens(tools)[0]?.color ?? "#000000",
     };
     const item = createTextItem(defaultContent, importedSvgs.length);
     pushWorkspaceHistorySnapshot();
@@ -1056,6 +1076,7 @@ export function App() {
         plan: { ok: false, executable: "", inputSvgPath: "", outputPlanPath: "", stdout: "", stderr: "", message: "Slicebug not available", plan: null },
         svg,
         matPreset: selectedMatPreset,
+        paperColor,
       });
       return;
     }
@@ -1070,10 +1091,10 @@ export function App() {
         colorMap,
       });
       setImportedPlan(plan);
-      setCutPreview({ plan, svg, matPreset: selectedMatPreset });
+      setCutPreview({ plan, svg, matPreset: selectedMatPreset, paperColor });
     } catch (error) {
       const plan: SlicebugPlanResult = { ok: false, executable: "", inputSvgPath: "", outputPlanPath: "", stdout: "", stderr: "", message: error instanceof Error ? error.message : "Plan failed", plan: null };
-      setCutPreview({ plan, svg, matPreset: selectedMatPreset });
+      setCutPreview({ plan, svg, matPreset: selectedMatPreset, paperColor });
     } finally {
       setImportedPlanLoading(false);
     }
@@ -1282,6 +1303,8 @@ export function App() {
       onMatChange={setSelectedMatPreset}
       tools={tools}
       onToolsChange={setTools}
+      paperColor={paperColor}
+      onPaperColorChange={setPaperColor}
       onSvgFileChange={(event) => void handleSvgFileChange(event)}
       onAddShape={handleAddWorkspaceShape}
       onAddText={handleAddText}

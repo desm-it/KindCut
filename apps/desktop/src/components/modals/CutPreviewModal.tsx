@@ -15,7 +15,7 @@ export function CutPreviewModal({
   onStopCut,
 }: {
   language: Language;
-  preview: { plan: SlicebugPlanResult; svg: string; matPreset: string };
+  preview: { plan: SlicebugPlanResult; svg: string; matPreset: string; paperColor: string };
   cutBusy: boolean;
   cutSession: CutSessionSnapshot | null;
   onClose: () => void;
@@ -24,7 +24,7 @@ export function CutPreviewModal({
   onStopCut: () => void;
 }) {
   const nl = language === "nl";
-  const { plan, svg, matPreset } = preview;
+  const { plan, svg, matPreset, paperColor } = preview;
   const matDims = getMatDimensionsInches(matPreset);
   const aspectRatio = matDims.width / matDims.height;
   const previewH = 320;
@@ -53,7 +53,7 @@ export function CutPreviewModal({
           <div className="cut-modal__preview-area">
             <div
               className="cut-modal__mat"
-              style={{ width: previewW, height: previewH }}
+              style={{ width: previewW, height: previewH, backgroundColor: paperColor }}
               aria-label={nl ? "Matvoorbeeld" : "Mat preview"}
             >
               <img

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
+import type { ChangeEvent, MouseEvent, PointerEvent, ReactNode, WheelEvent } from "react";
 import Moveable from "react-moveable";
 import type {
   OnDrag,
@@ -16,7 +16,14 @@ import type {
   OnScaleStart,
 } from "react-moveable";
 import { APP_NAME } from "../../onboarding-copy";
-import type { WorkspaceTool } from "../../project-file";
+import {
+  type WorkspaceTool,
+  getBehindColor,
+  getPens,
+  nextPenColor,
+  withBehindColor,
+  withPens,
+} from "../../project-file";
 import type { WorkspaceSvgItem, WorkspaceTextContent } from "../../workspace-objects";
 import {
   type Language,
@@ -61,6 +68,118 @@ import { ImageLibraryPanel } from "../panels/ImageLibraryPanel";
 import { ShapeLibraryPanel } from "../panels/ShapeLibraryPanel";
 import { EmptyImportState } from "../screens/ImportPanel";
 
+// ── Small presentational helpers for the Card-colors / Pens / picker UI ───────
+
+function PaperIcon() {
+  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3"/></svg>;
+}
+function BehindIcon() {
+  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="2" width="9" height="9" rx="1.5"/><path d="M6 11v2.5A1.5 1.5 0 0 0 7.5 15H13a1.5 1.5 0 0 0 1.5-1.5V8A1.5 1.5 0 0 0 13 6.5h-2"/></svg>;
+}
+function ScissorsIcon() {
+  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="3.5" cy="4.5" r="1.8"/><circle cx="3.5" cy="11.5" r="1.8"/><path d="M5.2 5.6 14 11M5.2 10.4 14 5"/></svg>;
+}
+
+/**
+ * A pointy-top (Stabilo-style) hexagon swatch drawn as SVG so it can have softly
+ * rounded corners AND an inset 2px border with a 1px gap — matching the card-colour
+ * pickers — without changing the overall footprint.
+ */
+function HexShape({ color, add, warn }: { color?: string; add?: boolean; warn?: boolean }) {
+  const cx = 19;
+  const cy = 22;
+  const s = Math.sqrt(3) / 2;
+  const hex = (r: number) => {
+    const pts: Array<[number, number]> = [
+      [cx, cy - r], [cx + r * s, cy - r / 2], [cx + r * s, cy + r / 2],
+      [cx, cy + r], [cx - r * s, cy + r / 2], [cx - r * s, cy - r / 2],
+    ];
+    return pts.map(([x, y]) => `${Number(x.toFixed(2))},${Number(y.toFixed(2))}`).join(" ");
+  };
+  const borderColor = warn ? "#d9a300" : add ? "rgba(121,82,51,0.45)" : "rgba(121,82,51,0.4)";
+  return (
+    <svg className="pen-hex__svg" viewBox="0 0 38 44" width="38" height="44" aria-hidden="true">
+      {/* Outer border (2px), rounded joins; the transparent ring to the fill is the 1px gap */}
+      <polygon points={hex(20)} fill={add ? "rgba(121,82,51,0.07)" : "none"} stroke={borderColor} strokeWidth="2" strokeLinejoin="round" />
+      {!add && color && (
+        <polygon points={hex(17)} fill={color} stroke={color} strokeWidth="2" strokeLinejoin="round" />
+      )}
+      {add && <path d="M19 14.5v15M11.5 22h15" stroke="rgba(121,82,51,0.7)" strokeWidth="2" strokeLinecap="round" />}
+    </svg>
+  );
+}
+
+/** A labelled native colour picker styled as a swatch chip. */
+function ColorRow({ icon, label, color, onChange, title }: {
+  icon: ReactNode;
+  label?: string;
+  color: string;
+  onChange: (color: string) => void;
+  title?: string;
+}) {
+  return (
+    <label className="color-row" title={title}>
+      <span className="color-row__icon" aria-hidden="true">{icon}</span>
+      {label ? <span className="color-row__label">{label}</span> : null}
+      <span className="color-row__chip" style={{ backgroundColor: color }}>
+        <input type="color" value={color} onChange={(e) => onChange(e.target.value)} />
+      </span>
+    </label>
+  );
+}
+
+/**
+ * Per-object tool picker: a distinct Cut box (behind colour) on top, then the pens
+ * shown as selectable hexagons below — mirroring the workpiece pen palette.
+ * Picking sets the object's colour.
+ */
+function SwatchPicker({ tools, selectedColor, onPick, language }: {
+  tools: WorkspaceTool[];
+  selectedColor: string;
+  onPick: (color: string) => void;
+  language: Language;
+}) {
+  const nl = language === "nl";
+  const pens = getPens(tools);
+  const behind = getBehindColor(tools);
+  const sel = (selectedColor ?? "").toLowerCase();
+  const cutActive = behind.toLowerCase() === sel;
+  return (
+    <div className="tool-picker" role="group">
+      <button
+        type="button"
+        className={`swatch-btn${cutActive ? " swatch-btn--active" : ""}`}
+        onClick={() => onPick(behind)}
+        aria-pressed={cutActive}
+        title={nl ? "Snijden" : "Cut"}
+      >
+        <span className="swatch-btn__chip" style={{ backgroundColor: behind }} />
+        <span className="swatch-btn__icon" aria-hidden="true"><ScissorsIcon /></span>
+        <span className="swatch-btn__label">{nl ? "Snijden" : "Cut"}</span>
+      </button>
+
+      <p className="tool-picker__label">{nl ? "Pennen" : "Pens"}</p>
+      <div className="tool-picker__pens">
+        {pens.map((pen, i) => {
+          const active = pen.color.toLowerCase() === sel;
+          return (
+            <button
+              key={pen.id}
+              type="button"
+              className={`pen-hex-btn${active ? " pen-hex-btn--active" : ""}`}
+              onClick={() => onPick(pen.color)}
+              aria-pressed={active}
+              title={`${nl ? "Pen" : "Pen"} ${i + 1}`}
+            >
+              <HexShape color={pen.color} />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function DesignWorkspace({
   language,
   measurementUnit,
@@ -88,6 +207,8 @@ export function DesignWorkspace({
   onMatChange,
   tools,
   onToolsChange,
+  paperColor,
+  onPaperColorChange,
   onSvgFileChange,
   onAddShape,
   onAddText,
@@ -155,6 +276,8 @@ export function DesignWorkspace({
   onMatChange: (matPreset: string) => void;
   tools: WorkspaceTool[];
   onToolsChange: (tools: WorkspaceTool[]) => void;
+  paperColor: string;
+  onPaperColorChange: (color: string) => void;
   onSvgFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddShape: (shapeKind: WorkspaceShapeKind) => void;
   onSelectSvg: (id: string | null) => void;
@@ -751,6 +874,17 @@ export function DesignWorkspace({
     return fromCenter ? [0, 0] : [-(direction[0] ?? 0), -(direction[1] ?? 0)];
   }
 
+  // When a pen / behind colour changes, recolour every object currently using the
+  // old colour so the canvas stays WYSIWYG (a cut shape follows the behind colour, etc.).
+  function recolorMatchingObjects(oldColor: string, newColor: string) {
+    if (oldColor.toLowerCase() === newColor.toLowerCase()) return;
+    importedSvgs.forEach((obj) => {
+      if (obj.paths.some((p) => (p.stroke ?? "").toLowerCase() === oldColor.toLowerCase())) {
+        onChangeObjectColor(obj.id, newColor);
+      }
+    });
+  }
+
   function isCornerScaleDirection(direction: number[]): boolean {
     return (direction[0] ?? 0) !== 0 && (direction[1] ?? 0) !== 0;
   }
@@ -974,6 +1108,7 @@ export function DesignWorkspace({
                 style={{
                   width: workpieceWidth,
                   height: workpieceHeight,
+                  backgroundColor: paperColor,
                   backgroundImage: "linear-gradient(rgba(127,96,66,0.08) 1px,transparent 1px),linear-gradient(90deg,rgba(127,96,66,0.08) 1px,transparent 1px)",
                   ...(() => {
                     const gridPx = measurementUnit === "in"
@@ -1091,6 +1226,8 @@ export function DesignWorkspace({
             {(() => {
               const nl = language === "nl";
               const sel = selectedSvgId ? importedSvgs.find((x) => x.id === selectedSvgId) ?? null : null;
+              const pens = getPens(tools);
+              const behindColor = getBehindColor(tools);
 
               if (!sel) return (
                 <>
@@ -1110,82 +1247,126 @@ export function DesignWorkspace({
                     </div>
                   </div>
 
-                  <p className="drawer-section__title" style={{ marginTop: 16 }}>{nl ? "Gereedschappen" : "Tools"}</p>
-                  <div className="tool-list">
-                    {tools.map((tool, idx) => {
-                      const dupColor = tools.some((t, i) => i !== idx && t.color.toLowerCase() === tool.color.toLowerCase());
-                      return (
-                        <div key={tool.id} className="tool-list__item">
-                          <input
-                            type="color"
-                            className="tool-list__color"
-                            value={tool.color}
-                            onChange={(e) => {
-                              const newColor = e.target.value;
-                              onToolsChange(tools.map((t) => t.id === tool.id ? { ...t, color: newColor } : t));
-                              onChangeObjectColor !== undefined && importedSvgs.forEach((obj) => {
-                                if (obj.paths.some((p) => p.stroke.toLowerCase() === tool.color.toLowerCase())) {
-                                  onChangeObjectColor(obj.id, newColor);
-                                }
-                              });
-                            }}
-                            title={nl ? "Verander kleur" : "Change color"}
-                          />
-                          <select
-                            className="tool-list__type"
-                            value={tool.type}
-                            onChange={(e) => onToolsChange(tools.map((t) => t.id === tool.id ? { ...t, type: e.target.value as "pen" | "cut" } : t))}
-                          >
-                            <option value="pen">{nl ? "Pen" : "Pen"}</option>
-                            <option value="cut">{nl ? "Snijden" : "Cut"}</option>
-                          </select>
-                          {dupColor && <span className="tool-list__warn" title={nl ? "Dubbele kleur" : "Duplicate color"}>⚠</span>}
+                  <p className="drawer-section__title" style={{ marginTop: 16 }}>{t("colors.sectionTitle")}</p>
+                  <div className="color-rows">
+                    <ColorRow
+                      icon={<PaperIcon />}
+                      label={t("colors.paper")}
+                      color={paperColor}
+                      onChange={onPaperColorChange}
+                    />
+                    <ColorRow
+                      icon={<BehindIcon />}
+                      label={t("colors.behind")}
+                      color={behindColor}
+                      onChange={(c) => { recolorMatchingObjects(behindColor, c); onToolsChange(withBehindColor(tools, c)); }}
+                    />
+                  </div>
+
+                  <p className="drawer-section__title" style={{ marginTop: 16 }}>{t("pens.sectionTitle")}</p>
+                  {(() => {
+                    const clashing = pens.some(
+                      (p) => p.color.toLowerCase() === paperColor.toLowerCase() || p.color.toLowerCase() === behindColor.toLowerCase(),
+                    );
+                    // A pen is a duplicate if an EARLIER pen already uses its colour.
+                    const isDuplicatePen = (index: number) =>
+                      pens.some((p, j) => j < index && p.color.toLowerCase() === pens[index]!.color.toLowerCase());
+                    const hasDuplicatePens = pens.some((_, i) => isDuplicatePen(i));
+                    // Fix: drop later pens whose colour already appears earlier. Objects keep
+                    // their colour (identical to the kept pen), so they auto-map to the first one.
+                    const dedupePens = () => {
+                      const seen = new Set<string>();
+                      const deduped = pens.filter((p) => {
+                        const key = p.color.toLowerCase();
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                      });
+                      onToolsChange(withPens(tools, deduped));
+                    };
+                    return (
+                      <>
+                        <div className="pen-hexes">
+                          {pens.map((pen, index) => {
+                            const clash = pen.color.toLowerCase() === paperColor.toLowerCase() || pen.color.toLowerCase() === behindColor.toLowerCase() || isDuplicatePen(index);
+                            return (
+                              <span key={pen.id} className="pen-hex-wrap">
+                                <label
+                                  className="pen-hex"
+                                  title={nl ? "Penkleur wijzigen" : "Change pen color"}
+                                >
+                                  <HexShape color={pen.color} warn={clash} />
+                                  <input
+                                    type="color"
+                                    value={pen.color}
+                                    onChange={(e) => {
+                                      const c = e.target.value;
+                                      recolorMatchingObjects(pen.color, c);
+                                      onToolsChange(withPens(tools, pens.map((p) => (p.id === pen.id ? { ...p, color: c } : p))));
+                                    }}
+                                  />
+                                </label>
+                                {pens.length > 1 && (
+                                  <button
+                                    type="button"
+                                    className="pen-hex__remove"
+                                    aria-label={t("pens.remove")}
+                                    title={t("pens.remove")}
+                                    onClick={() => onToolsChange(withPens(tools, pens.filter((p) => p.id !== pen.id)))}
+                                  >
+                                    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+                                  </button>
+                                )}
+                              </span>
+                            );
+                          })}
                           <button
                             type="button"
-                            className="tool-list__delete"
-                            onClick={() => onToolsChange(tools.filter((t) => t.id !== tool.id))}
-                            aria-label={nl ? "Verwijder" : "Delete"}
+                            className="pen-hex pen-hex--add"
+                            aria-label={t("pens.add")}
+                            title={t("pens.add")}
+                            onClick={() => {
+                              // Next unused palette colour, also avoiding the paper/behind
+                              // colours so a fresh pen never triggers a warning.
+                              const color = nextPenColor([...pens.map((p) => p.color), paperColor, behindColor]);
+                              onToolsChange(withPens(tools, [...pens, { id: `pen-${Date.now()}`, color, type: "pen" }]));
+                            }}
                           >
-                            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M2 4h10M8 4V2.5h-2V4M3.5 4l.5 7.5h6l.5-7.5"/></svg>
+                            <HexShape add />
                           </button>
                         </div>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      className="tool-list__add"
-                      onClick={() => {
-                        const id = `tool-${Date.now()}`;
-                        onToolsChange([...tools, { id, color: "#000000", type: "pen" }]);
-                      }}
-                    >
-                      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M7 2v10M2 7h10"/></svg>
-                      {nl ? "Gereedschap toevoegen" : "Add tool"}
-                    </button>
-                  </div>
+                        {clashing && (
+                          <p className="pen-hex-warn">⚠ {nl ? "Een pen heeft dezelfde kleur als het papier of de kleur erachter." : "A pen is the same color as the paper or behind color."}</p>
+                        )}
+                        {hasDuplicatePens && (
+                          <p className="pen-hex-warn">
+                            ⚠ {t("warn.penDuplicate")}
+                            <button type="button" className="pen-hex-warn__fix" onClick={dedupePens}>
+                              {t("pens.fix")}
+                            </button>
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </>
               );
 
-              // Text object selected — show text controls + tool picker
+              // Text object selected — show text controls + cut/draw picker
               if (sel.textContent) {
                 const tc = sel.textContent;
-                const color = tc.color;
-                const matchedTool = tools.find((t) => t.color.toLowerCase() === color.toLowerCase()) ?? null;
                 return (
                   <>
                     <p className="drawer-section__title">{nl ? "Tekst" : "Text"}</p>
                     <div className="object-settings">
-                      <div className="object-settings__row">
-                        <label className="object-settings__label" htmlFor="txt-tool">{nl ? "Gereedschap" : "Tool"}</label>
-                        <select id="txt-tool" className="object-settings__select"
-                          value={matchedTool?.id ?? ""}
-                          onChange={(e) => { const p = tools.find((t) => t.id === e.target.value); if (p) onTextContentChange(sel.id, { color: p.color }); }}
-                        >
-                          {tools.map((t) => (
-                            <option key={t.id} value={t.id}>{t.color.toUpperCase()} — {t.type === "pen" ? "Pen" : (nl ? "Snijden" : "Cut")}</option>
-                          ))}
-                          {!matchedTool && <option value="">— {nl ? "Geen" : "None"} —</option>}
-                        </select>
+                      <div className="object-settings__row object-settings__row--swatches">
+                        <label className="object-settings__label">{t("object.tool")}</label>
+                        <SwatchPicker
+                          tools={tools}
+                          selectedColor={tc.color}
+                          onPick={(c) => onTextContentChange(sel.id, { color: c })}
+                          language={language}
+                        />
                       </div>
                       <div className="object-settings__row">
                         <label className="object-settings__label" htmlFor="txt-font">{nl ? "Lettertype" : "Font"}</label>
@@ -1272,39 +1453,22 @@ export function DesignWorkspace({
                 );
               }
 
-              // SVG/shape object selected — show name + tool picker
+              // SVG/shape object selected — show name + cut/draw picker
               const color = sel.paths[0]?.stroke ?? "#000000";
-              const matchedTool = tools.find((t) => t.color.toLowerCase() === color.toLowerCase()) ?? null;
-              const noToolWarning = !matchedTool;
               return (
                 <>
                   <p className="drawer-section__title">{nl ? "Geselecteerd" : "Selection"}</p>
                   <div className="object-settings">
                     <p className="object-settings__name">{sel.fileName}</p>
-                    <div className="object-settings__row">
-                      <label className="object-settings__label" htmlFor="obj-tool">{nl ? "Gereedschap" : "Tool"}</label>
-                      <select
-                        id="obj-tool"
-                        className="object-settings__select"
-                        value={matchedTool?.id ?? ""}
-                        onChange={(e) => {
-                          const picked = tools.find((t) => t.id === e.target.value);
-                          if (picked) onChangeObjectColor(sel.id, picked.color);
-                        }}
-                      >
-                        {tools.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.color.toUpperCase()} — {t.type === "pen" ? (nl ? "Pen" : "Pen") : (nl ? "Snijden" : "Cut")}
-                          </option>
-                        ))}
-                        {noToolWarning && <option value="">— {nl ? "Geen gereedschap" : "No tool"} —</option>}
-                      </select>
+                    <div className="object-settings__row object-settings__row--swatches">
+                      <label className="object-settings__label">{t("object.tool")}</label>
+                      <SwatchPicker
+                        tools={tools}
+                        selectedColor={color}
+                        onPick={(c) => onChangeObjectColor(sel.id, c)}
+                        language={language}
+                      />
                     </div>
-                    {noToolWarning && (
-                      <p className="object-settings__tool-warn">
-                        ⚠ {nl ? "Geen gereedschap voor kleur " : "No tool for color "}<code>{color.toUpperCase()}</code>
-                      </p>
-                    )}
                   </div>
                 </>
               );

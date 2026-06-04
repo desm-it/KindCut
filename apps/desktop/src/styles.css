@@ -2649,115 +2649,311 @@ a {
   cursor: default;
 }
 
-/* Tool list (workpiece settings panel) */
-.tool-list {
+/* ── Card colors + Pens (paper-colour model) ──────────────────────────────── */
+.color-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.color-row__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: rgba(121, 82, 51, 0.7);
+  flex-shrink: 0;
+}
+
+.color-row__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.color-row__label {
+  flex: 1;
+  font-size: 0.8rem;
+  color: #3d2400;
+}
+
+/* Colour chip wrapping a hidden native colour input */
+.color-row__chip {
+  position: relative;
+  width: 30px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(121, 82, 51, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.color-row__chip input[type="color"] {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  opacity: 0;
+}
+
+/* Pens as a row of Stabilo-style pointy-top hexagons */
+.pen-hexes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pen-hex-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Pointy-top hexagon rendered as SVG (HexShape) — rounded corners + inset border.
+   The SVG draws the fill/border; the element itself is transparent so the global
+   button:hover brown never shows. */
+.pen-hex {
+  position: relative;
+  display: inline-flex;
+  width: 38px;
+  height: 44px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: none;
+}
+
+.pen-hex__svg {
+  display: block;
+  width: 38px;
+  height: 44px;
+}
+
+/* The hidden native colour input fills the hex so a click opens the picker. */
+.pen-hex input[type="color"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.pen-hex:hover {
+  transform: none;
+  filter: brightness(0.97);
+}
+
+.pen-hex--add {
+  align-items: center;
+  justify-content: center;
+}
+
+/* Override the global button:hover dark-brown fill for the add hex. */
+.pen-hex--add:hover:not(:disabled) {
+  background: none;
+  transform: none;
+  filter: brightness(0.97);
+}
+
+/* Small remove circle, top-right, shown on hover of the hex. */
+.pen-hex__remove {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #c0503a;
+  color: #fff;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(61, 40, 24, 0.35);
+}
+
+.pen-hex-wrap:hover .pen-hex__remove,
+.pen-hex__remove:focus-visible {
+  display: flex;
+}
+
+.pen-hex__remove:hover:not(:disabled) {
+  background: #a23c28;
+  transform: none;
+  box-shadow: 0 1px 3px rgba(61, 40, 24, 0.35);
+}
+
+.pen-hex__remove svg {
+  width: 9px;
+  height: 9px;
+}
+
+.pen-hex-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: #b85c00;
+}
+
+.pen-hex-warn__fix {
+  min-height: 0;
+  padding: 2px 9px;
+  border: 1px solid rgba(184, 92, 0, 0.4);
+  border-radius: 999px;
+  background: rgba(184, 92, 0, 0.08);
+  color: #8a4500;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pen-hex-warn__fix:hover:not(:disabled) {
+  background: rgba(184, 92, 0, 0.18);
+  color: #6e3700;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ── Per-object Tool picker (Cut box + pens as hexes) ─────────────────────── */
+.object-settings__row--swatches {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.tool-picker {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.tool-list__item {
+/* The Cut box sits on its own line and only as wide as its content. */
+.tool-picker > .swatch-btn {
+  align-self: flex-start;
+}
+
+.tool-picker__label {
+  margin: 8px 0 2px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(121, 82, 51, 0.7);
+}
+
+.tool-picker__pens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* A pen hexagon as a selectable button. Selected = tinted rounded backdrop. */
+.pen-hex-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 3px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.pen-hex-btn:hover:not(:disabled) {
+  background: rgba(121, 82, 51, 0.07);
+  transform: none;
+  box-shadow: none;
+}
+
+.pen-hex-btn--active,
+.pen-hex-btn--active:hover:not(:disabled) {
+  background: rgba(122, 82, 51, 0.14);
+  box-shadow: 0 0 0 2px rgba(122, 82, 51, 0.3);
+  transform: none;
+}
+
+.swatch-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 0;
-}
-
-.tool-list__color {
-  width: 28px;
-  height: 28px;
-  padding: 2px;
-  border: 1px solid rgba(121, 82, 51, 0.25);
-  border-radius: 6px;
-  background: none;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.tool-list__color::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.tool-list__color::-webkit-color-swatch {
-  border: none;
-  border-radius: 3px;
-}
-
-.tool-list__type {
-  flex: 1;
-  height: 26px;
-  font-size: 0.75rem;
-  border: 1px solid rgba(121, 82, 51, 0.22);
-  border-radius: 6px;
+  padding: 4px 9px 4px 5px;
+  border: 1.5px solid rgba(121, 82, 51, 0.18);
+  border-radius: 999px;
   background: rgba(255, 255, 255, 0.6);
   color: #3d2400;
-  padding: 0 6px;
+  font-size: 0.76rem;
   cursor: pointer;
 }
 
-.tool-list__warn {
-  font-size: 0.82rem;
-  color: #b85c00;
+/* Override the global button:hover dark-brown fill so the chip + label stay readable. */
+.swatch-btn:hover:not(:disabled) {
+  border-color: rgba(121, 82, 51, 0.4);
+  background: rgba(121, 82, 51, 0.08);
+  color: #3d2400;
+  transform: none;
+  box-shadow: none;
+}
+
+.swatch-btn--active,
+.swatch-btn--active:hover:not(:disabled) {
+  border-color: #7a5233;
+  background: rgba(122, 82, 51, 0.12);
+  color: #3d2400;
+  box-shadow: 0 0 0 2px rgba(122, 82, 51, 0.15);
+}
+
+.swatch-btn__chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
   flex-shrink: 0;
 }
 
-.tool-list__delete {
+.swatch-btn__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: rgba(121, 82, 51, 0.5);
-  cursor: pointer;
-  flex-shrink: 0;
+  color: rgba(121, 82, 51, 0.75);
 }
 
-.tool-list__delete:hover {
-  background: rgba(192, 80, 58, 0.1);
-  color: #c0503a;
-}
-
-.tool-list__delete svg {
+.swatch-btn__icon svg {
   width: 14px;
   height: 14px;
 }
 
-.tool-list__add {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  padding: 5px 8px;
-  border: 1px dashed rgba(121, 82, 51, 0.3);
-  border-radius: 7px;
-  background: transparent;
-  color: rgba(121, 82, 51, 0.7);
-  font-size: 0.75rem;
-  cursor: pointer;
-  width: 100%;
-}
-
-.tool-list__add:hover {
-  background: rgba(121, 82, 51, 0.05);
-  border-color: rgba(121, 82, 51, 0.45);
-  color: #3d2400;
-}
-
-.tool-list__add svg {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
-/* Object settings tool warning */
-.object-settings__tool-warn {
-  margin: 4px 0 0;
-  font-size: 0.72rem;
-  color: #b85c00;
+.swatch-btn__label {
+  white-space: nowrap;
 }
 
 .object-settings__tool-warn code {

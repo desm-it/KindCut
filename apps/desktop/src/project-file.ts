@@ -12,10 +12,85 @@ export type WorkspaceTool = {
   type: "pen" | "cut";
 };
 
+// The Cricut Joy has a single blade, so there is exactly ONE cut tool and its
+// colour is the "behind" colour (what shows through the cuts). Pens are the only
+// freely-editable tools. Defaults are chosen so they never collide (white paper /
+// warm-red behind / black pen) — the collision warning stays silent on a fresh project.
+export const DEFAULT_PAPER_COLOR = "#fffdf9";
+// Behind colour defaults to the app's existing dark brown (the legacy default
+// object stroke) so fresh cut shapes match the established palette.
+export const DEFAULT_BEHIND_COLOR = "#8f4f2b";
+
 export const DEFAULT_TOOLS: WorkspaceTool[] = [
-  { id: "tool-1", color: "#000000", type: "cut" },
-  { id: "tool-2", color: "#ff0000", type: "cut" },
+  { id: "pen-1", color: "#000000", type: "pen" },
+  { id: "cut-1", color: DEFAULT_BEHIND_COLOR, type: "cut" },
 ];
+
+// Appealing Stabilo Point 88 fineliner-inspired colours, in pick order. Adding a
+// pen walks this list and uses the first colour not already in use, so a new pen
+// never lands on a colour that's already taken (which would warn instantly).
+export const PEN_PALETTE: string[] = [
+  "#2156a8", // blue
+  "#d81e2c", // red
+  "#009b48", // green
+  "#f5821f", // orange
+  "#e5007d", // magenta
+  "#6d4aa7", // violet
+  "#00a9a5", // turquoise
+  "#00a3e0", // azure
+  "#8bc53f", // lime
+  "#f7c600", // yellow
+  "#a8112a", // carmine
+  "#ef7fb1", // light pink
+  "#00778b", // petrol
+  "#6b4423", // brown
+  "#1d1d1b", // black
+];
+
+/** First palette colour not present in `usedColors` (case-insensitive). */
+export function nextPenColor(usedColors: string[]): string {
+  const used = new Set(usedColors.map((c) => c.toLowerCase()));
+  return PEN_PALETTE.find((c) => !used.has(c.toLowerCase())) ?? PEN_PALETTE[0] ?? "#000000";
+}
+
+// ── Tool selectors / mutators ────────────────────────────────────────────────
+// `tools` is kept as the single source of truth (one cut tool + N pens). These
+// helpers encapsulate that invariant so callers never have to know the cut tool
+// is "the behind colour".
+
+export function getPens(tools: WorkspaceTool[]): WorkspaceTool[] {
+  return tools.filter((tool) => tool.type === "pen");
+}
+
+export function getCutTool(tools: WorkspaceTool[]): WorkspaceTool {
+  return tools.find((tool) => tool.type === "cut") ?? { id: "cut-1", color: DEFAULT_BEHIND_COLOR, type: "cut" };
+}
+
+export function getBehindColor(tools: WorkspaceTool[]): string {
+  return getCutTool(tools).color;
+}
+
+/** Returns a new tools array with the cut tool's colour (= behind colour) replaced. */
+export function withBehindColor(tools: WorkspaceTool[], color: string): WorkspaceTool[] {
+  const cut = getCutTool(tools);
+  return [...getPens(tools), { ...cut, color }];
+}
+
+/** Returns a new tools array with the pen list replaced, keeping the single cut tool. */
+export function withPens(tools: WorkspaceTool[], pens: WorkspaceTool[]): WorkspaceTool[] {
+  return [...pens.map((pen) => ({ ...pen, type: "pen" as const })), getCutTool(tools)];
+}
+
+/** Coerces any tools array to the invariant: ≥1 pen + exactly one cut tool. */
+export function normalizeToolSet(tools: WorkspaceTool[]): WorkspaceTool[] {
+  const pens = getPens(tools);
+  const safePens = pens.length > 0 ? pens : [{ id: "pen-1", color: "#000000", type: "pen" as const }];
+  const firstCut = tools.find((tool) => tool.type === "cut");
+  const cut: WorkspaceTool = firstCut
+    ? { ...firstCut, type: "cut" }
+    : { id: "cut-1", color: DEFAULT_BEHIND_COLOR, type: "cut" };
+  return [...safePens, cut];
+}
 
 export type SavedImportedSvg = {
   id?: string;
@@ -51,6 +126,7 @@ export type KindCutProjectFile = {
     selectedMatPreset: string;
     measurementUnit: MeasurementUnit;
     tools: WorkspaceTool[];
+    paperColor: string;
   };
   importedSvgs: SavedImportedSvg[];
   selectedSvgId: string | null;
@@ -65,6 +141,7 @@ export function buildProjectFile(input: {
   selectedMatPreset: string;
   measurementUnit: MeasurementUnit;
   tools?: WorkspaceTool[];
+  paperColor?: string;
   importedSvg?: SavedImportedSvg | null;
   importedSvgs?: SavedImportedSvg[];
   workspaceObjects?: SavedWorkspaceObject[];
@@ -97,7 +174,8 @@ export function buildProjectFile(input: {
       selectedMaterialId: input.selectedMaterialId,
       selectedMatPreset: input.selectedMatPreset,
       measurementUnit: input.measurementUnit,
-      tools: input.tools ?? DEFAULT_TOOLS,
+      tools: normalizeToolSet(input.tools ?? DEFAULT_TOOLS),
+      paperColor: input.paperColor ?? DEFAULT_PAPER_COLOR,
     },
     importedSvgs: savedImportedSvgs,
     selectedSvgId,
@@ -167,6 +245,7 @@ export function parseProjectFile(content: string): KindCutProjectFile {
       selectedMatPreset,
       measurementUnit,
       tools: parseTools(workspace.tools),
+      paperColor: typeof workspace.paperColor === "string" && workspace.paperColor ? workspace.paperColor : DEFAULT_PAPER_COLOR,
     },
     importedSvgs,
     selectedSvgId,
@@ -386,7 +465,11 @@ function parseTools(value: unknown): WorkspaceTool[] {
       type: item.type,
     });
   }
-  return tools.length > 0 ? tools : DEFAULT_TOOLS;
+  if (tools.length === 0) return DEFAULT_TOOLS;
+  // Enforce the one-blade invariant: legacy projects could have multiple cut tools
+  // (the old default had two). Collapse to a single cut tool (first cut colour wins)
+  // and guarantee at least one pen.
+  return normalizeToolSet(tools);
 }
 
 export function getSafeProjectFileName(name: string): string {

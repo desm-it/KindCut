@@ -1,6 +1,61 @@
 import { describe, expect, it } from "vitest";
 
-import { buildProjectFile, parseProjectFile, serializeProjectFile } from "./project-file";
+import {
+  DEFAULT_BEHIND_COLOR,
+  DEFAULT_PAPER_COLOR,
+  PEN_PALETTE,
+  buildProjectFile,
+  getBehindColor,
+  getPens,
+  nextPenColor,
+  parseProjectFile,
+  serializeProjectFile,
+  withBehindColor,
+  withPens,
+} from "./project-file";
+
+describe("nextPenColor", () => {
+  it("returns the first palette colour when nothing is used", () => {
+    expect(nextPenColor([])).toBe(PEN_PALETTE[0]);
+  });
+
+  it("skips colours already in use (case-insensitive) and returns the next free one", () => {
+    expect(nextPenColor([PEN_PALETTE[0]!.toUpperCase()])).toBe(PEN_PALETTE[1]);
+    expect(nextPenColor([PEN_PALETTE[0]!, PEN_PALETTE[1]!])).toBe(PEN_PALETTE[2]);
+  });
+
+  it("never returns a colour that is already used by a pen, paper, or behind", () => {
+    const used = [PEN_PALETTE[0]!, "#fffdf9", DEFAULT_BEHIND_COLOR];
+    expect(used.map((c) => c.toLowerCase())).not.toContain(nextPenColor(used).toLowerCase());
+  });
+});
+
+describe("workspace tool helpers (one cut + N pens)", () => {
+  const tools = [
+    { id: "pen-1", color: "#000000", type: "pen" as const },
+    { id: "pen-2", color: "#1d4ed8", type: "pen" as const },
+    { id: "cut-1", color: "#e23b3b", type: "cut" as const },
+  ];
+
+  it("getPens returns only pens; getBehindColor returns the cut tool colour", () => {
+    expect(getPens(tools).map((t) => t.id)).toEqual(["pen-1", "pen-2"]);
+    expect(getBehindColor(tools)).toBe("#e23b3b");
+  });
+
+  it("withBehindColor replaces the cut colour and keeps exactly one cut tool", () => {
+    const next = withBehindColor(tools, "#00ff00");
+    expect(getBehindColor(next)).toBe("#00ff00");
+    expect(next.filter((t) => t.type === "cut")).toHaveLength(1);
+    expect(getPens(next)).toHaveLength(2);
+  });
+
+  it("withPens replaces the pen list and keeps the single cut tool", () => {
+    const next = withPens(tools, [{ id: "pen-x", color: "#abcdef", type: "pen" }]);
+    expect(getPens(next).map((t) => t.color)).toEqual(["#abcdef"]);
+    expect(next.filter((t) => t.type === "cut")).toHaveLength(1);
+    expect(getBehindColor(next)).toBe("#e23b3b");
+  });
+});
 
 describe("KindCut project files", () => {
   it("serializes a blank workspace with material, mat, and measurement choices", () => {
@@ -249,6 +304,60 @@ describe("KindCut project files", () => {
       },
     ]);
     expect(parsed.selectedSvgId).toBe("svg-1");
+  });
+
+  it("defaults a blank project to one pen + one cut tool and a white paper colour", () => {
+    const project = buildProjectFile({
+      name: "blank",
+      selectedMaterialId: 218,
+      selectedMatPreset: "joy-standard",
+      measurementUnit: "cm",
+    });
+    expect(getPens(project.workspace.tools)).toHaveLength(1);
+    expect(project.workspace.tools.filter((t) => t.type === "cut")).toHaveLength(1);
+    expect(getBehindColor(project.workspace.tools)).toBe(DEFAULT_BEHIND_COLOR);
+    expect(project.workspace.paperColor).toBe(DEFAULT_PAPER_COLOR);
+  });
+
+  it("migrates a legacy project with two cut tools down to a single cut tool + a pen, and defaults paper colour", () => {
+    const parsed = parseProjectFile(JSON.stringify({
+      format: "kindcut-project",
+      version: 1,
+      name: "legacy tools",
+      savedAt: "2026-01-01T00:00:00.000Z",
+      workspace: {
+        selectedMaterialId: 20,
+        selectedMatPreset: "joy-standard",
+        measurementUnit: "cm",
+        tools: [
+          { id: "tool-1", color: "#000000", type: "cut" },
+          { id: "tool-2", color: "#ff0000", type: "cut" },
+        ],
+      },
+    }));
+    const cuts = parsed.workspace.tools.filter((t) => t.type === "cut");
+    expect(cuts).toHaveLength(1);
+    expect(cuts[0]?.color).toBe("#000000"); // first cut colour wins
+    expect(getPens(parsed.workspace.tools).length).toBeGreaterThanOrEqual(1);
+    expect(parsed.workspace.paperColor).toBe(DEFAULT_PAPER_COLOR);
+  });
+
+  it("round-trips pens, behind colour, and paper colour through save/load", () => {
+    const saved = serializeProjectFile(buildProjectFile({
+      name: "colors",
+      selectedMaterialId: 218,
+      selectedMatPreset: "joy-standard",
+      measurementUnit: "cm",
+      tools: [
+        { id: "pen-1", color: "#222222", type: "pen" },
+        { id: "cut-1", color: "#00a000", type: "cut" },
+      ],
+      paperColor: "#fef0c0",
+    }));
+    const parsed = parseProjectFile(saved);
+    expect(getBehindColor(parsed.workspace.tools)).toBe("#00a000");
+    expect(getPens(parsed.workspace.tools).map((t) => t.color)).toEqual(["#222222"]);
+    expect(parsed.workspace.paperColor).toBe("#fef0c0");
   });
 
   it("rejects unsupported or malformed project files", () => {
