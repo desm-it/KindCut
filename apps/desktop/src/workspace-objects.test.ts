@@ -22,8 +22,8 @@ const obj: WorkspaceObject = {
 describe("buildWorkspaceCutSvg", () => {
   it("uses mat dimensions as the SVG canvas", () => {
     const svg = buildWorkspaceCutSvg([obj], MAT_W, MAT_H);
-    expect(svg).toContain(`width="${MAT_W}"`);
-    expect(svg).toContain(`height="${MAT_H}"`);
+    expect(svg).toContain(`width="${MAT_W / PIXELS_PER_INCH}in"`);
+    expect(svg).toContain(`height="${MAT_H / PIXELS_PER_INCH}in"`);
     expect(svg).toContain(`viewBox="0 0 ${MAT_W} ${MAT_H}"`);
   });
 
@@ -64,7 +64,7 @@ describe("buildWorkspaceCutSvg", () => {
   it("produces a valid SVG root element for empty input", () => {
     const svg = buildWorkspaceCutSvg([], MAT_W, MAT_H);
     expect(svg).toContain(`<svg xmlns="http://www.w3.org/2000/svg"`);
-    expect(svg).toContain(`width="${MAT_W}"`);
+    expect(svg).toContain(`width="${MAT_W / PIXELS_PER_INCH}in"`);
   });
 
   it("includes pathTransform when present", () => {

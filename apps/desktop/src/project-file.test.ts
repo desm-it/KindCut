@@ -56,7 +56,7 @@ describe("KindCut project files", () => {
       fileName: "card.svg",
       fileSize: "512 B",
       svg: '<svg width="10" height="20"><path d="M0 0L1 1" /></svg>',
-      transform: { x: -24, y: 936, scaleX: 1.2, scaleY: 0.75, rotation: 32 },
+      transform: { x: -24, y: 936, scaleX: 1.2, scaleY: 0.75, rotation: 32, mirrorX: false, mirrorY: false },
     }]);
     expect(parsed.importedSvg).toEqual(parsed.importedSvgs[0]);
     expect(parsed.selectedSvgId).toBe("svg-card");
@@ -87,7 +87,7 @@ describe("KindCut project files", () => {
       }),
     );
 
-    expect(parsed.importedSvgs[0]?.transform).toEqual({ x: -40, y: 920, scaleX: 1.4, scaleY: 1.4, rotation: 0 });
+    expect(parsed.importedSvgs[0]?.transform).toEqual({ x: -40, y: 920, scaleX: 1.4, scaleY: 1.4, rotation: 0, mirrorX: false, mirrorY: false });
     expect(parsed.importedSvgs[0]?.kind).toBe("image");
   });
 
@@ -157,8 +157,9 @@ describe("KindCut project files", () => {
       fileName: "bloem.svg",
       fileSize: "1 KB",
       frame: { width: 100, height: 80 },
-      paths: [{ id: "path-1", d: "M0 0H10", fill: "none", stroke: "#8f4f2b", strokeWidth: "2", strokeLinecap: undefined, strokeLinejoin: undefined, pathTransform: undefined }],
-      transform: { x: 1, y: 2, scaleX: 1, scaleY: 1, rotation: 0 },
+      paths: [{ id: "path-1", d: "M0 0H10", fill: "none", stroke: "#8f4f2b", strokeWidth: "2", strokeLinecap: undefined, strokeLinejoin: undefined, fillRule: undefined, pathTransform: undefined, sourceLabel: undefined }],
+      transform: { x: 1, y: 2, scaleX: 1, scaleY: 1, rotation: 0, mirrorX: false, mirrorY: false },
+      textContent: undefined,
     }]);
     expect(parsed.selectedObjectId).toBe("object-1");
   });

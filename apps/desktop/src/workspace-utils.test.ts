@@ -81,9 +81,11 @@ describe("workspace measurement helpers", () => {
     expect(normalizeWorkspaceItemTransform({ x: -12, y: 999, scaleX: 8, scaleY: 0.02, rotation: 370 })).toEqual({
       x: -12,
       y: 999,
-      scaleX: 4,
-      scaleY: 0.1,
+      scaleX: 8,
+      scaleY: 0.02,
       rotation: 10,
+      mirrorX: false,
+      mirrorY: false,
     });
   });
 
@@ -113,7 +115,7 @@ describe("workspace measurement helpers", () => {
         2,
         0.5,
       ),
-    ).toEqual({ x: 30, y: 20, scaleX: 2, scaleY: 1, rotation: 0 });
+    ).toEqual({ x: 30, y: 20, scaleX: 2, scaleY: 1, rotation: 0, mirrorX: false, mirrorY: false });
 
     expect(
       rotateWorkspaceItemTransformAroundPoint(
@@ -122,7 +124,7 @@ describe("workspace measurement helpers", () => {
         { x: 10, y: 10 },
         90,
       ),
-    ).toEqual({ x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 90 });
+    ).toEqual({ x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 90, mirrorX: false, mirrorY: false });
   });
 
   it("keeps the anchor fixed when scaling a rotated object along one axis", () => {
