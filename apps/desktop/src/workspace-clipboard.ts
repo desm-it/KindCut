@@ -1,6 +1,6 @@
 import type { WorkspaceItemTransform } from "./workspace-utils";
 import type { WorkspaceShapeKind } from "./workspace-shapes";
-import type { WorkspaceObject, WorkspacePathData } from "./workspace-objects";
+import type { WorkspaceObject, WorkspacePathData, WorkspaceTextContent } from "./workspace-objects";
 
 export type WorkspaceClipboardSvgItem = {
   type: "path" | "group";
@@ -12,6 +12,7 @@ export type WorkspaceClipboardSvgItem = {
   frame: { width: number; height: number };
   paths: WorkspacePathData[];
   transform: WorkspaceItemTransform;
+  textContent?: WorkspaceTextContent;
 };
 
 export type PastedWorkspaceSvgItemInput = WorkspaceClipboardSvgItem & {
@@ -38,6 +39,7 @@ export function getSelectedWorkspaceClipboardItems(
       frame: { ...item.frame },
       paths: item.paths.map((path) => ({ ...path })),
       transform: { ...item.transform },
+      textContent: item.textContent ? { ...item.textContent } : undefined,
     }));
 }
 
@@ -56,6 +58,7 @@ export function createPastedWorkspaceSvgInputs(input: {
     id: `object-${input.timestamp}-paste-${input.startIndex + itemIndex}`,
     index: input.startIndex + itemIndex,
     frame: { ...item.frame },
+    textContent: item.textContent ? { ...item.textContent } : undefined,
     paths: item.paths.map((path, pathIndex) => ({ ...path, id: `${path.id}-copy-${input.timestamp}-${pathIndex}` })),
     transform: {
       ...item.transform,

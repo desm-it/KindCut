@@ -2263,10 +2263,16 @@ a {
   position: absolute;
   inset: 0;
   resize: none;
-  border: 2px solid #6a8540;
+  /* Use an inset box-shadow (not a border) for the edit frame so it doesn't push the
+     text content inward — the committed SVG text sits ~1px from the box edge, so a real
+     border made the text jump right when entering edit mode. Padding-left 1px matches
+     that ~1px; padding-top 6px preserves the previous vertical position (old border 2px
+     + padding 4px). */
+  border: none;
+  box-shadow: inset 0 0 0 2px #6a8540;
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.92);
-  padding: 4px;
+  padding: 6px 1px;
   box-sizing: border-box;
   outline: none;
   caret-color: #333;
@@ -2563,6 +2569,53 @@ a {
   gap: 10px;
   padding: 7px 0;
   border-top: 1px solid rgba(121, 82, 51, 0.08);
+}
+
+/* Single-line text toggle (and any future on/off switch in the settings panel). */
+.toggle-switch {
+  flex: none;
+  width: 42px;
+  height: 24px;
+  min-height: 0; /* override the global button min-height:44px (was rounding it to a circle) */
+  box-sizing: border-box;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(121, 82, 51, 0.22);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s ease;
+}
+
+/* Keep the global button:hover lift/shadow off the toggle. */
+.toggle-switch:hover:not(:disabled) {
+  box-shadow: none;
+  transform: none;
+  background: rgba(121, 82, 51, 0.3);
+}
+
+.toggle-switch--on:hover:not(:disabled) {
+  background: #7d4425;
+}
+
+.toggle-switch--on {
+  background: #8f4f2b;
+}
+
+.toggle-switch__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.toggle-switch--on .toggle-switch__knob {
+  transform: translateX(18px);
 }
 
 .object-settings__row--first {

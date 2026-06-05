@@ -33,6 +33,35 @@ describe("workspace clipboard", () => {
     expect(copied.map((item) => item.transform)).not.toContain(baseItem.transform);
   });
 
+  it("carries text content through copy and paste (so pasted text isn't empty)", () => {
+    const textItem = {
+      ...baseItem,
+      id: "text-1",
+      kind: "text",
+      sourceKind: "text",
+      fileName: "Happy Birthday",
+      paths: [],
+      textContent: {
+        text: "Happy Birthday",
+        fontFamily: "Caveat",
+        fontSize: 48,
+        fontWeight: "normal",
+        fontStyle: "normal",
+        textDecoration: "none",
+        textAlign: "left",
+        letterSpacing: 0,
+        lineHeight: 1.25,
+        color: "#8f4f2b",
+      },
+    } as unknown as WorkspaceObject;
+    const copied = getSelectedWorkspaceClipboardItems([textItem], ["text-1"], null);
+    expect(copied[0]?.textContent?.text).toBe("Happy Birthday");
+
+    const pasted = createPastedWorkspaceSvgInputs({ items: copied, startIndex: 1, timestamp: 999 });
+    expect(pasted[0]?.textContent?.text).toBe("Happy Birthday");
+    expect(pasted[0]?.textContent).not.toBe(textItem.textContent); // cloned, not shared
+  });
+
   it("falls back to the primary selected image when the multi-selection is empty", () => {
     const copied = getSelectedWorkspaceClipboardItems([baseItem], [], "object-1");
 

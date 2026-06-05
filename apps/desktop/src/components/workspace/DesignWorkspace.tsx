@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, MouseEvent, PointerEvent, ReactNode, WheelEvent } from "react";
 import Moveable from "react-moveable";
 import type {
+  OnClick,
+  OnClickGroup,
   OnDrag,
   OnDragGroup,
   OnDragGroupStart,
@@ -61,6 +63,7 @@ import type { WorkspaceShapeKind } from "../../workspace-shapes";
 import type { AiSvgInput } from "../../ai-svg-generate";
 import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult } from "../../app-types";
 import { cssEscape, isEditableKeyboardTarget } from "../../utils/dom-utils";
+import { FONT_GROUPS } from "../../font-catalog";
 import { Ruler } from "./Ruler";
 import { WorkspaceToolbar } from "./WorkspaceToolbar";
 import { TextEditOverlay } from "./TextEditOverlay";
@@ -532,6 +535,10 @@ export function DesignWorkspace({
   }, []);
   const selectedItems = useMemo(() => importedSvgs.filter((item) => selectedSvgIdSet.has(item.id)), [importedSvgs, selectedSvgIdSet]);
   const selectedGroup = selectedItems.length === 1 && selectedItems[0]?.type === "group" ? selectedItems[0] : null;
+  // Text renders with preserveAspectRatio="meet" (never stretches) and is cut from a
+  // re-measured frame, so a non-uniform scale would make display, edit overlay, and cut
+  // disagree. Force uniform scaling whenever the whole selection is text.
+  const selectionIsAllText = selectedItems.length > 0 && selectedItems.every((item) => Boolean(item.textContent));
 
   useEffect(() => {
     const root = workpieceTransformRef.current;
@@ -645,7 +652,34 @@ export function DesignWorkspace({
     }
   }
 
+  // Add the id if it isn't selected, remove it if it is.
+  function toggleLayerSelection(id: string) {
+    if (selectedSvgIdSet.has(id)) {
+      onSelectSvgGroup(selectedSvgIds.filter((x) => x !== id));
+    } else {
+      onSelectSvgGroup([...selectedSvgIds, id]);
+    }
+  }
+
+  // Modifier-clicking a *selected* item lands on the Moveable control box (which
+  // overlays the selection), not the item — so toggle deselection from here too.
+  function handleMoveableModifierClick(event: OnClick | OnClickGroup) {
+    const native = event.inputEvent as MouseEvent | undefined;
+    if (!native || !(native.metaKey || native.ctrlKey || native.shiftKey)) return;
+    const el = (event.inputTarget as Element | null)?.closest?.("[data-workspace-item-id]") as HTMLElement | null;
+    const id = el?.dataset.workspaceItemId;
+    if (id) toggleLayerSelection(id);
+  }
+
   function handleItemPointerDown(event: PointerEvent<HTMLDivElement>, item: WorkspaceSvgItem) {
+    // While this text is being edited, let the textarea handle clicks/drags (cursor
+    // placement, selection). Still stop propagation so the click doesn't reach the
+    // viewport pan handler (which would drag the whole workspace), but don't preventDefault
+    // or start an item drag — the textarea keeps native focus + text selection.
+    if (editingTextId === item.id) {
+      event.stopPropagation();
+      return;
+    }
     event.stopPropagation();
     if (event.button !== 0) {
       return;
@@ -663,12 +697,9 @@ export function DesignWorkspace({
       lastPointerDownItemId.current = { id: item.id, time: now };
     }
 
-    if ((event.metaKey || event.ctrlKey || event.shiftKey) && selectedSvgIdSet.has(item.id) && selectedItems.length > 1) {
-      onSelectSvgGroup(selectedSvgIds.filter((id) => id !== item.id));
-      return;
-    }
+    // Modifier-click toggles the item in/out of the selection (add if absent, remove if present).
     if (event.metaKey || event.ctrlKey || event.shiftKey) {
-      onSelectSvgGroup([...selectedSvgIds, item.id]);
+      toggleLayerSelection(item.id);
       return;
     }
     if (!selectedSvgIdSet.has(item.id) || selectedItems.length <= 1) {
@@ -1332,6 +1363,7 @@ export function DesignWorkspace({
                       {editingTextId === item.id && item.textContent ? (
                         <TextEditOverlay
                           item={item}
+                          onChange={(text) => onTextContentChange(item.id, { text })}
                           onCommit={(text) => {
                             onTextContentChange(item.id, { text });
                             onExitTextEdit(item.id);
@@ -1345,7 +1377,7 @@ export function DesignWorkspace({
                   ))
                     )
                   : null}
-                {moveableTargets.length > 0 && !isDirectItemDragging ? (
+                {moveableTargets.length > 0 && !isDirectItemDragging && !editingTextId ? (
                   <Moveable
                     ref={moveableRef}
                     target={moveableTargets.length === 1 ? moveableTargets[0] : moveableTargets}
@@ -1354,12 +1386,14 @@ export function DesignWorkspace({
                     rotatable
                     groupable={moveableTargets.length > 1}
                     origin={false}
-                    keepRatio={false}
+                    keepRatio={selectionIsAllText}
                     throttleDrag={0}
                     throttleScale={0}
                     throttleRotate={0}
                     zoom={1 / Math.max(0.01, zoom)}
                     renderDirections={["nw", "n", "ne", "w", "e", "sw", "s", "se"]}
+                    onClick={handleMoveableModifierClick}
+                    onClickGroup={handleMoveableModifierClick}
                     onDragStart={handleMoveableDragStart}
                     onDrag={handleMoveableDrag}
                     onDragEnd={commitMoveableTransforms}
@@ -1610,6 +1644,13 @@ export function DesignWorkspace({
                               <option key={f} value={f}>{f}</option>
                             ))}
                           </optgroup>
+                          {FONT_GROUPS.map((g) => (
+                            <optgroup key={g.key} label={nl ? g.nl : g.en}>
+                              {g.families.map((f) => (
+                                <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>
+                              ))}
+                            </optgroup>
+                          ))}
                           {systemFonts.length > 0 ? (
                             <optgroup label={nl ? "Systeemlettertypen" : "System fonts"}>
                               {systemFonts.map((f) => (
@@ -1672,6 +1713,21 @@ export function DesignWorkspace({
                           onChange={(e) => onTextContentChange(sel.id, { lineHeight: Number(e.target.value) })}
                           className="text-slider"
                         />
+                      </div>
+                      <div className="object-settings__row object-settings__row--toggle">
+                        <label className="object-settings__label" htmlFor="txt-singleline">
+                          {nl ? "Eén lijn (pen)" : "Single line (pen)"}
+                        </label>
+                        <button id="txt-singleline" type="button" role="switch"
+                          aria-checked={Boolean(tc.singleLine)}
+                          className={`toggle-switch${tc.singleLine ? " toggle-switch--on" : ""}`}
+                          onClick={() => onTextContentChange(sel.id, { singleLine: !tc.singleLine })}
+                          title={nl
+                            ? "Tekst tekenen/snijden als één pennenlijn in plaats van gevulde letters"
+                            : "Draw/cut text as a single pen line instead of filled letters"}
+                        >
+                          <span className="toggle-switch__knob" />
+                        </button>
                       </div>
                       <button type="button" className="object-settings__edit-btn"
                         onClick={() => onEnterTextEdit(sel.id)}

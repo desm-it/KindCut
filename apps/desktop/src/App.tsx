@@ -15,7 +15,6 @@ import {
   DEFAULT_TOOLS,
   buildProjectFile,
   getBehindColor,
-  getPens,
   getSafeProjectFileName,
   parseProjectFile,
   serializeProjectFile,
@@ -29,6 +28,8 @@ import {
   buildWorkspaceObjectsSvg,
   buildWorkspaceCutSvg,
 } from "./workspace-objects";
+import { clearCenterlineCache, traceCenterlinePathD } from "./centerline-trace";
+import { googleFontsHref } from "./font-catalog";
 import { extractWorkspacePathsFromSvg } from "./workspace-svg-import";
 import {
   type WorkspaceClipboardSvgItem,
@@ -483,6 +484,7 @@ export function App() {
         language,
         index: item.index,
         transform: item.transform,
+        textContent: item.textContent,
       }),
     );
     pushWorkspaceHistorySnapshot();
@@ -704,6 +706,8 @@ export function App() {
   // ── Text ────────────────────────────────────────────────────────────────────
 
   function measureTextFrame(tc: WorkspaceTextContent): { width: number; height: number } {
+    // Single-line text is centerline-traced from the *real* font, so it measures with
+    // the normal font-metrics path below (no special-casing needed).
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d")!;
     ctx.font = `${tc.fontStyle} ${tc.fontWeight} ${tc.fontSize}px ${tc.fontFamily}`;
@@ -770,6 +774,23 @@ export function App() {
     // Convert any text items (no paths) to path-based items via canvas → Potrace
     return Promise.all(items.map(async (item) => {
       if (!item.textContent || item.paths.length > 0) return item;
+      // Single-line text: emit the Hershey stroke polylines directly as open paths
+      // (no fill) — bypassing the canvas→Potrace outline trace entirely.
+      if (item.textContent.singleLine) {
+        const color = item.textContent.color;
+        const d = traceCenterlinePathD(item.textContent, item.frame);
+        if (!d) return item;
+        const strokePath: WorkspacePathData = {
+          id: `${item.id}-stroke`,
+          d,
+          fill: "none",
+          stroke: color,
+          strokeWidth: "1.5",
+          strokeLinecap: "round",
+          strokeLinejoin: "round",
+        };
+        return { ...item, paths: [strokePath] as unknown as [WorkspacePathData] };
+      }
       try {
         const pngBase64 = renderTextToCanvas(item.textContent);
         const rawSvg = await window.cricutCompanion?.ai?.tracePngToSvg(pngBase64);
@@ -836,15 +857,14 @@ export function App() {
       textAlign: "left",
       letterSpacing: 0,
       lineHeight: 1.25,
-      // New text defaults to the first pen — sentiments are written, not cut.
-      color: getPens(tools)[0]?.color ?? "#000000",
+      // New text defaults to Cut (the behind colour) so placed text is cut by default.
+      color: getBehindColor(tools),
     };
     const item = createTextItem(defaultContent, importedSvgs.length);
     pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) => [...current, item]);
     setSelectedSvgId(item.id);
     setSelectedSvgIds([item.id]);
-    setEditingTextId(item.id);
     setImportedPlan(null);
   }
 
@@ -911,7 +931,12 @@ export function App() {
       switch (payload.action) {
         case "edit-copy": document.execCommand("copy"); break;
         case "edit-cut": document.execCommand("cut"); break;
-        case "edit-paste": document.execCommand("paste"); break;
+        case "edit-paste":
+          // execCommand("paste") is blocked by Chromium; read the clipboard and insert.
+          void navigator.clipboard.readText()
+            .then((text) => { if (text) document.execCommand("insertText", false, text); })
+            .catch(() => {});
+          break;
         case "edit-select-all": (document.activeElement as HTMLInputElement | HTMLTextAreaElement).select?.(); break;
       }
       return;
@@ -1264,6 +1289,31 @@ export function App() {
   useEffect(() => {
     void refreshSlicebugStatus();
     void loadImageLibrary();
+  }, []);
+
+  // Load the curated Google Fonts catalog once (card-making fonts, by category).
+  useEffect(() => {
+    const id = "kindcut-google-fonts";
+    if (document.getElementById(id)) return;
+    const link = document.createElement("link");
+    link.id = id;
+    link.rel = "stylesheet";
+    link.href = googleFontsHref();
+    document.head.appendChild(link);
+  }, []);
+
+  // When a (web) font finishes loading, re-measure text frames and drop cached
+  // centerline traces so glyphs that were laid out against a fallback font snap to the
+  // real one.
+  useEffect(() => {
+    function handleFontsLoaded() {
+      clearCenterlineCache();
+      setImportedSvgs((current) =>
+        current.map((item) => (item.textContent ? { ...item, frame: measureTextFrame(item.textContent) } : item)),
+      );
+    }
+    document.fonts.addEventListener("loadingdone", handleFontsLoaded);
+    return () => document.fonts.removeEventListener("loadingdone", handleFontsLoaded);
   }, []);
 
   useEffect(() => window.cricutCompanion?.onAppAction?.(handleDesktopAction));

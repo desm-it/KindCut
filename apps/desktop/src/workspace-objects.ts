@@ -1,5 +1,6 @@
 import type { WorkspaceShapeKind } from "./workspace-shapes";
 import type { WorkspaceItemFrame, WorkspaceItemTransform } from "./workspace-utils";
+import { traceCenterlinePathD } from "./centerline-trace";
 
 export type WorkspaceObjectSourceKind = "image" | "shape" | "text";
 
@@ -14,6 +15,7 @@ export type WorkspaceTextContent = {
   letterSpacing: number;  // extra pixels between characters
   lineHeight: number;     // multiplier (1.2 = 120%)
   color: string;          // hex — drives the tool color match
+  singleLine?: boolean;   // draw/cut as single-line centerline strokes, not filled glyphs
 };
 
 export type WorkspacePathVisual = {
@@ -73,6 +75,10 @@ export function getWorkspaceObjectPartCount(item: WorkspaceObject): number {
 }
 
 export function buildTextContentSvg(tc: WorkspaceTextContent, frame: WorkspaceItemFrame): string {
+  if (tc.singleLine) {
+    const d = traceCenterlinePathD(tc, frame);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(frame.width)}" height="${formatNumber(frame.height)}" viewBox="0 0 ${formatNumber(frame.width)} ${formatNumber(frame.height)}"><path d="${escapeXml(d)}" fill="none" stroke="${escapeXml(tc.color)}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  }
   const lineH = tc.fontSize * tc.lineHeight;
   const lines = tc.text.split("\n");
   const anchorX = tc.textAlign === "center" ? frame.width / 2 : tc.textAlign === "right" ? frame.width - 1 : 1;
@@ -101,9 +107,14 @@ export function buildWorkspaceObjectSvg(item: WorkspaceObject): string {
 type CutTool = { color: string; type: "pen" | "cut" };
 
 function buildItemInnerSvg(item: WorkspaceObject, tools?: CutTool[]): string {
-  // Text items with no paths: emit <text> elements
+  // Text items with no paths: emit <text> elements (or stroke paths for single-line text)
   if (item.textContent && item.paths.length === 0) {
     const tc = item.textContent;
+    if (tc.singleLine) {
+      const d = traceCenterlinePathD(tc, item.frame);
+      // Open strokes, fill=none → slicebug reads the stroke colour and treats it as a pen draw.
+      return `<path d="${escapeXml(d)}" fill="none" stroke="${escapeXml(tc.color)}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }
     const lineH = tc.fontSize * tc.lineHeight;
     const anchorX = tc.textAlign === "center" ? item.frame.width / 2 : tc.textAlign === "right" ? item.frame.width - 1 : 1;
     const anchor = tc.textAlign === "center" ? "middle" : tc.textAlign === "right" ? "end" : "start";
