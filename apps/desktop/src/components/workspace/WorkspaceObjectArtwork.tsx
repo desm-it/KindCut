@@ -1,6 +1,7 @@
 import type { WorkspaceObject } from "../../workspace-objects";
 import type { WorkspaceTool } from "../../project-file";
 import { traceCenterlinePathD } from "../../centerline-trace";
+import { buildShapePath } from "../../workspace-shapes";
 
 export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject; tools?: WorkspaceTool[] }) {
   // Text items: render using SVG <text> elements for live display
@@ -67,6 +68,11 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
         // of the object's size/scale, so shapes, SVGs and text all match. Dividing by the
         // object scale cancels the viewBox→item scaling; it still thins out on zoom-out.
         const penStrokeWidth = 1.25 / Math.max(0.01, Math.min(Math.abs(item.transform.scaleX), Math.abs(item.transform.scaleY)));
+        // Shapes are generated from their kind + size + corner radius (scale-aware so
+        // rounded corners stay circular under non-uniform scaling).
+        const shapeD = item.shapeKind
+          ? buildShapePath(item.shapeKind, item.frame.width, item.frame.height, item.cornerRadius ?? 0, item.transform.scaleX, item.transform.scaleY)
+          : null;
         return item.paths.map((path) => {
         const matchedTool = tools?.find((t) => t.color.toLowerCase() === (path.stroke ?? "").toLowerCase());
         const isPen = matchedTool?.type === "pen";
@@ -83,7 +89,7 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
         return (
           <path
             key={path.id}
-            d={path.d}
+            d={shapeD ?? path.d}
             fill={effectiveFill}
             fillRule={path.fillRule as "evenodd" | "nonzero" | undefined}
             stroke={path.stroke}

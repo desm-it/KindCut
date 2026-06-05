@@ -156,14 +156,14 @@ hints for where to start, not exhaustive.
   `renderTextToCanvas` / `resolveTextItemsForCutting` in `App.tsx`, `WorkspaceObjectArtwork`,
   `buildWorkspaceCutSvg`.
 
-- [ ] **Per-shape extra options (corner radius slider).** Some shapes need shape-specific
+- [x] **Per-shape extra options (corner radius slider).** Some shapes need shape-specific
   controls. Shapes with corners (rectangle, square, triangle, polygons) get a corner-radius
   slider, and the "rounded rectangle" becomes just a rectangle with a preset non-zero
   radius. Store the radius on the shape and regenerate its path/snug frame when it changes.
   → shape factory `utils/workspace-factory.ts` (shape path generation), shape settings UI
   in `components/workspace/DesignWorkspace.tsx`, shape model in `workspace-objects.ts`.
 
-- [ ] **Fix rounded-rectangle radius under non-uniform scaling.** Rounded rectangles
+- [x] **Fix rounded-rectangle radius under non-uniform scaling.** Rounded rectangles
   currently scale their corners wrong. Desired behavior: scaling a single axis (x *or* y
   alone) keeps the corner radius constant; scaling both axes together changes the radius
   proportionally to the box size (so the square doesn't morph into a circle). Guard against

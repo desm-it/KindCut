@@ -5,7 +5,12 @@ import { cloneWorkspaceObjects } from "../workspace-objects";
 import { extractWorkspacePathsFromSvg } from "../workspace-svg-import";
 import { getSvgSizeCopy, getSvgSizeInfo } from "../svg-import";
 import type { WorkspaceShapeKind } from "../workspace-shapes";
-import { buildWorkspaceShapePathObject, getWorkspaceShapeDefinition } from "../workspace-shapes";
+import {
+  DEFAULT_SHAPE_SIZE,
+  ROUNDED_SQUARE_DEFAULT_RADIUS,
+  buildShapePath,
+  getWorkspaceShapeDefinition,
+} from "../workspace-shapes";
 import { computeSnugFrame } from "./workspace-geometry";
 
 export function createWorkspaceSvgItem({
@@ -62,6 +67,7 @@ export function createWorkspaceObjectItem({
   index,
   transform,
   textContent,
+  cornerRadius,
 }: {
   id: string;
   type: "path" | "group";
@@ -76,6 +82,7 @@ export function createWorkspaceObjectItem({
   index: number;
   transform?: WorkspaceItemTransform;
   textContent?: WorkspaceObject["textContent"];
+  cornerRadius?: number;
 }): WorkspaceSvgItem {
   return {
     id,
@@ -90,6 +97,7 @@ export function createWorkspaceObjectItem({
     paths: paths.map((path) => ({ ...path })) as WorkspaceObject["paths"],
     transform: transform ?? { x: 32 + index * 24, y: 32 + index * 24, scaleX: 1, scaleY: 1, rotation: 0 },
     textContent: textContent ? { ...textContent } : undefined,
+    cornerRadius,
   } as WorkspaceSvgItem;
 }
 
@@ -106,10 +114,20 @@ export function createWorkspaceShapeItem({
 }): WorkspaceSvgItem {
   const definition = getWorkspaceShapeDefinition(shapeKind);
   const label = language === "nl" ? definition.labelNl : definition.labelEn;
-  const shape = buildWorkspaceShapePathObject(shapeKind);
-  // Tighten the frame to the actual path bounds (same as imported SVGs) so the
-  // selection box hugs the shape instead of its nominal definition frame.
-  return computeSnugFrame(createWorkspaceObjectItem({
+  // Shapes are generated bounds-tight in their frame, so no snug pass is needed.
+  // "Rounded square" is just a square with a preset corner radius.
+  const cornerRadius = shapeKind === "rounded-square" ? ROUNDED_SQUARE_DEFAULT_RADIUS : 0;
+  const size = DEFAULT_SHAPE_SIZE;
+  const path: WorkspacePathData = {
+    id: "path-1",
+    d: buildShapePath(shapeKind, size, size, cornerRadius),
+    fill: "none",
+    stroke: "#000000",
+    strokeWidth: "1.5",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  };
+  return createWorkspaceObjectItem({
     id: `shape-${timestamp}-${index}`,
     type: "path",
     kind: "shape",
@@ -117,11 +135,12 @@ export function createWorkspaceShapeItem({
     shapeKind,
     fileName: label,
     fileSize: language === "nl" ? "KindCut-vorm" : "KindCut shape",
-    frame: shape.frame,
-    paths: [shape.path],
+    frame: { width: size, height: size },
+    paths: [path],
     language,
     index,
-  }));
+    cornerRadius,
+  });
 }
 
 export function cloneWorkspaceSvgItems(items: WorkspaceSvgItem[]): WorkspaceSvgItem[] {

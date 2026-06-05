@@ -1,6 +1,7 @@
 import type { WorkspaceShapeKind } from "./workspace-shapes";
 import type { WorkspaceItemFrame, WorkspaceItemTransform } from "./workspace-utils";
 import { traceCenterlinePathD } from "./centerline-trace";
+import { buildShapePath } from "./workspace-shapes";
 
 export type WorkspaceObjectSourceKind = "image" | "shape" | "text";
 
@@ -45,6 +46,7 @@ export type WorkspaceObjectBase = {
   transform: WorkspaceItemTransform;
   frame: WorkspaceItemFrame;
   textContent?: WorkspaceTextContent; // present only for text items
+  cornerRadius?: number; // corner-rounding for shapes (frame units, radius at scale 1)
 };
 
 export type WorkspacePathObject = WorkspaceObjectBase & {
@@ -122,9 +124,13 @@ function buildItemInnerSvg(item: WorkspaceObject, tools?: CutTool[]): string {
       `<text x="${anchorX}" y="${tc.fontSize + i * lineH}" text-anchor="${anchor}" font-family="${escapeXml(tc.fontFamily)}" font-size="${tc.fontSize}" font-weight="${tc.fontWeight}" font-style="${tc.fontStyle}" text-decoration="${tc.textDecoration}" fill="${escapeXml(tc.color)}" stroke="none" letter-spacing="${tc.letterSpacing}">${escapeXml(line || " ")}</text>`,
     ).join("");
   }
-  // SVG path items
+  // SVG path items. Shapes regenerate their geometry from kind + size + corner radius
+  // (scale-aware, matching the on-screen render) so the cut matches what you see.
+  const shapeD = item.shapeKind
+    ? buildShapePath(item.shapeKind, item.frame.width, item.frame.height, item.cornerRadius ?? 0, item.transform.scaleX, item.transform.scaleY)
+    : null;
   return item.paths.map((path) => {
-    const pathTransform = path.pathTransform ? ` transform="${escapeXml(path.pathTransform)}"` : "";
+    const pathTransform = !shapeD && path.pathTransform ? ` transform="${escapeXml(path.pathTransform)}"` : "";
     const strokeLinecap = path.strokeLinecap ? ` stroke-linecap="${escapeXml(path.strokeLinecap)}"` : "";
     const strokeLinejoin = path.strokeLinejoin ? ` stroke-linejoin="${escapeXml(path.strokeLinejoin)}"` : "";
     const fillRule = path.fillRule ? ` fill-rule="${escapeXml(path.fillRule)}"` : "";
@@ -140,7 +146,7 @@ function buildItemInnerSvg(item: WorkspaceObject, tools?: CutTool[]): string {
     const displayStroke = toolColor;   // always keep stroke so slicebug can read the tool colour
     const displayStrokeWidth = isPen ? path.strokeWidth : "0.5"; // thin stroke for cut paths (visual only)
 
-    return `<path d="${escapeXml(path.d)}" fill="${escapeXml(displayFill)}"${fillRule} stroke="${escapeXml(displayStroke)}" stroke-width="${escapeXml(displayStrokeWidth)}"${strokeLinecap}${strokeLinejoin}${pathTransform}/>`;
+    return `<path d="${escapeXml(shapeD ?? path.d)}" fill="${escapeXml(displayFill)}"${fillRule} stroke="${escapeXml(displayStroke)}" stroke-width="${escapeXml(displayStrokeWidth)}"${strokeLinecap}${strokeLinejoin}${pathTransform}/>`;
   }).join("");
 }
 

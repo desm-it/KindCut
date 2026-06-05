@@ -83,6 +83,126 @@ export function getWorkspaceShapePath(kind: WorkspaceShapeKind): string {
   }
 }
 
+// Default size (workspace px) for a freshly placed shape, and the rounded-square preset.
+export const DEFAULT_SHAPE_SIZE = 170;
+export const ROUNDED_SQUARE_DEFAULT_RADIUS = 40;
+
+// Every shape except the circle has corners that can take a radius.
+export function shapeHasCorners(kind: WorkspaceShapeKind): boolean {
+  return kind !== "circle";
+}
+
+// Build a shape path filling the box [0,0,w,h] (bounds-tight — no margin/offset).
+// cornerRadius is in frame units (the radius at scale 1). For rectangles the corner
+// arcs are pre-divided by the scale so they stay circular under non-uniform scaling;
+// the effective radius scales with min(scaleX, scaleY) and is clamped so corners never
+// overlap. Polygons/stars round their vertices in frame space (they scale with the box).
+export function buildShapePath(
+  kind: WorkspaceShapeKind,
+  w: number,
+  h: number,
+  cornerRadius = 0,
+  scaleX = 1,
+  scaleY = 1,
+): string {
+  switch (kind) {
+    case "circle":
+      return ellipsePath(w, h);
+    case "square":
+    case "rounded-square":
+      return roundedRectPath(w, h, cornerRadius, scaleX, scaleY);
+    case "triangle":
+      return roundedPolygonPath(fitToBox(unitPolygon(3, -90), w, h), cornerRadius);
+    case "hexagon":
+      return roundedPolygonPath(fitToBox(unitPolygon(6, -90), w, h), cornerRadius);
+    case "octagon":
+      return roundedPolygonPath(fitToBox(unitPolygon(8, -90 + 22.5), w, h), cornerRadius);
+    case "star":
+      return roundedPolygonPath(fitToBox(unitStar(5, 0.44, -90), w, h), cornerRadius);
+  }
+}
+
+function ellipsePath(w: number, h: number): string {
+  const rx = w / 2;
+  const ry = h / 2;
+  return `M 0 ${formatNumber(ry)} A ${formatNumber(rx)} ${formatNumber(ry)} 0 1 0 ${formatNumber(w)} ${formatNumber(ry)} A ${formatNumber(rx)} ${formatNumber(ry)} 0 1 0 0 ${formatNumber(ry)} Z`;
+}
+
+function roundedRectPath(w: number, h: number, cornerRadius: number, scaleX: number, scaleY: number): string {
+  const sx = Math.abs(scaleX) || 1;
+  const sy = Math.abs(scaleY) || 1;
+  const worldW = w * sx;
+  const worldH = h * sy;
+  // Effective world radius: scales with the smaller axis, clamped so corners never overlap.
+  const R = Math.max(0, Math.min(cornerRadius * Math.min(sx, sy), Math.min(worldW, worldH) / 2));
+  if (R <= 0.01) {
+    return `M 0 0 H ${formatNumber(w)} V ${formatNumber(h)} H 0 Z`;
+  }
+  // Express the (circular, in world space) corner as an ellipse in frame units so the
+  // <g> scale turns it back into a circle.
+  const rx = R / sx;
+  const ry = R / sy;
+  const n = formatNumber;
+  return `M ${n(rx)} 0 H ${n(w - rx)} A ${n(rx)} ${n(ry)} 0 0 1 ${n(w)} ${n(ry)} V ${n(h - ry)} A ${n(rx)} ${n(ry)} 0 0 1 ${n(w - rx)} ${n(h)} H ${n(rx)} A ${n(rx)} ${n(ry)} 0 0 1 0 ${n(h - ry)} V ${n(ry)} A ${n(rx)} ${n(ry)} 0 0 1 ${n(rx)} 0 Z`;
+}
+
+// Round each vertex of a polygon with quadratic corners (radius in frame units).
+function roundedPolygonPath(points: Point[], cornerRadius: number): string {
+  if (cornerRadius <= 0.01) return polygonPath(points);
+  const n = points.length;
+  let d = "";
+  for (let i = 0; i < n; i++) {
+    const cur = points[i]!;
+    const prev = points[(i - 1 + n) % n]!;
+    const next = points[(i + 1) % n]!;
+    const before = trimmedPoint(cur, prev, cornerRadius);
+    const after = trimmedPoint(cur, next, cornerRadius);
+    d += i === 0 ? `M ${formatPoint(before)}` : ` L ${formatPoint(before)}`;
+    d += ` Q ${formatPoint(cur)} ${formatPoint(after)}`;
+  }
+  return `${d} Z`;
+}
+
+// A point trimmed from `from` toward `to` by min(radius, half the edge length).
+function trimmedPoint(from: Point, to: Point, radius: number): Point {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const t = Math.min(radius, len / 2);
+  return { x: from.x + (dx / len) * t, y: from.y + (dy / len) * t };
+}
+
+function unitPolygon(count: number, startAngleDegrees: number): Point[] {
+  return Array.from({ length: count }, (_v, index) => {
+    const angle = toRadians(startAngleDegrees + (360 / count) * index);
+    return { x: Math.cos(angle), y: Math.sin(angle) };
+  });
+}
+
+function unitStar(count: number, innerRatio: number, startAngleDegrees: number): Point[] {
+  return Array.from({ length: count * 2 }, (_v, index) => {
+    const angle = toRadians(startAngleDegrees + (360 / (count * 2)) * index);
+    const radius = index % 2 === 0 ? 1 : innerRatio;
+    return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+  });
+}
+
+// Map points (any range) to fill the box [0,0,w,h] exactly (bounds-tight).
+function fitToBox(points: Point[], w: number, h: number): Point[] {
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const spanX = maxX - minX || 1;
+  const spanY = maxY - minY || 1;
+  return points.map((p) => ({
+    x: ((p.x - minX) / spanX) * w,
+    y: ((p.y - minY) / spanY) * h,
+  }));
+}
+
 function pointsOnCircle(count: number, startAngleDegrees: number): Point[] {
   return Array.from({ length: count }, (_value, index) => {
     const angle = toRadians(startAngleDegrees + (360 / count) * index);

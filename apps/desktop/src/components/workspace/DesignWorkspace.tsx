@@ -60,6 +60,7 @@ import {
   snapScaleFactorToAspect,
 } from "../../workspace-utils";
 import type { WorkspaceShapeKind } from "../../workspace-shapes";
+import { buildShapePath, shapeHasCorners } from "../../workspace-shapes";
 import type { AiSvgInput } from "../../ai-svg-generate";
 import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult } from "../../app-types";
 import { cssEscape, isEditableKeyboardTarget } from "../../utils/dom-utils";
@@ -354,6 +355,7 @@ export function DesignWorkspace({
   onEnterTextEdit,
   onExitTextEdit,
   onTextContentChange,
+  onShapeCornerRadiusChange,
   onSelectSvg,
   onSelectSvgGroup,
   onSelectAllSvgs,
@@ -460,6 +462,7 @@ export function DesignWorkspace({
   onEnterTextEdit: (id: string) => void;
   onExitTextEdit: (id: string) => void;
   onTextContentChange: (id: string, patch: Partial<WorkspaceTextContent>) => void;
+  onShapeCornerRadiusChange: (id: string, radius: number) => void;
 }) {
   const { t } = createTranslator(language);
   const [zoom, setZoom] = useState(0.85);
@@ -1007,11 +1010,22 @@ export function DesignWorkspace({
     latestMoveableTransforms.current.set(id, transform);
     if (target instanceof HTMLElement) {
       target.style.transform = getWorkspaceItemTransform(transform);
-      const frame = importedSvgs.find((item) => item.id === id)?.frame;
-      if (frame) {
-        const size = getWorkspaceItemVisualSize(frame, transform);
+      const item = importedSvgs.find((entry) => entry.id === id);
+      if (item) {
+        const size = getWorkspaceItemVisualSize(item.frame, transform);
         target.style.width = `${size.width}px`;
         target.style.height = `${size.height}px`;
+        // Regenerate shape geometry live so rounded corners stay circular while resizing
+        // (cheap — a few trig calls + string build per frame), instead of stretching.
+        if (item.shapeKind) {
+          const pathEl = target.querySelector("path");
+          if (pathEl) {
+            pathEl.setAttribute(
+              "d",
+              buildShapePath(item.shapeKind, item.frame.width, item.frame.height, item.cornerRadius ?? 0, transform.scaleX, transform.scaleY),
+            );
+          }
+        }
       }
     }
   }
@@ -1781,6 +1795,21 @@ export function DesignWorkspace({
                         language={language}
                       />
                     </div>
+                    {sel.shapeKind && shapeHasCorners(sel.shapeKind) ? (() => {
+                      const maxRadius = Math.round(Math.min(sel.frame.width, sel.frame.height) / 2);
+                      const radius = Math.round(sel.cornerRadius ?? 0);
+                      return (
+                        <div className="object-settings__row">
+                          <label className="object-settings__label" htmlFor="shape-radius">
+                            {nl ? "Hoekronding" : "Corner radius"} <em>{radius}px</em>
+                          </label>
+                          <input id="shape-radius" type="range" min={0} max={maxRadius} step={1} value={Math.min(radius, maxRadius)}
+                            onChange={(e) => onShapeCornerRadiusChange(sel.id, Number(e.target.value))}
+                            className="text-slider"
+                          />
+                        </div>
+                      );
+                    })() : null}
                   </div>
                 </>
               );

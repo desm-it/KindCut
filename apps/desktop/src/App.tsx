@@ -68,7 +68,7 @@ import {
 } from "./utils/workspace-factory";
 import { normalizeAiSvg } from "./utils/svg-normalize";
 import { isEditableKeyboardTarget } from "./utils/dom-utils";
-import { type WorkspaceShapeKind } from "./workspace-shapes";
+import { type WorkspaceShapeKind, buildShapePath } from "./workspace-shapes";
 import { createWorkspaceGroup, ungroupWorkspaceObject } from "./workspace-grouping";
 import {
   type AiProgressStep,
@@ -403,6 +403,7 @@ export function App() {
         paths: item.paths,
         transform: item.transform,
         textContent: item.textContent,
+        cornerRadius: item.cornerRadius,
       })),
       selectedObjectId: selectedSvgId,
       selectedSvgId: null,
@@ -436,6 +437,7 @@ export function App() {
         language,
         index,
         transform: item.transform,
+        cornerRadius: item.cornerRadius,
       });
       if (item.textContent) base.textContent = item.textContent;
       return base;
@@ -883,6 +885,21 @@ export function App() {
     setEditingTextId(null);
     // Re-snapshot so undo captures the committed text
     pushWorkspaceHistorySnapshot();
+  }
+
+  function handleShapeCornerRadiusChange(id: string, radius: number) {
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((current) =>
+      current.map((item) => {
+        if (item.id !== id || !item.shapeKind) return item;
+        const clamped = Math.max(0, Math.min(radius, Math.min(item.frame.width, item.frame.height) / 2));
+        // Keep the stored path in sync (scale-1 baseline); the render/cut regenerate
+        // scale-aware on top of this.
+        const d = buildShapePath(item.shapeKind, item.frame.width, item.frame.height, clamped);
+        const paths = item.paths.map((p, i) => (i === 0 ? { ...p, d, pathTransform: undefined } : p));
+        return { ...item, cornerRadius: clamped, paths } as WorkspaceSvgItem;
+      }),
+    );
   }
 
   // ── End text ─────────────────────────────────────────────────────────────────
@@ -1424,6 +1441,7 @@ export function App() {
       onEnterTextEdit={setEditingTextId}
       onExitTextEdit={commitTextEdit}
       onTextContentChange={handleTextContentChange}
+      onShapeCornerRadiusChange={handleShapeCornerRadiusChange}
       onSelectSvg={selectSingleSvg}
       onSelectSvgGroup={selectSvgGroup}
       onSelectAllSvgs={handleSelectAllSvgs}

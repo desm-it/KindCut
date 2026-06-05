@@ -114,6 +114,7 @@ export type SavedWorkspaceObject = {
   paths: WorkspacePathData[];
   transform?: WorkspaceItemTransform;
   textContent?: import("./workspace-objects").WorkspaceTextContent;
+  cornerRadius?: number;
 };
 
 export type KindCutProjectFile = {
@@ -289,6 +290,7 @@ function parseWorkspaceObject(value: unknown, fallbackId: string): SavedWorkspac
     paths: value.paths.map(parseWorkspacePath),
     transform: parseTransform(value.transform),
     textContent: isRecord(value.textContent) ? value.textContent as import("./workspace-objects").WorkspaceTextContent : undefined,
+    cornerRadius: typeof value.cornerRadius === "number" ? value.cornerRadius : undefined,
   });
 }
 
@@ -344,6 +346,7 @@ function normalizeSavedWorkspaceObject(value: SavedWorkspaceObject): SavedWorksp
     paths,
     transform: value.transform ? normalizeTransform(value.transform) : undefined,
     textContent: value.textContent,
+    cornerRadius: typeof value.cornerRadius === "number" ? value.cornerRadius : undefined,
   };
 }
 
