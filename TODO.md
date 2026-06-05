@@ -28,7 +28,7 @@ hints for where to start, not exhaustive.
   `createWorkspaceSvgItem` does. Shapes should get the same tight frame.
   → `utils/workspace-factory.ts`.
 
-- [ ] **Cut status doesn't reset after finishing — can't cut again.** Once a cut
+- [x] **Cut status doesn't reset after finishing — can't cut again.** Once a cut
   session reaches `finished` (or error/stopped), `cutSession` is never cleared, so the
   UI stays in "cutting" state and a second cut can't be started. The poll loop only
   runs for `running`/`waiting`, so nothing resets it.
@@ -41,7 +41,7 @@ hints for where to start, not exhaustive.
   → `handleItemPointerDown` (modifier + `selectedSvgIdSet.has`) in
   `components/workspace/DesignWorkspace.tsx`.
 
-- [ ] **Shapes missing from the cut preview.** Built-in shapes don't appear in the
+- [x] **Shapes missing from the cut preview.** Built-in shapes don't appear in the
   Cut preview (and likely the exported cut SVG), so they wouldn't be sent to slicebug.
   Imported SVGs/text show up but shapes don't — probably a gap in how shape items are
   serialised by `buildWorkspaceCutSvg` / the resolve-for-cutting step (e.g. fill/stroke
@@ -74,7 +74,7 @@ hints for where to start, not exhaustive.
   → `zoom-controls` buttons + `handleViewportWheel` math in
   `components/workspace/DesignWorkspace.tsx`.
 
-- [ ] **No final "eject mat" step.** After the cut completes there's no step that
+- [x] **No final "eject mat" step.** After the cut completes there's no step that
   unloads/ejects the mat from the machine — the flow just ends. Add it as the last
   step of the cut sequence.
   → slicebug cut flow (`shell/slicebug-service.ts`, cut session steps), cut UI.

@@ -1694,24 +1694,28 @@ export function DesignWorkspace({
                           <button type="button" className={`text-style-btn${tc.textDecoration === "underline" ? " text-style-btn--active" : ""}`}
                             onClick={() => onTextContentChange(sel.id, { textDecoration: tc.textDecoration === "underline" ? "none" : "underline" })}
                           ><span style={{ textDecoration: "underline" }}>U</span></button>
-                          {/* Alignment only matters across multiple lines (a single line auto-hugs its box). */}
-                          {tc.text.includes("\n") ? (
-                            <>
-                              <span className="text-style-divider"/>
-                              {(["left","center","right"] as const).map((align) => (
-                                <button key={align} type="button" className={`text-style-btn${(tc.textAlign ?? "left") === align ? " text-style-btn--active" : ""}`}
-                                  onClick={() => onTextContentChange(sel.id, { textAlign: align })}
-                                  title={align}
-                                >
-                                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                    {align === "left"   && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="2" y1="6" x2="9" y2="6"/><line x1="2" y1="9" x2="11" y2="9"/><line x1="2" y1="12" x2="7" y2="12"/></>}
-                                    {align === "center" && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="4" y1="6" x2="10" y2="6"/><line x1="3" y1="9" x2="11" y2="9"/><line x1="5" y1="12" x2="9" y2="12"/></>}
-                                    {align === "right"  && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="5" y1="6" x2="12" y2="6"/><line x1="3" y1="9" x2="12" y2="9"/><line x1="7" y1="12" x2="12" y2="12"/></>}
-                                  </svg>
-                                </button>
-                              ))}
-                            </>
-                          ) : null}
+                          <span className="text-style-divider"/>
+                          {(() => {
+                            // Alignment only matters across multiple lines (a single line auto-hugs
+                            // its box), so disable the buttons until the text has a line break.
+                            const isMultiLine = tc.text.includes("\n");
+                            const disabledTip = nl
+                              ? "Alleen voor tekst met meerdere regels"
+                              : "Only available for multi-line text";
+                            return (["left","center","right"] as const).map((align) => (
+                              <button key={align} type="button" disabled={!isMultiLine}
+                                className={`text-style-btn${isMultiLine && (tc.textAlign ?? "left") === align ? " text-style-btn--active" : ""}`}
+                                onClick={() => onTextContentChange(sel.id, { textAlign: align })}
+                                title={isMultiLine ? align : disabledTip}
+                              >
+                                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                                  {align === "left"   && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="2" y1="6" x2="9" y2="6"/><line x1="2" y1="9" x2="11" y2="9"/><line x1="2" y1="12" x2="7" y2="12"/></>}
+                                  {align === "center" && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="4" y1="6" x2="10" y2="6"/><line x1="3" y1="9" x2="11" y2="9"/><line x1="5" y1="12" x2="9" y2="12"/></>}
+                                  {align === "right"  && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="5" y1="6" x2="12" y2="6"/><line x1="3" y1="9" x2="12" y2="9"/><line x1="7" y1="12" x2="12" y2="12"/></>}
+                                </svg>
+                              </button>
+                            ));
+                          })()}
                         </div>
                       </div>
                       <div className="object-settings__row">

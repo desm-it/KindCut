@@ -98,6 +98,18 @@ export function CutPreviewModal({
                 )}
               </div>
             )}
+
+            {isFinished && (
+              <div className="cut-modal__eject">
+                <span className="cut-modal__eject-badge">{nl ? "Laatste stap" : "Final step"}</span>
+                <p className="cut-modal__eject-title">{nl ? "Werp de mat uit" : "Eject the mat"}</p>
+                <p className="cut-modal__eject-msg">
+                  {nl
+                    ? "Druk op de knipperende Laden/Ontladen-knop (⤒⤓) op je Cricut om de mat uit te werpen, en haal je werk er voorzichtig af."
+                    : "Press the flashing Load/Unload button (⤒⤓) on your Cricut to eject the mat, then gently peel your project off."}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -131,7 +143,7 @@ export function CutPreviewModal({
           )}
           {(isFinished || isError) && (
             <button type="button" className="cut-modal__btn cut-modal__btn--primary" onClick={onClose}>
-              {nl ? "Sluiten" : "Close"}
+              {isFinished ? (nl ? "Klaar" : "Done") : (nl ? "Sluiten" : "Close")}
             </button>
           )}
         </div>

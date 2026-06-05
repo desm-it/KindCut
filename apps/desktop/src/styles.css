@@ -2308,6 +2308,18 @@ a {
   border-color: #8f4f2b;
 }
 
+.text-style-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #fffdf9;
+}
+
+.text-style-btn:disabled:hover {
+  background: #fffdf9;
+  box-shadow: none;
+  transform: none;
+}
+
 .text-style-divider {
   width: 1px;
   height: 20px;
@@ -3009,6 +3021,40 @@ a {
 .cut-modal__status-message {
   font-size: 0.8rem;
   color: #6a4d38;
+}
+
+/* Final "eject the mat" step shown when the cut finishes. */
+.cut-modal__eject {
+  margin-top: 10px;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(80, 150, 80, 0.1);
+  border: 1px solid rgba(80, 150, 80, 0.28);
+  display: grid;
+  gap: 4px;
+}
+
+.cut-modal__eject-badge {
+  justify-self: start;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #3f7a3f;
+  background: rgba(80, 150, 80, 0.18);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.cut-modal__eject-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #2e1a0a;
+}
+
+.cut-modal__eject-msg {
+  font-size: 0.8rem;
+  color: #4f6a4f;
 }
 
 .cut-modal__transcript {

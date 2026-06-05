@@ -1147,6 +1147,8 @@ export function App() {
 
   async function handleOpenCutPreview() {
     if (importedSvgs.length === 0) return;
+    // Clear any finished/stopped/errored session so reopening starts a fresh cut.
+    setCutSession(null);
     const matDims = getMatDimensionsInches(selectedMatPreset);
     const matW = matDims.width * WORKSPACE_PIXELS_PER_INCH;
     const matH = matDims.height * WORKSPACE_PIXELS_PER_INCH;
@@ -1483,7 +1485,7 @@ export function App() {
         preview={cutPreview}
         cutBusy={cutBusy}
         cutSession={cutSession}
-        onClose={() => setCutPreview(null)}
+        onClose={() => { setCutPreview(null); setCutSession(null); }}
         onConfirmCut={() => {
           if (cutPreview.plan.outputPlanPath) {
             void startCutSession(cutPreview.plan.outputPlanPath);
