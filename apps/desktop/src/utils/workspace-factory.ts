@@ -61,6 +61,7 @@ export function createWorkspaceObjectItem({
   language: _language,
   index,
   transform,
+  textContent,
 }: {
   id: string;
   type: "path" | "group";
@@ -74,6 +75,7 @@ export function createWorkspaceObjectItem({
   language: Language;
   index: number;
   transform?: WorkspaceItemTransform;
+  textContent?: WorkspaceObject["textContent"];
 }): WorkspaceSvgItem {
   return {
     id,
@@ -87,6 +89,7 @@ export function createWorkspaceObjectItem({
     frame,
     paths: paths.map((path) => ({ ...path })) as WorkspaceObject["paths"],
     transform: transform ?? { x: 32 + index * 24, y: 32 + index * 24, scaleX: 1, scaleY: 1, rotation: 0 },
+    textContent: textContent ? { ...textContent } : undefined,
   } as WorkspaceSvgItem;
 }
 

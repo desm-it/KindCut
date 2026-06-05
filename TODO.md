@@ -7,14 +7,14 @@ hints for where to start, not exhaustive.
 
 ## 🐞 Bugs
 
-- [ ] **Text size & text-edit size mismatch.** The on-canvas text, the inline edit
+- [x] **Text size & text-edit size mismatch.** The on-canvas text, the inline edit
   overlay, and the committed/cut size don't stay consistent. The edit overlay scales
   `fontSize * transform.scaleX`, so editing a scaled or resized text box shows the
   wrong size and can jump when you commit.
   → `components/workspace/TextEditOverlay.tsx`, `handleTextContentChange` / text frame
   measuring in `App.tsx`.
 
-- [ ] **Keyboard shortcuts hijack text editing.** When editing/selecting text you
+- [x] **Keyboard shortcuts hijack text editing.** When editing/selecting text you
   can't reliably copy, paste, cut, or select-all — the global workspace shortcut
   handler (and the Electron Edit-menu accelerators) grab Cmd/Ctrl+C/V/X/A instead of
   the focused field. There's an `isEditableKeyboardTarget` guard but it isn't fully
@@ -34,7 +34,7 @@ hints for where to start, not exhaustive.
   runs for `running`/`waiting`, so nothing resets it.
   → `cutSession` handling + poll effect in `App.tsx` (~L1246), `CutPreviewModal`.
 
-- [ ] **Can't deselect from a multi-selection.** Ctrl/Cmd+Click or Shift+Click adds
+- [x] **Can't deselect from a multi-selection.** Ctrl/Cmd+Click or Shift+Click adds
   objects to the selection, but clicking an already-selected object with the modifier
   doesn't remove it from the selection (toggle-off). The toggle-off branch in the
   item pointer-down handler only triggers under specific conditions and misses cases.
@@ -144,3 +144,32 @@ hints for where to start, not exhaustive.
   Keep them behind a dev flag if useful for debugging.
   → `App.tsx` (`project.opened`, `console.log`), `onboarding-copy.ts` (details build),
   cut modal transcript.
+
+- [x] **Single-line ("stroke") text — draw/cut text as centerline paths.** Add an
+  option so text is rendered and cut as single-line paths (a single pen/blade stroke
+  following the letter centerlines) instead of the current filled outline (a "rectangle"
+  / closed-contour glyph). Good for pen drawing and quick line-cuts. Needs a single-line
+  (Hershey/stroke) font or a centerline/skeleton conversion of the glyph outlines, plus a
+  per-text toggle in the text settings, and the cut/preview pipeline must emit open
+  stroke paths (no fill) for these.
+  → text settings UI + `WorkspaceTextContent` model (`project-file.ts` / `workspace-objects.ts`),
+  `renderTextToCanvas` / `resolveTextItemsForCutting` in `App.tsx`, `WorkspaceObjectArtwork`,
+  `buildWorkspaceCutSvg`.
+
+- [ ] **Per-shape extra options (corner radius slider).** Some shapes need shape-specific
+  controls. Shapes with corners (rectangle, square, triangle, polygons) get a corner-radius
+  slider, and the "rounded rectangle" becomes just a rectangle with a preset non-zero
+  radius. Store the radius on the shape and regenerate its path/snug frame when it changes.
+  → shape factory `utils/workspace-factory.ts` (shape path generation), shape settings UI
+  in `components/workspace/DesignWorkspace.tsx`, shape model in `workspace-objects.ts`.
+
+- [ ] **Fix rounded-rectangle radius under non-uniform scaling.** Rounded rectangles
+  currently scale their corners wrong. Desired behavior: scaling a single axis (x *or* y
+  alone) keeps the corner radius constant; scaling both axes together changes the radius
+  proportionally to the box size (so the square doesn't morph into a circle). Guard against
+  overlapping/cross-over corners and weird distortion when the radius is large and the box
+  is then scaled smaller than the radius on one axis — clamp radius to `min(width,height)/2`.
+  Likely folds into the per-shape corner-radius feature (store radius as a real value and
+  rebuild the path on resize rather than CSS/transform-scaling the corners).
+  → rounded-rect path generation in `utils/workspace-factory.ts`, scale-commit /
+  `normalizeWorkspaceItemTransform` handling, `components/workspace/DesignWorkspace.tsx`.
