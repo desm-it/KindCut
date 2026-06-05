@@ -600,6 +600,22 @@ export function DesignWorkspace({
     centerMatInViewport(1);
   }
 
+  // Keep the workpiece from being scrolled/dragged infinitely away: clamp the pan so a
+  // chunk of the mat always stays inside the viewport.
+  function clampPan(next: Point, z: number = zoom): Point {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect) return next;
+    const contentW = workpieceWidth * z;
+    const contentH = workpieceHeight * z;
+    // How much of the workpiece must remain visible (never more than half of it/the view).
+    const marginX = Math.min(140, contentW * 0.5, rect.width * 0.5);
+    const marginY = Math.min(140, contentH * 0.5, rect.height * 0.5);
+    return {
+      x: Math.min(rect.width - marginX, Math.max(marginX - contentW, next.x)),
+      y: Math.min(rect.height - marginY, Math.max(marginY - contentH, next.y)),
+    };
+  }
+
   // Centre the mat when the workspace first opens (after layout is measured).
   useEffect(() => {
     const id = requestAnimationFrame(() => centerMatInViewport(zoom));
@@ -618,7 +634,7 @@ export function DesignWorkspace({
     recentScrollRef.current = true;
     if (recentScrollTimerRef.current) clearTimeout(recentScrollTimerRef.current);
     recentScrollTimerRef.current = setTimeout(() => { recentScrollRef.current = false; }, 300);
-    setPan((current) => ({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
+    setPan((current) => clampPan({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
@@ -643,7 +659,7 @@ export function DesignWorkspace({
     }
     const deltaX = event.clientX - dragStart.current.pointer.x;
     const deltaY = event.clientY - dragStart.current.pointer.y;
-    setPan({ x: dragStart.current.pan.x + deltaX, y: dragStart.current.pan.y + deltaY });
+    setPan(clampPan({ x: dragStart.current.pan.x + deltaX, y: dragStart.current.pan.y + deltaY }));
   }
 
   function stopDragging(event: PointerEvent<HTMLDivElement>) {
@@ -1678,19 +1694,24 @@ export function DesignWorkspace({
                           <button type="button" className={`text-style-btn${tc.textDecoration === "underline" ? " text-style-btn--active" : ""}`}
                             onClick={() => onTextContentChange(sel.id, { textDecoration: tc.textDecoration === "underline" ? "none" : "underline" })}
                           ><span style={{ textDecoration: "underline" }}>U</span></button>
-                          <span className="text-style-divider"/>
-                          {(["left","center","right"] as const).map((align) => (
-                            <button key={align} type="button" className={`text-style-btn${(tc.textAlign ?? "left") === align ? " text-style-btn--active" : ""}`}
-                              onClick={() => onTextContentChange(sel.id, { textAlign: align })}
-                              title={align}
-                            >
-                              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                {align === "left"   && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="2" y1="6" x2="9" y2="6"/><line x1="2" y1="9" x2="11" y2="9"/><line x1="2" y1="12" x2="7" y2="12"/></>}
-                                {align === "center" && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="4" y1="6" x2="10" y2="6"/><line x1="3" y1="9" x2="11" y2="9"/><line x1="5" y1="12" x2="9" y2="12"/></>}
-                                {align === "right"  && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="5" y1="6" x2="12" y2="6"/><line x1="3" y1="9" x2="12" y2="9"/><line x1="7" y1="12" x2="12" y2="12"/></>}
-                              </svg>
-                            </button>
-                          ))}
+                          {/* Alignment only matters across multiple lines (a single line auto-hugs its box). */}
+                          {tc.text.includes("\n") ? (
+                            <>
+                              <span className="text-style-divider"/>
+                              {(["left","center","right"] as const).map((align) => (
+                                <button key={align} type="button" className={`text-style-btn${(tc.textAlign ?? "left") === align ? " text-style-btn--active" : ""}`}
+                                  onClick={() => onTextContentChange(sel.id, { textAlign: align })}
+                                  title={align}
+                                >
+                                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                                    {align === "left"   && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="2" y1="6" x2="9" y2="6"/><line x1="2" y1="9" x2="11" y2="9"/><line x1="2" y1="12" x2="7" y2="12"/></>}
+                                    {align === "center" && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="4" y1="6" x2="10" y2="6"/><line x1="3" y1="9" x2="11" y2="9"/><line x1="5" y1="12" x2="9" y2="12"/></>}
+                                    {align === "right"  && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="5" y1="6" x2="12" y2="6"/><line x1="3" y1="9" x2="12" y2="9"/><line x1="7" y1="12" x2="12" y2="12"/></>}
+                                  </svg>
+                                </button>
+                              ))}
+                            </>
+                          ) : null}
                         </div>
                       </div>
                       <div className="object-settings__row">
