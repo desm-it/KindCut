@@ -2,6 +2,7 @@ import { type Language, createTranslator, getMaterialBeginnerCopy, getMatBeginne
 import { MAT_PRESETS, MATERIAL_OPTIONS } from "@cricut-companion/slicebug-bridge";
 import { getFriendlyPlanResultCopy, formatToolName } from "../../onboarding-copy";
 import type { CutSessionSnapshot, SlicebugPlanResult } from "../../app-types";
+import { DEBUG } from "../../dev-flags";
 
 function getCutActionCopy(
   action: CutSessionSnapshot["action"],
@@ -149,19 +150,21 @@ export function PlanAndCutMonitor({
               </button>
             ) : null}
           </div>
-          <details>
-            <summary>{t("details.cut")}</summary>
-            <pre>
-              {[
-                `${cutSession.command} ${cutSession.args.join(" ")}`,
-                cutSession.transcript.trim() || t("cut.noMessages"),
-              ].join("\n\n")}
-            </pre>
-          </details>
+          {DEBUG ? (
+            <details>
+              <summary>{t("details.cut")}</summary>
+              <pre>
+                {[
+                  `${cutSession.command} ${cutSession.args.join(" ")}`,
+                  cutSession.transcript.trim() || t("cut.noMessages"),
+                ].join("\n\n")}
+              </pre>
+            </details>
+          ) : null}
         </div>
       ) : null}
 
-      {copy.details.length > 0 ? (
+      {DEBUG && copy.details.length > 0 ? (
         <details>
           <summary>{t("details.plan")}</summary>
           <pre>{copy.details.join("\n\n")}</pre>
@@ -204,7 +207,7 @@ export function SamplePlanResult({ result, language }: { result: SlicebugPlanRes
           <dd>{result.plan.tools.map((tool) => formatToolName(tool, language)).join(", ") || t("plan.noTools")}</dd>
         </dl>
       ) : null}
-      {copy.details.length > 0 ? (
+      {DEBUG && copy.details.length > 0 ? (
         <details>
           <summary>{t("details.advanced")}</summary>
           <pre>{copy.details.join("\n\n")}</pre>

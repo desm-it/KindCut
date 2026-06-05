@@ -3,6 +3,7 @@ import { getMatName } from "../../i18n";
 import { getMatDimensionsInches } from "../../workspace-utils";
 import { MATERIAL_OPTIONS } from "@cricut-companion/slicebug-bridge";
 import type { CutSessionSnapshot, SlicebugPlanResult } from "../../app-types";
+import { DEBUG } from "../../dev-flags";
 
 export function CutPreviewModal({
   language,
@@ -93,7 +94,7 @@ export function CutPreviewModal({
               <div className={`cut-modal__status cut-modal__status--${cutSession.action.tone}`}>
                 <p className="cut-modal__status-title">{cutSession.action.title}</p>
                 {cutSession.action.message && <p className="cut-modal__status-message">{cutSession.action.message}</p>}
-                {cutSession.transcript && (
+                {DEBUG && cutSession.transcript && (
                   <pre className="cut-modal__transcript">{cutSession.transcript}</pre>
                 )}
               </div>

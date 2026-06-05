@@ -1015,15 +1015,20 @@ export function DesignWorkspace({
         const size = getWorkspaceItemVisualSize(item.frame, transform);
         target.style.width = `${size.width}px`;
         target.style.height = `${size.height}px`;
-        // Regenerate shape geometry live so rounded corners stay circular while resizing
-        // (cheap — a few trig calls + string build per frame), instead of stretching.
+        // Regenerate shape geometry live so corners stay circular and the stroke stays an
+        // even pen-width while resizing. Match the artwork's actual-size viewBox approach:
+        // update the SVG viewBox to the actual size and the path to that same space.
         if (item.shapeKind) {
-          const pathEl = target.querySelector("path");
-          if (pathEl) {
-            pathEl.setAttribute(
-              "d",
-              buildShapePath(item.shapeKind, item.frame.width, item.frame.height, item.cornerRadius ?? 0, transform.scaleX, transform.scaleY),
-            );
+          const svgEl = target.querySelector("svg");
+          const pathEl = svgEl?.querySelector("path");
+          if (svgEl && pathEl) {
+            const sx = Math.abs(transform.scaleX) || 1;
+            const sy = Math.abs(transform.scaleY) || 1;
+            const aw = Math.max(1, item.frame.width * sx);
+            const ah = Math.max(1, item.frame.height * sy);
+            const worldRadius = Math.min((item.cornerRadius ?? 0) * Math.min(sx, sy), Math.min(aw, ah) / 2);
+            svgEl.setAttribute("viewBox", `0 0 ${aw} ${ah}`);
+            pathEl.setAttribute("d", buildShapePath(item.shapeKind, aw, ah, worldRadius));
           }
         }
       }

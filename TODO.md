@@ -138,7 +138,7 @@ hints for where to start, not exhaustive.
   less utilitarian (project cards, imagery), keeping it grandma-friendly.
   → `components/screens/WelcomeScreen.tsx`.
 
-- [ ] **Remove developer/debug text.** Hide technical output from end users:
+- [x] **Remove developer/debug text.** Hide technical output from end users:
   the "project opened" path message, `console.log`s (e.g. ImageLibrary save), and the
   raw slicebug `stdout`/`stderr`/transcript shown in the "advanced details" panes.
   Keep them behind a dev flag if useful for debugging.

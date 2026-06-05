@@ -20,6 +20,7 @@ import {
   serializeProjectFile,
 } from "./project-file";
 import { formatFileSize } from "./svg-import";
+import { DEBUG } from "./dev-flags";
 import {
   type WorkspaceObject,
   type WorkspacePathData,
@@ -202,7 +203,7 @@ export function App() {
 
   async function loadImageLibrary() {
     if (!window.cricutCompanion?.imageLibrary) {
-      console.warn("[ImageLibrary] IPC bridge not available — shell may need rebuilding");
+      if (DEBUG) console.warn("[ImageLibrary] IPC bridge not available — shell may need rebuilding");
       return;
     }
     setLibraryLoading(true);
@@ -218,14 +219,14 @@ export function App() {
 
   async function saveToLibrary(name: string, svg: string, isAi: boolean): Promise<void> {
     if (!window.cricutCompanion?.imageLibrary) {
-      console.warn("[ImageLibrary] IPC bridge not available — shell may need rebuilding");
+      if (DEBUG) console.warn("[ImageLibrary] IPC bridge not available — shell may need rebuilding");
       return;
     }
     try {
       const savedPath = await window.cricutCompanion.imageLibrary.save({ name, svg, isAi });
-      console.log("[ImageLibrary] Saved:", savedPath);
+      if (DEBUG) console.log("[ImageLibrary] Saved:", savedPath);
     } catch (err) {
-      console.error("[ImageLibrary] Failed to save:", err);
+      if (DEBUG) console.error("[ImageLibrary] Failed to save:", err);
     }
   }
 
@@ -342,7 +343,7 @@ export function App() {
         throw new Error(t("project.openEmpty"));
       }
       applyProjectFile(parseProjectFile(result.content), result.path);
-      setProjectMessage(t("project.opened", { path: result.path }));
+      setProjectMessage(DEBUG ? t("project.opened", { path: result.path }) : null);
       enterWorkspace();
     } catch (error) {
       setProjectMessage(error instanceof Error ? error.message : t("project.openError"));
@@ -371,7 +372,7 @@ export function App() {
         return;
       }
       setCurrentProjectPath(result.path);
-      setProjectMessage(t("project.saved", { path: result.path }));
+      setProjectMessage(DEBUG ? t("project.saved", { path: result.path }) : null);
       enterWorkspace();
     } catch (error) {
       setProjectMessage(error instanceof Error ? error.message : t("project.saveError"));

@@ -279,6 +279,46 @@ h3 {
   box-shadow: 0 0 0 7px rgba(182, 101, 48, 0.18);
 }
 
+.connection-badge {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+}
+
+.connection-badge svg {
+  width: 26px;
+  height: 26px;
+}
+
+.connection-badge--ready {
+  background: rgba(79, 123, 71, 0.16);
+  color: #4f7b47;
+}
+
+.connection-badge--warning {
+  background: rgba(182, 101, 48, 0.16);
+  color: #b66530;
+}
+
+.connection-badge--checking {
+  background: rgba(200, 149, 87, 0.16);
+  color: #c89557;
+}
+
+.connection-badge--checking svg {
+  animation: connection-spin 0.9s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+@keyframes connection-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .workflow-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -798,41 +838,11 @@ a {
   min-height: 310px;
 }
 
-.welcome-card-stack {
-  position: relative;
-  flex: 0 0 min(28vw, 260px);
-  aspect-ratio: 1;
-}
-
-.welcome-card-stack span {
-  position: absolute;
-  inset: 34px 18px 18px 44px;
-  border: 1px solid #dbc8ad;
-  border-radius: 14px;
-  background: #fffdf9;
-  box-shadow: 0 18px 36px rgba(88, 58, 32, 0.13);
-}
-
-.welcome-card-stack span:nth-child(1) {
-  transform: rotate(-10deg) translate(-22px, 10px);
-}
-
-.welcome-card-stack span:nth-child(2) {
-  transform: rotate(7deg) translate(8px, -8px);
-}
-
-.welcome-card-stack span:nth-child(3) {
-  display: grid;
-  place-items: center;
-}
-
-.welcome-card-stack span:nth-child(3)::after {
-  width: 72px;
-  height: 50px;
-  border: 3px solid #b85b3a;
-  border-top-color: transparent;
-  border-radius: 999px;
-  content: "";
+.welcome-art {
+  flex: 0 0 min(32vw, 300px);
+  width: min(32vw, 300px);
+  height: auto;
+  filter: drop-shadow(0 18px 34px rgba(88, 58, 32, 0.14));
 }
 
 .welcome-project-actions {
@@ -843,19 +853,23 @@ a {
 
 .project-choice {
   min-height: 132px;
-  display: grid;
-  align-content: center;
-  gap: 10px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
   border: 1px solid rgba(121, 82, 51, 0.16);
+  border-radius: 14px;
   background: #fffdf9;
   color: #34251a;
-  padding: 24px;
+  padding: 22px 24px;
   text-align: left;
+  transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
 }
 
 .project-choice:hover:not(:disabled) {
   background: #fff8ee;
   color: #34251a;
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(88, 58, 32, 0.14);
 }
 
 .project-choice--primary {
@@ -868,28 +882,100 @@ a {
   color: #fffaf2;
 }
 
-.project-choice span {
-  font-size: 1.35rem;
+.project-choice__icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: rgba(143, 79, 43, 0.1);
+  color: #8f4f2b;
+}
+
+.project-choice__icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.project-choice--primary .project-choice__icon {
+  background: rgba(255, 250, 242, 0.18);
+  color: #fffaf2;
+}
+
+.project-choice__text {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.project-choice__text > span {
+  font-size: 1.3rem;
 }
 
 .project-choice small {
   color: inherit;
   font-size: 0.94rem;
   font-weight: 650;
-  line-height: 1.45;
+  line-height: 1.4;
   opacity: 0.78;
 }
 
-.welcome-screen .setup-panel {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 20px;
-  align-items: flex-start;
+.welcome-screen .setup-panel.setup-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px;
+  border-radius: 10px;
   box-shadow: none;
 }
 
-.welcome-screen .setup-panel .status-dot {
-  margin: 8px 0 0;
+/* Drop the big decorative circle for the compact bar. */
+.welcome-screen .setup-panel.setup-bar::after {
+  display: none;
+}
+
+.setup-bar .connection-badge {
+  width: 26px;
+  height: 26px;
+}
+
+.setup-bar .connection-badge svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Title + message flow as inline text on one line (wrapping naturally), so the bar
+   stays slim — no stacked block paragraphs with gaps. */
+.setup-bar__text {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.35;
+}
+
+.setup-bar__title {
+  font-weight: 800;
+  font-size: 0.98rem;
+  color: #34251a;
+  margin-right: 8px;
+}
+
+.setup-bar__msg {
+  font-size: 0.9rem;
+  color: #5c493a;
+}
+
+.setup-bar__btn {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 5px 14px;
+}
+
+/* Debug-only details drop to a new full-width row so the bar stays one line. */
+.setup-bar__details {
+  flex: 1 0 100%;
 }
 
 .workspace-shell {

@@ -51,7 +51,7 @@ const translations = {
     "status.initialMessage": "KindCut controleert eerst het hulpje dat nodig is voordat je begint.",
     "status.readyTitle": "Klaar voor Cricut-projecten",
     "status.readyMessage":
-      "Alles wat KindCut nodig heeft is beschikbaar. Je kunt beginnen met een eenvoudige kaart en je werk lokaal bewaren.",
+      "Alles is klaar. Begin met een kaart en bewaar je werk lokaal.",
     "status.warningTitle": "Een hulpje heeft aandacht nodig",
     "status.warningMessage":
       "KindCut kan het voorbeeldproject nog tonen, maar kan pas een Cricut-overdracht voorbereiden als het hulpje is ingesteld.",

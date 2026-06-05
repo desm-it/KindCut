@@ -53,6 +53,38 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
     );
   }
 
+  // Shapes render in a viewBox that matches their ACTUAL (scaled) size, so the path is
+  // never stretched per-axis. That keeps the pen outline an even thickness and the
+  // corners truly circular even when the shape is squashed flat (a frame-sized viewBox
+  // with preserveAspectRatio="none" would stretch the stroke into blobs on the ends).
+  if (item.shapeKind) {
+    const sx = Math.abs(item.transform.scaleX) || 1;
+    const sy = Math.abs(item.transform.scaleY) || 1;
+    const aw = Math.max(1, item.frame.width * sx);
+    const ah = Math.max(1, item.frame.height * sy);
+    const worldRadius = Math.min((item.cornerRadius ?? 0) * Math.min(sx, sy), Math.min(aw, ah) / 2);
+    const d = buildShapePath(item.shapeKind, aw, ah, worldRadius);
+    const path = item.paths[0];
+    const matchedTool = tools?.find((tl) => tl.color.toLowerCase() === (path?.stroke ?? "").toLowerCase());
+    const isPen = matchedTool?.type === "pen";
+    const strokeColor = matchedTool ? matchedTool.color : path?.stroke ?? "#000000";
+    const fill = isPen
+      ? "none"
+      : matchedTool
+        ? matchedTool.color
+        : path?.fill && path.fill !== "none"
+          ? path.fill
+          : path?.stroke ?? "#000000";
+    return (
+      <svg aria-hidden="true" focusable="false" width="100%" height="100%" overflow="visible"
+        viewBox={`0 0 ${aw} ${ah}`} preserveAspectRatio="none"
+      >
+        <path d={d} fill={fill} stroke={strokeColor} strokeWidth={1.25}
+          strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
   return (
     <svg
       aria-hidden="true"
@@ -64,15 +96,9 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
       preserveAspectRatio="none"
     >
       {(() => {
-        // Draw every outline at a constant pen-tip width (~1.5 workspace px) regardless
-        // of the object's size/scale, so shapes, SVGs and text all match. Dividing by the
-        // object scale cancels the viewBox→item scaling; it still thins out on zoom-out.
+        // Draw every outline at a constant pen-tip width regardless of the object's
+        // size/scale; dividing by the object scale cancels the viewBox→item scaling.
         const penStrokeWidth = 1.25 / Math.max(0.01, Math.min(Math.abs(item.transform.scaleX), Math.abs(item.transform.scaleY)));
-        // Shapes are generated from their kind + size + corner radius (scale-aware so
-        // rounded corners stay circular under non-uniform scaling).
-        const shapeD = item.shapeKind
-          ? buildShapePath(item.shapeKind, item.frame.width, item.frame.height, item.cornerRadius ?? 0, item.transform.scaleX, item.transform.scaleY)
-          : null;
         return item.paths.map((path) => {
         const matchedTool = tools?.find((t) => t.color.toLowerCase() === (path.stroke ?? "").toLowerCase());
         const isPen = matchedTool?.type === "pen";
@@ -89,7 +115,7 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
         return (
           <path
             key={path.id}
-            d={shapeD ?? path.d}
+            d={path.d}
             fill={effectiveFill}
             fillRule={path.fillRule as "evenodd" | "nonzero" | undefined}
             stroke={path.stroke}

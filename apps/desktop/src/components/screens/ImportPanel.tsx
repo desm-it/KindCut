@@ -4,6 +4,7 @@ import { buildWorkspaceObjectSvg } from "../../workspace-objects";
 import { preflightSvg } from "@cricut-companion/svg-preflight";
 import { getFriendlySvgMessages } from "../../svg-import";
 import { getSandboxedSvgPreview } from "../../utils/svg-normalize";
+import { DEBUG } from "../../dev-flags";
 
 export function EmptyImportState({ language }: { language: Language }) {
   const { t } = createTranslator(language);
@@ -56,24 +57,28 @@ export function ImportedSvgPreview({ importedSvg, language }: { importedSvg: Wor
           )}
         </div>
 
-        <details>
-          <summary>{t("details.svgCheck")}</summary>
-          <pre>
-            {[
-              preflight.issues.length > 0
-                ? `Issues:\n${preflight.issues.join("\n")}`
-                : "Issues: none",
-              preflight.warnings.length > 0
-                ? `Warnings:\n${preflight.warnings.join("\n")}`
-                : "Warnings: none",
-            ].join("\n\n")}
-          </pre>
-        </details>
+        {DEBUG && (
+          <>
+            <details>
+              <summary>{t("details.svgCheck")}</summary>
+              <pre>
+                {[
+                  preflight.issues.length > 0
+                    ? `Issues:\n${preflight.issues.join("\n")}`
+                    : "Issues: none",
+                  preflight.warnings.length > 0
+                    ? `Warnings:\n${preflight.warnings.join("\n")}`
+                    : "Warnings: none",
+                ].join("\n\n")}
+              </pre>
+            </details>
 
-        <details>
-          <summary>{t("details.rawSvg")}</summary>
-          <pre>{svg}</pre>
-        </details>
+            <details>
+              <summary>{t("details.rawSvg")}</summary>
+              <pre>{svg}</pre>
+            </details>
+          </>
+        )}
       </div>
     </div>
   );
