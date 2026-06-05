@@ -134,7 +134,7 @@ hints for where to start, not exhaustive.
   → pan/zoom init + `resetZoomToActualSize` in `components/workspace/DesignWorkspace.tsx`;
   workspace-entry in `App.tsx`.
 
-- [ ] **More appealing start screen.** Redesign `WelcomeScreen` — warmer, more visual,
+- [x] **More appealing start screen.** Redesign `WelcomeScreen` — warmer, more visual,
   less utilitarian (project cards, imagery), keeping it grandma-friendly.
   → `components/screens/WelcomeScreen.tsx`.
 
