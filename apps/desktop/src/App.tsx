@@ -57,6 +57,7 @@ import {
   normalizeWorkspaceItemTransform,
   rotatePoint,
   saveMeasurementUnitPreference,
+  type WorkspaceItemFrame,
 } from "./workspace-utils";
 import {
   computeSnugFrame,
@@ -870,50 +871,53 @@ export function App() {
     return { width: Math.ceil(maxW) + 2, height: Math.ceil(lineH * lines.length) + 2 };
   }
 
-  function renderTextToCanvas(tc: WorkspaceTextContent): string {
-    // Render text at 3× scale for clean Potrace input, return base64 PNG
+  // Render text into the item's frame coordinate space (scaled up for clean Potrace input),
+  // using the SAME baseline (alphabetic, y = fontSize + i·lineH) and horizontal anchor as the
+  // workspace <text> render in buildTextContentSvg. The returned canvas maps 1:1 (× SCALE) onto
+  // the frame, so the traced paths land exactly where the on-screen text sits — no ink-bbox
+  // renormalisation, which is what used to shift/stretch the cut text relative to the preview.
+  function renderTextToCanvas(tc: WorkspaceTextContent, frame: WorkspaceItemFrame): { base64: string; width: number; height: number } {
     const SCALE = 3;
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d")!;
     const fontStr = `${tc.fontStyle === "italic" ? "italic " : ""}${tc.fontWeight === "bold" ? "bold " : ""}${tc.fontSize * SCALE}px ${tc.fontFamily}`;
-    ctx.font = fontStr;
-    const lines = tc.text.split("\n");
-    const lineH = tc.fontSize * SCALE * tc.lineHeight;
-    const widths = lines.map((l) => {
-      const chars = [...l];
-      if (!chars.length) return 0;
-      return chars.reduce((w, c) => w + ctx.measureText(c).width, 0) + Math.max(0, chars.length - 1) * tc.letterSpacing * SCALE;
-    });
-    const maxW = Math.max(10, ...widths);
-    const PAD = 8 * SCALE;
-    canvas.width = Math.ceil(maxW) + PAD * 2;
-    canvas.height = Math.ceil(lineH * lines.length) + PAD * 2;
-    // White background
+    canvas.width = Math.max(1, Math.ceil(frame.width * SCALE));
+    canvas.height = Math.max(1, Math.ceil(frame.height * SCALE));
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // Re-set font after resize
     ctx.font = fontStr;
     ctx.fillStyle = "#000000";
-    ctx.textBaseline = "top";
+    ctx.textBaseline = "alphabetic";
+
+    const lines = tc.text.split("\n");
+    const lineH = tc.fontSize * SCALE * tc.lineHeight;
+    const letterSpacing = tc.letterSpacing * SCALE;
     lines.forEach((line, i) => {
-      const y = PAD + i * lineH;
-      const lineW = widths[i] ?? 0;
+      const chars = [...line];
+      const lineW = chars.length === 0
+        ? 0
+        : chars.reduce((w, c) => w + ctx.measureText(c).width, 0) + Math.max(0, chars.length - 1) * letterSpacing;
+      // Mirror buildTextContentSvg anchors: center → width/2, right → width-1, left → 1.
       const xStart = tc.textAlign === "center"
-        ? (canvas.width - lineW) / 2
+        ? (frame.width * SCALE - lineW) / 2
         : tc.textAlign === "right"
-          ? canvas.width - PAD - lineW
-          : PAD;
+          ? (frame.width - 1) * SCALE - lineW
+          : 1 * SCALE;
+      const baselineY = (tc.fontSize + i * lineH / SCALE) * SCALE; // = (fontSize + i·lineH)·SCALE
       let x = xStart;
-      for (const char of [...line]) {
-        ctx.fillText(char, x, y);
-        x += ctx.measureText(char).width + tc.letterSpacing * SCALE;
+      for (const char of chars) {
+        ctx.fillText(char, x, baselineY);
+        x += ctx.measureText(char).width + letterSpacing;
       }
       if (tc.textDecoration === "underline") {
-        const ulY = y + tc.fontSize * SCALE + 2 * SCALE;
-        ctx.fillRect(xStart, ulY, lineW, Math.max(2, tc.fontSize * SCALE * 0.06));
+        ctx.fillRect(xStart, baselineY + 2 * SCALE, lineW, Math.max(2, tc.fontSize * SCALE * 0.06));
       }
     });
-    return canvas.toDataURL("image/png").replace("data:image/png;base64,", "");
+    return {
+      base64: canvas.toDataURL("image/png").replace("data:image/png;base64,", ""),
+      width: canvas.width,
+      height: canvas.height,
+    };
   }
 
   async function resolveTextItemsForCutting(items: WorkspaceSvgItem[]): Promise<WorkspaceSvgItem[]> {
@@ -938,15 +942,16 @@ export function App() {
         return { ...item, paths: [strokePath] as unknown as [WorkspacePathData] };
       }
       try {
-        const pngBase64 = renderTextToCanvas(item.textContent);
-        const rawSvg = await window.cricutCompanion?.ai?.tracePngToSvg(pngBase64);
+        const rendered = renderTextToCanvas(item.textContent, item.frame);
+        const rawSvg = await window.cricutCompanion?.ai?.tracePngToSvg(rendered.base64);
         if (!rawSvg) return item;
         const svg = normalizeAiSvg(rawSvg);
         const extracted = extractWorkspacePathsFromSvg(svg);
-        // The canvas was rendered at 3× scale, so Potrace paths are 3× too large.
-        // Scale them back down to fit the original text item frame.
-        const scaleX = item.frame.width / extracted.frame.width;
-        const scaleY = item.frame.height / extracted.frame.height;
+        // The canvas is the frame coordinate space × SCALE, so the traced paths already sit
+        // where the on-screen text does — just scale the whole canvas back down to the frame
+        // (NOT the ink bounding box, which would drop the baseline/line-height offset).
+        const scaleX = item.frame.width / rendered.width;
+        const scaleY = item.frame.height / rendered.height;
         const color = item.textContent.color;
         const paths = extracted.paths.map((p) => ({
           ...p,
