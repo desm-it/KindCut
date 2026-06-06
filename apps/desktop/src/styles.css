@@ -2143,6 +2143,18 @@ a {
   color: rgba(121, 82, 51, 0.6);
 }
 
+/* Insert-slots row: caption beside its toggle. */
+.weight-picker--toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.weight-picker--toggle .weight-picker__caption {
+  margin-bottom: 0;
+}
+
 .weight-seg {
   display: flex;
   border: 1.5px solid rgba(121, 82, 51, 0.2);
@@ -2283,6 +2295,25 @@ a {
   top: 0;
   left: 0;
   pointer-events: none;
+}
+
+/* The white "card" area when an insert-card size is chosen — sits at the paper origin. */
+.workpiece-card-paper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1px solid #d8c5aa;
+  pointer-events: none;
+}
+
+/* Insert-card corner slots overlay — sits on the active card area, non-interactive. */
+.workpiece-insert-slots {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 3;
+  overflow: visible;
 }
 
 /* Only the far edges (right + bottom) are drawn — the top/left edges sit on the

@@ -48,6 +48,10 @@ import {
   WORKSPACE_PIXELS_PER_INCH,
   type MeasurementUnit,
   type WorkspaceItemTransform,
+  type CardSize,
+  CARD_SIZES,
+  buildInsertSlotsPaths,
+  isCardSize,
   getMatDimensionsInches,
   loadMeasurementUnitPreference,
   normalizeWorkspaceItemTransform,
@@ -153,6 +157,8 @@ const planCommand = buildPlanCommand({
   },
 });
 
+const MATERIAL_INSERT_ID = 535;
+
 export function App() {
   const [screen, setScreen] = useState<AppScreen>("welcome");
   const [language, setLanguage] = useState<Language>(() => loadLanguagePreference());
@@ -178,6 +184,9 @@ export function App() {
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [selectedMaterialId, setSelectedMaterialId] = useState(218);
   const [selectedMatPreset, setSelectedMatPreset] = useState("joy-standard");
+  // Insert-card sub-options (only meaningful for the insert-card material).
+  const [cardSize, setCardSize] = useState<CardSize | null>(null);
+  const [insertSlots, setInsertSlots] = useState(false);
   const [tools, setTools] = useState<WorkspaceTool[]>(DEFAULT_TOOLS);
   const [paperColor, setPaperColor] = useState<string>(DEFAULT_PAPER_COLOR);
   const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>(() => loadMeasurementUnitPreference());
@@ -392,6 +401,8 @@ export function App() {
       measurementUnit,
       tools,
       paperColor,
+      cardSize,
+      insertSlots,
       importedSvg: null,
       importedSvgs: [],
       workspaceObjects: importedSvgs.map((item) => ({
@@ -416,6 +427,8 @@ export function App() {
   function applyProjectFile(projectFile: KindCutProjectFile, projectPath: string) {
     setSelectedMaterialId(projectFile.workspace.selectedMaterialId);
     setSelectedMatPreset(projectFile.workspace.selectedMatPreset);
+    setCardSize(isCardSize(projectFile.workspace.cardSize) ? projectFile.workspace.cardSize : null);
+    setInsertSlots(Boolean(projectFile.workspace.insertSlots));
     setMeasurementUnit(projectFile.workspace.measurementUnit);
     setTools(projectFile.workspace.tools);
     setPaperColor(projectFile.workspace.paperColor);
@@ -960,6 +973,20 @@ export function App() {
     requestAnimationFrame(() => { void window.cricutCompanion?.showWorkspaceContextMenu?.(); });
   }
 
+  // Card-size + insert-slot options only apply to the insert-card material; clear them
+  // when switching to another material.
+  function handleMaterialChange(materialId: number) {
+    setSelectedMaterialId(materialId);
+    if (materialId !== MATERIAL_INSERT_ID) {
+      setCardSize(null);
+      setInsertSlots(false);
+    }
+  }
+
+  function handleCardSizeChange(size: CardSize) {
+    setCardSize((current) => (current === size ? null : size)); // clicking the active one turns it off
+  }
+
   async function handleExampleProject() {
     enterWorkspace();
     await generateSamplePlan();
@@ -1197,7 +1224,14 @@ export function App() {
     const matH = matDims.height * WORKSPACE_PIXELS_PER_INCH;
     // Convert any text items to traced paths so slicebug can cut them
     const resolvedItems = await resolveTextItemsForCutting(importedSvgs);
-    const svg = buildWorkspaceCutSvg(resolvedItems, matW, matH, tools, WORKSPACE_PIXELS_PER_INCH);
+    // Insert-card corner slots (cut in the behind colour) sit at the active card area.
+    const slotsSvg = selectedMaterialId === MATERIAL_INSERT_ID && insertSlots
+      ? (() => {
+          const dims = cardSize ? CARD_SIZES[cardSize] : matDims;
+          return buildInsertSlotsPaths(dims.width * WORKSPACE_PIXELS_PER_INCH, dims.height * WORKSPACE_PIXELS_PER_INCH, getBehindColor(tools));
+        })()
+      : "";
+    const svg = buildWorkspaceCutSvg(resolvedItems, matW, matH, tools, WORKSPACE_PIXELS_PER_INCH, slotsSvg);
     const colorMap = buildToolColorMap();
 
     if (!window.cricutCompanion?.slicebug) {
@@ -1437,6 +1471,10 @@ export function App() {
       measurementUnit={measurementUnit}
       selectedMaterialId={selectedMaterialId}
       selectedMatPreset={selectedMatPreset}
+      cardSize={cardSize}
+      insertSlots={insertSlots}
+      onCardSizeChange={handleCardSizeChange}
+      onInsertSlotsChange={setInsertSlots}
       importedSvg={importedSvg}
       importedSvgs={importedSvgs}
       selectedSvgId={selectedSvgId}
@@ -1454,7 +1492,7 @@ export function App() {
       cutSession={cutSession}
       cutBusy={cutBusy}
       onBackWelcome={() => setScreen("welcome")}
-      onMaterialChange={setSelectedMaterialId}
+      onMaterialChange={handleMaterialChange}
       onMatChange={setSelectedMatPreset}
       tools={tools}
       onToolsChange={setTools}

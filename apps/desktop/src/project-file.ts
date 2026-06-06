@@ -1,4 +1,4 @@
-import type { MeasurementUnit, WorkspaceItemTransform } from "./workspace-utils";
+import { type CardSize, type MeasurementUnit, type WorkspaceItemTransform, isCardSize } from "./workspace-utils";
 import { type WorkspaceShapeKind, isWorkspaceShapeKind } from "./workspace-shapes";
 import type { WorkspacePathData } from "./workspace-objects";
 import { extractWorkspacePathsFromSvg } from "./workspace-svg-import";
@@ -128,6 +128,8 @@ export type KindCutProjectFile = {
     measurementUnit: MeasurementUnit;
     tools: WorkspaceTool[];
     paperColor: string;
+    cardSize: CardSize | null;
+    insertSlots: boolean;
   };
   importedSvgs: SavedImportedSvg[];
   selectedSvgId: string | null;
@@ -143,6 +145,8 @@ export function buildProjectFile(input: {
   measurementUnit: MeasurementUnit;
   tools?: WorkspaceTool[];
   paperColor?: string;
+  cardSize?: CardSize | null;
+  insertSlots?: boolean;
   importedSvg?: SavedImportedSvg | null;
   importedSvgs?: SavedImportedSvg[];
   workspaceObjects?: SavedWorkspaceObject[];
@@ -177,6 +181,8 @@ export function buildProjectFile(input: {
       measurementUnit: input.measurementUnit,
       tools: normalizeToolSet(input.tools ?? DEFAULT_TOOLS),
       paperColor: input.paperColor ?? DEFAULT_PAPER_COLOR,
+      cardSize: input.cardSize ?? null,
+      insertSlots: input.insertSlots ?? false,
     },
     importedSvgs: savedImportedSvgs,
     selectedSvgId,
@@ -247,6 +253,8 @@ export function parseProjectFile(content: string): KindCutProjectFile {
       measurementUnit,
       tools: parseTools(workspace.tools),
       paperColor: typeof workspace.paperColor === "string" && workspace.paperColor ? workspace.paperColor : DEFAULT_PAPER_COLOR,
+      cardSize: isCardSize(workspace.cardSize) ? workspace.cardSize : null,
+      insertSlots: workspace.insertSlots === true,
     },
     importedSvgs,
     selectedSvgId,

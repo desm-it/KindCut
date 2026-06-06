@@ -79,6 +79,76 @@ export function getMatKind(matPreset: string): MatKind {
   return matPreset === "joy-card" ? "card" : "standard";
 }
 
+// ── Card sizes (insert-card sub-options) ───────────────────────────────────────────
+export type CardSize = "small" | "medium" | "large";
+export const CARD_SIZE_ORDER: CardSize[] = ["small", "medium", "large"];
+
+// Card blank sizes (inches). "large" == the full card mat area.
+export const CARD_SIZES: Record<CardSize, MatDimensions> = {
+  small: { width: 3.5, height: 4.9 },   // 89 × 124 mm
+  medium: { width: 4.25, height: 5.5 }, // 108 × 140 mm
+  large: { width: 4.5, height: 6.25 },  // 114 × 159 mm (whole paper)
+};
+
+export function isCardSize(value: unknown): value is CardSize {
+  return value === "small" || value === "medium" || value === "large";
+}
+
+const MM_PER_INCH = 25.4;
+export function mmToWorkspacePx(mm: number): number {
+  return (mm / MM_PER_INCH) * WORKSPACE_PIXELS_PER_INCH;
+}
+
+// ── Insert-card corner slots ───────────────────────────────────────────────────────
+// 4 diagonal stadium slits, one per corner of the active card area, that hold the
+// colored insert behind the folded card. Cut in the behind colour.
+const SLOT_LENGTH_MM = 16;
+const SLOT_THICKNESS_MM = 1.25;
+const SLOT_EDGE_INSET_MM = 3; // gap from each paper edge
+
+export type InsertSlot = { cx: number; cy: number; angle: number }; // px, degrees
+
+// Slot centres + angles for an active area of (width × height) px.
+export function getInsertSlots(width: number, height: number): InsertSlot[] {
+  // Distance of the slot centre from the corner, along the 45° bisector, so the slit's
+  // far ends sit SLOT_EDGE_INSET_MM from both edges.
+  const inset = mmToWorkspacePx(SLOT_EDGE_INSET_MM + (SLOT_LENGTH_MM / 2) * Math.SQRT1_2);
+  const corners: Array<{ x: number; y: number; sx: number; sy: number }> = [
+    { x: 0, y: 0, sx: 1, sy: 1 },
+    { x: width, y: 0, sx: -1, sy: 1 },
+    { x: 0, y: height, sx: 1, sy: -1 },
+    { x: width, y: height, sx: -1, sy: -1 },
+  ];
+  return corners.map(({ x, y, sx, sy }) => ({
+    cx: x + sx * inset,
+    cy: y + sy * inset,
+    // Slit runs perpendicular to the corner bisector (so the card corner tucks under it).
+    angle: (Math.atan2(sy, sx) * 180) / Math.PI + 90,
+  }));
+}
+
+// Inner SVG (<path> elements) for the 4 corner slots of an active area, drawn in `color`
+// (the behind/cut colour). Used both for the editor overlay and the cut export.
+export function buildInsertSlotsPaths(width: number, height: number, color: string): string {
+  const d = insertSlotPathD();
+  return getInsertSlots(width, height)
+    .map(
+      (s) =>
+        `<path d="${d}" transform="translate(${roundCss(s.cx)} ${roundCss(s.cy)}) rotate(${roundCss(s.angle)})" fill="${color}" stroke="${color}" stroke-width="0.5"/>`,
+    )
+    .join("");
+}
+
+// Stadium (fully-rounded slim rectangle) centred at the origin, long axis horizontal.
+export function insertSlotPathD(): string {
+  const L = mmToWorkspacePx(SLOT_LENGTH_MM);
+  const T = mmToWorkspacePx(SLOT_THICKNESS_MM);
+  const r = T / 2;
+  const hx = L / 2;
+  const f = (n: number) => Number(n.toFixed(3));
+  return `M ${f(-hx + r)} ${f(-r)} H ${f(hx - r)} A ${f(r)} ${f(r)} 0 0 1 ${f(hx - r)} ${f(r)} H ${f(-hx + r)} A ${f(r)} ${f(r)} 0 0 1 ${f(-hx + r)} ${f(-r)} Z`;
+}
+
 export function inchesToDisplayValue(valueInInches: number, unit: MeasurementUnit): number {
   switch (unit) {
     case "cm":

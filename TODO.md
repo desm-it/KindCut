@@ -118,7 +118,7 @@ hints for where to start, not exhaustive.
   the number of cut passes (heavier stock → more/deeper passes) and reflect that in the
   estimate and the progress steps.
 
-- [ ] **Insert-card corner cutaways.** Auto-generate the 4 small diagonal corner
+- [x] **Insert-card corner cutaways.** Auto-generate the 4 small diagonal corner
   slots that hold a Cricut insert card — the colored insert slides behind the card
   front and its corners tuck into these diagonal slits. One-click "add insert slots"
   sized/positioned to the chosen card blank (tie in with the CardMat card-size guides:

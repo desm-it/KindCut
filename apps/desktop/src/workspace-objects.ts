@@ -156,6 +156,7 @@ export function buildWorkspaceCutSvg(
   matHeightPx: number,
   tools?: CutTool[],
   pixelsPerInch = 80,
+  extraInnerSvg = "", // generated geometry (e.g. insert-card slots) cut alongside the objects
 ): string {
   const vbW = formatNumber(Math.max(1, matWidthPx));
   const vbH = formatNumber(Math.max(1, matHeightPx));
@@ -177,7 +178,7 @@ export function buildWorkspaceCutSvg(
       return `<g transform="${transform}">${buildItemInnerSvg(item, tools)}</g>`;
     })
     .join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${physW}in" height="${physH}in" viewBox="0 0 ${vbW} ${vbH}">${paths}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${physW}in" height="${physH}in" viewBox="0 0 ${vbW} ${vbH}">${paths}${extraInnerSvg}</svg>`;
 }
 
 export function buildWorkspaceObjectsSvg(items: WorkspaceObject[]): string {

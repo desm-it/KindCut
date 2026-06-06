@@ -49,6 +49,10 @@ import {
   clampWorkspaceItemTransform,
   getMatDimensionsInches,
   getMatKind,
+  type CardSize,
+  CARD_SIZES,
+  CARD_SIZE_ORDER,
+  buildInsertSlotsPaths,
   getMeasurementTicks,
   getViewportTransform,
   getWorkspaceItemTransform,
@@ -188,11 +192,6 @@ function SwatchPicker({ tools, selectedColor, onPick, language }: {
 
 // Card-size guide rectangles (physical card blanks), drawn as dotted outlines on
 // the CardMat. Sizes in inches → workspace px via WORKSPACE_PIXELS_PER_INCH.
-const CARD_GUIDES = [
-  { w: 4.25 * WORKSPACE_PIXELS_PER_INCH, h: 5.5 * WORKSPACE_PIXELS_PER_INCH }, // 108 × 140 mm
-  { w: 3.5 * WORKSPACE_PIXELS_PER_INCH, h: 4.9 * WORKSPACE_PIXELS_PER_INCH },  // 89 × 124 mm
-];
-
 /**
  * Decorative representation of the physical Cricut Joy mat, framing the paper.
  * Purely visual (pointer-events:none); sits behind the paper inside the zoom/pan
@@ -235,17 +234,40 @@ function WorkspaceMat({ kind, width, height }: { kind: "standard" | "card"; widt
  * below the design items). Anchored at the paper's top-left (0,0) corner — cards
  * align to that corner — and nested from there.
  */
-function WorkspaceCardGuides({ width, height }: { width: number; height: number }) {
+function WorkspaceCardGuides({ width, height, activeCardSize }: { width: number; height: number; activeCardSize: CardSize | null }) {
+  // Dotted guides for the small + medium card blanks (large == the paper edge). When a
+  // size is selected, hide the guides smaller than it.
+  const guideSizes: CardSize[] = ["medium", "small"];
+  const areaOf = (s: CardSize) => CARD_SIZES[s].width * CARD_SIZES[s].height;
+  const activeArea = activeCardSize ? areaOf(activeCardSize) : 0;
   return (
-    <div className="workpiece-card-guides" style={{ width, height }} aria-hidden="true">
-      {CARD_GUIDES.map((g, i) => (
-        <div
-          key={i}
-          className="workpiece-mat__card-guide"
-          style={{ width: g.w, height: g.h, left: 0, top: 0 }}
-        />
-      ))}
+    <div className="workpiece-card-guides" style={{ width, height, overflow: "visible" }} aria-hidden="true">
+      {guideSizes
+        .filter((s) => !activeCardSize || areaOf(s) >= activeArea)
+        .map((s) => (
+          <div
+            key={s}
+            className="workpiece-mat__card-guide"
+            style={{ width: CARD_SIZES[s].width * WORKSPACE_PIXELS_PER_INCH, height: CARD_SIZES[s].height * WORKSPACE_PIXELS_PER_INCH, left: 0, top: 0 }}
+          />
+        ))}
     </div>
+  );
+}
+
+// Insert-card corner slots overlay (purely visual; the real cut geometry is generated in
+// buildInsertSlotsPaths and added to the cut SVG). Non-interactive.
+function InsertSlotsOverlay({ width, height, color }: { width: number; height: number; color: string }) {
+  return (
+    <svg
+      className="workpiece-insert-slots"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${Math.max(1, width)} ${Math.max(1, height)}`}
+      overflow="visible"
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: buildInsertSlotsPaths(width, height, color) }}
+    />
   );
 }
 
@@ -344,6 +366,10 @@ export function DesignWorkspace({
   canPaste,
   onBackWelcome,
   onMaterialChange,
+  cardSize,
+  insertSlots,
+  onCardSizeChange,
+  onInsertSlotsChange,
   onMatChange,
   tools,
   onToolsChange,
@@ -416,6 +442,10 @@ export function DesignWorkspace({
   canPaste: boolean;
   onBackWelcome: () => void;
   onMaterialChange: (materialId: number) => void;
+  cardSize: CardSize | null;
+  insertSlots: boolean;
+  onCardSizeChange: (size: CardSize) => void;
+  onInsertSlotsChange: (value: boolean) => void;
   onMatChange: (matPreset: string) => void;
   tools: WorkspaceTool[];
   onToolsChange: (tools: WorkspaceTool[]) => void;
@@ -516,16 +546,25 @@ export function DesignWorkspace({
   const [moveableTargets, setMoveableTargets] = useState<HTMLElement[]>([]);
   const [isDirectItemDragging, setIsDirectItemDragging] = useState(false);
   const matDimensions = getMatDimensionsInches(selectedMatPreset);
+  // The active card size (insert-card sub-option) shrinks the working area: rulers, the
+  // white paper, and slot positions follow it. The cut/mat itself are unaffected.
+  const isInsertCard = materialCategoryOf(selectedMaterialId) === "insert";
+  const activeCardSize = isInsertCard ? cardSize : null;
+  const activeDims = activeCardSize ? CARD_SIZES[activeCardSize] : matDimensions;
   const materialName =
     getMaterialName(selectedMaterialId, language) ??
     MATERIAL_OPTIONS.find((material) => material.id === selectedMaterialId)?.name ??
     "Material";
   const matName = getMatName(selectedMatPreset, language) ?? MAT_PRESETS.find((mat) => mat.id === selectedMatPreset)?.name ?? "Mat";
+  // The mat + paper container stay the full mat size (the mat is always visible); the
+  // white "card" area + rulers + slots follow the selected card size.
   const workpieceWidth = matDimensions.width * WORKSPACE_PIXELS_PER_INCH;
   const workpieceHeight = matDimensions.height * WORKSPACE_PIXELS_PER_INCH;
+  const cardWidth = activeDims.width * WORKSPACE_PIXELS_PER_INCH;
+  const cardHeight = activeDims.height * WORKSPACE_PIXELS_PER_INCH;
   const xTicks = getMeasurementTicks({
     axis: "x",
-    lengthInches: matDimensions.width,
+    lengthInches: activeDims.width,
     unit: measurementUnit,
     zoom,
     pan,
@@ -533,7 +572,7 @@ export function DesignWorkspace({
   });
   const yTicks = getMeasurementTicks({
     axis: "y",
-    lengthInches: matDimensions.height,
+    lengthInches: activeDims.height,
     unit: measurementUnit,
     zoom,
     pan,
@@ -1489,34 +1528,57 @@ export function DesignWorkspace({
               style={{ transform: getViewportTransform({ zoom, pan }) }}
             >
               <WorkspaceMat kind={getMatKind(selectedMatPreset)} width={workpieceWidth} height={workpieceHeight} />
-              <div
-                className="workpiece-paper"
-                style={{
-                  width: workpieceWidth,
-                  height: workpieceHeight,
-                  // Card stock has square corners; the standard mat keeps the soft radius.
-                  borderRadius: getMatKind(selectedMatPreset) === "card" ? 0 : undefined,
-                  backgroundColor: paperColor,
+              {(() => {
+                const gridPx = measurementUnit === "in"
+                  ? WORKSPACE_PIXELS_PER_INCH * 0.25
+                  : measurementUnit === "cm"
+                    ? WORKSPACE_PIXELS_PER_INCH * 0.5 / 2.54
+                    : WORKSPACE_PIXELS_PER_INCH * 5 / 25.4;
+                const gridStyle = {
                   backgroundImage: "linear-gradient(rgba(127,96,66,0.08) 1px,transparent 1px),linear-gradient(90deg,rgba(127,96,66,0.08) 1px,transparent 1px)",
-                  ...(() => {
-                    const gridPx = measurementUnit === "in"
-                      ? WORKSPACE_PIXELS_PER_INCH * 0.25
-                      : measurementUnit === "cm"
-                        ? WORKSPACE_PIXELS_PER_INCH * 0.5 / 2.54
-                        : WORKSPACE_PIXELS_PER_INCH * 5 / 25.4;
-                    return { backgroundSize: `${gridPx}px ${gridPx}px`, backgroundPosition: "-1px -1px" };
-                  })(),
-                }}
-              >
-                {importedSvgs.length === 0 ? (
+                  backgroundSize: `${gridPx}px ${gridPx}px`,
+                  backgroundPosition: "-1px -1px",
+                };
+                const squareCorners = getMatKind(selectedMatPreset) === "card";
+                const emptyState = importedSvgs.length === 0 ? (
                   <div className="empty-workpiece">
                     <strong>{language === "nl" ? "Leeg project" : "Blank project"}</strong>
                     <span>{language === "nl" ? "Kies een vorm of voeg een eigen ontwerp toe." : "Choose a shape or add your own design."}</span>
                   </div>
-                ) : null}
-              </div>
+                ) : null;
+                return (
+                  <div
+                    className="workpiece-paper"
+                    style={{
+                      width: workpieceWidth,
+                      height: workpieceHeight,
+                      borderRadius: squareCorners ? 0 : undefined,
+                      // With a card size chosen, only that area is paper; the rest of the
+                      // sheet shows the plain workspace background — but the grid spans both.
+                      backgroundColor: activeCardSize ? "rgb(247,240,229)" : paperColor,
+                      ...gridStyle,
+                    }}
+                  >
+                    {activeCardSize ? (
+                      // The card area: paper colour on top, and it hosts the empty-state
+                      // text so the message is centred in the selected card size.
+                      <div
+                        className="workpiece-card-paper"
+                        style={{ width: cardWidth, height: cardHeight, backgroundColor: paperColor, borderRadius: squareCorners ? 0 : undefined, ...gridStyle }}
+                      >
+                        {emptyState}
+                      </div>
+                    ) : (
+                      emptyState
+                    )}
+                  </div>
+                );
+              })()}
               {getMatKind(selectedMatPreset) === "card" ? (
-                <WorkspaceCardGuides width={workpieceWidth} height={workpieceHeight} />
+                <WorkspaceCardGuides width={workpieceWidth} height={workpieceHeight} activeCardSize={activeCardSize} />
+              ) : null}
+              {isInsertCard && insertSlots ? (
+                <InsertSlotsOverlay width={cardWidth} height={cardHeight} color={getBehindColor(tools)} />
               ) : null}
               <div
                 className="workspace-image-layer"
@@ -1678,6 +1740,44 @@ export function DesignWorkspace({
                             ))}
                           </div>
                         </div>
+                      ) : null}
+                      {materialCategoryOf(selectedMaterialId) === "insert" ? (
+                        <>
+                          <div className="weight-picker">
+                            <span className="weight-picker__caption">{nl ? "Kaartformaat" : "Card size"}</span>
+                            <div className="weight-seg" role="group">
+                              {([
+                                { size: "small" as const, label: nl ? "Klein" : "Small" },
+                                { size: "medium" as const, label: nl ? "Middel" : "Medium" },
+                                { size: "large" as const, label: nl ? "Groot" : "Large" },
+                              ]).map((c) => (
+                                <button
+                                  key={c.size}
+                                  type="button"
+                                  className={`weight-seg__btn${cardSize === c.size ? " weight-seg__btn--active" : ""}`}
+                                  onClick={() => onCardSizeChange(c.size)}
+                                  aria-pressed={cardSize === c.size}
+                                  title={c.label}
+                                >
+                                  <span>{c.label}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="weight-picker weight-picker--toggle">
+                            <span className="weight-picker__caption">{nl ? "Insteeksleuven" : "Insert slots"}</span>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={insertSlots}
+                              className={`toggle-switch${insertSlots ? " toggle-switch--on" : ""}`}
+                              onClick={() => onInsertSlotsChange(!insertSlots)}
+                              title={nl ? "Hoeksleuven voor de inlegkaart toevoegen" : "Add corner slots for the insert card"}
+                            >
+                              <span className="toggle-switch__knob" />
+                            </button>
+                          </div>
+                        </>
                       ) : null}
                     </div>
                     <div className="object-settings__row object-settings__row--mat">

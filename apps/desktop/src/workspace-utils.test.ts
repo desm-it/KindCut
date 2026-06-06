@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   type WorkspaceItemFrame,
   type WorkspaceItemTransform,
+  CARD_SIZES,
+  buildInsertSlotsPaths,
+  getInsertSlots,
+  isCardSize,
   getWorkspaceSelectionBounds,
   getMatDimensionsInches,
   getMeasurementTicks,
@@ -245,6 +249,41 @@ describe("workspace measurement helpers", () => {
       expect(result.snapped).toBe(true);
       // nextScaleY = startScaleY * factor = 1 * 2 = 2 === scaleX
       expect(result.scaleFactorY * 1).toBeCloseTo(2);
+    });
+  });
+
+  describe("insert-card sizes & slots", () => {
+    it("recognises valid card sizes", () => {
+      expect(isCardSize("small")).toBe(true);
+      expect(isCardSize("large")).toBe(true);
+      expect(isCardSize("huge")).toBe(false);
+      expect(isCardSize(null)).toBe(false);
+    });
+
+    it("orders card sizes small < medium < large by area", () => {
+      const area = (s: keyof typeof CARD_SIZES) => CARD_SIZES[s].width * CARD_SIZES[s].height;
+      expect(area("small")).toBeLessThan(area("medium"));
+      expect(area("medium")).toBeLessThan(area("large"));
+    });
+
+    it("places one slot per corner inset symmetrically", () => {
+      const slots = getInsertSlots(400, 600);
+      expect(slots).toHaveLength(4);
+      const inset = slots[0]!.cx; // top-left slot offset from (0,0)
+      expect(inset).toBeGreaterThan(0);
+      // Opposite corners are inset by the same amount from their corner.
+      expect(400 - slots[1]!.cx).toBeCloseTo(inset); // top-right
+      expect(600 - slots[2]!.cy).toBeCloseTo(inset); // bottom-left
+      // Opposing corners share an angle; adjacent corners differ by 90°.
+      expect(Math.abs(slots[0]!.angle - slots[3]!.angle) % 180).toBeCloseTo(0);
+      expect(Math.abs(slots[0]!.angle - slots[1]!.angle) % 180).toBeCloseTo(90);
+    });
+
+    it("builds 4 slot paths in the given colour", () => {
+      const svg = buildInsertSlotsPaths(400, 600, "#8f4f2b");
+      expect((svg.match(/<path /g) ?? []).length).toBe(4);
+      expect(svg).toContain("#8f4f2b");
+      expect(svg).toContain("rotate(");
     });
   });
 });
