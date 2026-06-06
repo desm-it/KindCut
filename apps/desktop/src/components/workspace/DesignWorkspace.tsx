@@ -345,6 +345,7 @@ export function DesignWorkspace({
   onPrepareImportedPlan: _onPrepareImportedPlan,
   onOpenProject,
   onSaveProject,
+  onSaveProjectAs,
   onGenerateSamplePlan: _onGenerateSamplePlan,
   onStartCut,
   onContinueCut: _onContinueCut,
@@ -415,6 +416,7 @@ export function DesignWorkspace({
   onPrepareImportedPlan: () => void;
   onOpenProject: () => void;
   onSaveProject: () => void;
+  onSaveProjectAs: () => void;
   onGenerateSamplePlan: () => void;
   onStartCut: () => void;
   onContinueCut: () => void;
@@ -1362,6 +1364,7 @@ export function DesignWorkspace({
           projectOpening={projectOpening}
           onOpen={onOpenProject}
           onSave={onSaveProject}
+          onSaveAs={onSaveProjectAs}
           onCopy={onCopySvgs}
           onCut={onCutSvgs}
           onPaste={onPasteSvgs}

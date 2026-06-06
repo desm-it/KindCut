@@ -37,6 +37,7 @@ type RendererAction =
   | "new-project"
   | "open-project"
   | "save-project"
+  | "save-project-as"
   | "example-project"
   | "set-language"
   | "edit-cut"
@@ -149,6 +150,7 @@ function createProjectMenu(): MenuItemConstructorOptions {
       { label: "New Project", accelerator: "CmdOrCtrl+N", click: () => sendRendererAction("new-project") },
       { label: "Open Project...", accelerator: "CmdOrCtrl+O", click: () => sendRendererAction("open-project") },
       { label: "Save Project", accelerator: "CmdOrCtrl+S", click: () => sendRendererAction("save-project") },
+      { label: "Save Project As...", accelerator: "Shift+CmdOrCtrl+S", click: () => sendRendererAction("save-project-as") },
       { type: "separator" },
       { label: "Example Project", click: () => sendRendererAction("example-project") },
     ],

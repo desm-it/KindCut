@@ -92,6 +92,7 @@ import { WelcomeScreen } from "./components/screens/WelcomeScreen";
 import { SettingsModal } from "./components/modals/SettingsModal";
 import { AiGenerateModal } from "./components/modals/AiGenerateModal";
 import { CutPreviewModal } from "./components/modals/CutPreviewModal";
+import { UnsavedChangesModal } from "./components/modals/UnsavedChangesModal";
 
 type SlicebugStatus = {
   ok: boolean;
@@ -114,6 +115,7 @@ type DesktopActionPayload = {
     | "new-project"
     | "open-project"
     | "save-project"
+    | "save-project-as"
     | "example-project"
     | "set-language"
     | "edit-cut"
@@ -178,6 +180,8 @@ export function App() {
   const lastWorkspaceContextMenuAt = useRef(0);
   const lastWorkspaceContextSelectionCount = useRef<number | null>(null);
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
+  // Bumped on each successful save; used as a key to replay the "Saved!" fly-in toast.
+  const [savedToast, setSavedToast] = useState(0);
   const [projectMessage, setProjectMessage] = useState<string | null>(null);
   const [projectSaving, setProjectSaving] = useState(false);
   const [projectOpening, setProjectOpening] = useState(false);
@@ -211,6 +215,98 @@ export function App() {
     () => getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading, language),
     [language, slicebugLoading, slicebugStatus],
   );
+
+  // --- Unsaved-changes tracking ---------------------------------------------
+  // A signature of the persisted project content (objects + settings, ignoring which item is
+  // selected). When it differs from the baseline taken at the last save/open/new, there are
+  // unsaved changes. Used to guard reload / Home / open / new with a Save prompt.
+  const currentSignature = useMemo(
+    () =>
+      JSON.stringify({
+        m: selectedMaterialId,
+        mat: selectedMatPreset,
+        unit: measurementUnit,
+        tools,
+        paper: paperColor,
+        card: cardSize,
+        slots: insertSlots,
+        objects: importedSvgs.map((o) => ({
+          id: o.id,
+          type: o.type,
+          kind: o.kind,
+          shapeKind: o.shapeKind,
+          fileName: o.fileName,
+          paths: o.paths,
+          frame: o.frame,
+          transform: o.transform,
+          textContent: o.textContent,
+          cornerRadius: o.cornerRadius,
+        })),
+      }),
+    [importedSvgs, selectedMaterialId, selectedMatPreset, measurementUnit, tools, paperColor, cardSize, insertSlots],
+  );
+  const [savedSignature, setSavedSignature] = useState("");
+  const [rebaseline, setRebaseline] = useState(0);
+  const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
+  const signatureRef = useRef(currentSignature);
+  signatureRef.current = currentSignature;
+  // Re-baseline on mount and whenever a save/open/new declares "this is the clean state now".
+  useEffect(() => {
+    setSavedSignature(signatureRef.current);
+  }, [rebaseline]);
+  const hasUnsavedChanges = currentSignature !== savedSignature;
+
+  // If there are unsaved changes, route the navigation through a Save / Don't save / Cancel
+  // prompt; otherwise run it straight away.
+  function guardNavigation(action: () => void) {
+    if (hasUnsavedChanges) {
+      setPendingNav(() => action);
+    } else {
+      action();
+    }
+  }
+
+  // Ctrl/Cmd+R reload and window close also pass through the unsaved-changes guard.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && (event.key === "r" || event.key === "R")) {
+        event.preventDefault();
+        guardNavigation(() => window.location.reload());
+      }
+    }
+    function onBeforeUnload(event: BeforeUnloadEvent) {
+      // Safety net for closes/reloads we don't intercept: trigger the native confirm.
+      if (hasUnsavedChanges) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasUnsavedChanges]);
+
+  function handleUnsavedSave() {
+    void handleSaveProject().then((saved) => {
+      const next = pendingNav;
+      setPendingNav(null);
+      if (saved) next?.();
+    });
+  }
+
+  function handleUnsavedDiscard() {
+    const next = pendingNav;
+    setPendingNav(null);
+    next?.();
+  }
+
+  function handleUnsavedCancel() {
+    setPendingNav(null);
+  }
 
   async function loadImageLibrary() {
     if (!window.cricutCompanion?.imageLibrary) {
@@ -322,6 +418,10 @@ export function App() {
   }
 
   function handleNewProject() {
+    guardNavigation(doNewProject);
+  }
+
+  function doNewProject() {
     resetWorkspaceHistory();
     setImportedSvgs([]);
     setSelectedSvgId(null);
@@ -334,10 +434,15 @@ export function App() {
     setCutSession(null);
     setTools(DEFAULT_TOOLS);
     setPaperColor(DEFAULT_PAPER_COLOR);
+    setRebaseline((n) => n + 1); // fresh project = clean
     enterWorkspace();
   }
 
-  async function handleOpenProject() {
+  function handleOpenProject() {
+    guardNavigation(() => void doOpenProject());
+  }
+
+  async function doOpenProject() {
     if (!window.cricutCompanion?.project) {
       setProjectMessage(t("project.openInDesktop"));
       enterWorkspace();
@@ -364,11 +469,11 @@ export function App() {
     }
   }
 
-  async function handleSaveProject() {
+  async function handleSaveProject(options: { saveAs?: boolean } = {}): Promise<boolean> {
     if (!window.cricutCompanion?.project) {
       setProjectMessage(t("project.saveInDesktop"));
       enterWorkspace();
-      return;
+      return false;
     }
 
     const projectFile = createCurrentProjectFile();
@@ -377,17 +482,22 @@ export function App() {
       const result = await window.cricutCompanion.project.save({
         content: serializeProjectFile(projectFile),
         defaultFileName: `${getSafeProjectFileName(projectFile.name)}.kindcut`,
-        currentPath: currentProjectPath,
+        // "Save as" always asks for a new location; a plain save reuses the known path.
+        currentPath: options.saveAs ? null : currentProjectPath,
       });
       if (result.canceled) {
-        return;
+        return false;
       }
       setCurrentProjectPath(result.path);
       setProjectMessage(DEBUG ? t("project.saved", { path: result.path }) : null);
+      setSavedToast((n) => n + 1); // cute fly-in confirmation
+      setRebaseline((n) => n + 1); // saved = clean
       enterWorkspace();
+      return true;
     } catch (error) {
       setProjectMessage(error instanceof Error ? error.message : t("project.saveError"));
       enterWorkspace();
+      return false;
     } finally {
       setProjectSaving(false);
     }
@@ -463,6 +573,7 @@ export function App() {
     setSelectedSvgId(restoredSelectedId);
     setSelectedSvgIds(restoredSelectedId ? [restoredSelectedId] : []);
     resetWorkspaceHistory();
+    setRebaseline((n) => n + 1); // just-opened project = clean
   }
 
   function handleSelectAllSvgs() {
@@ -987,9 +1098,14 @@ export function App() {
     setCardSize((current) => (current === size ? null : size)); // clicking the active one turns it off
   }
 
-  async function handleExampleProject() {
+  function handleExampleProject() {
+    guardNavigation(() => void doExampleProject());
+  }
+
+  async function doExampleProject() {
     enterWorkspace();
     await generateSamplePlan();
+    setRebaseline((n) => n + 1); // example loaded = clean starting point
   }
 
   function handleDesktopAction(payload: DesktopActionPayload) {
@@ -1020,6 +1136,9 @@ export function App() {
         break;
       case "save-project":
         void handleSaveProject();
+        break;
+      case "save-project-as":
+        void handleSaveProject({ saveAs: true });
         break;
       case "example-project":
         void handleExampleProject();
@@ -1214,6 +1333,21 @@ export function App() {
     }
     return map;
   }
+
+  // The tools actually used by the design (matched to path/text colours), in the order
+  // they run: pens draw first, the blade cuts last. Drives the visual cut steps.
+  const usedCutTools = useMemo(() => {
+    const used = new Set<string>();
+    for (const item of importedSvgs) {
+      if (item.textContent) used.add(item.textContent.color.toLowerCase());
+      for (const path of item.paths) if (path.stroke) used.add(path.stroke.toLowerCase());
+    }
+    if (selectedMaterialId === MATERIAL_INSERT_ID && insertSlots) used.add(getBehindColor(tools).toLowerCase());
+    const list = tools
+      .filter((tool) => used.has(tool.color.toLowerCase()))
+      .map((tool) => ({ tool: (tool.type === "pen" ? "pen" : "fine_point_blade") as "pen" | "fine_point_blade", color: tool.color }));
+    return [...list.filter((t) => t.tool === "pen"), ...list.filter((t) => t.tool !== "pen")];
+  }, [importedSvgs, tools, selectedMaterialId, insertSlots]);
 
   async function handleOpenCutPreview() {
     if (importedSvgs.length === 0) return;
@@ -1491,7 +1625,7 @@ export function App() {
       projectOpening={projectOpening}
       cutSession={cutSession}
       cutBusy={cutBusy}
-      onBackWelcome={() => setScreen("welcome")}
+      onBackWelcome={() => guardNavigation(() => setScreen("welcome"))}
       onMaterialChange={handleMaterialChange}
       onMatChange={setSelectedMatPreset}
       tools={tools}
@@ -1529,6 +1663,7 @@ export function App() {
       onPrepareImportedPlan={() => void prepareImportedPlan()}
       onOpenProject={() => void handleOpenProject()}
       onSaveProject={() => void handleSaveProject()}
+      onSaveProjectAs={() => void handleSaveProject({ saveAs: true })}
       onGenerateSamplePlan={() => void generateSamplePlan()}
       onStartCut={() => void handleOpenCutPreview()}
       onContinueCut={() => void continueCutSession()}
@@ -1567,6 +1702,8 @@ export function App() {
         preview={cutPreview}
         cutBusy={cutBusy}
         cutSession={cutSession}
+        materialId={selectedMaterialId}
+        cutTools={usedCutTools}
         onClose={() => { setCutPreview(null); setCutSession(null); }}
         onConfirmCut={() => {
           if (cutPreview.plan.outputPlanPath) {
@@ -1576,6 +1713,24 @@ export function App() {
         onContinueCut={() => void continueCutSession()}
         onStopCut={() => { void stopCutSession(); setCutPreview(null); }}
       />
+    ) : null}
+    {pendingNav ? (
+      <UnsavedChangesModal
+        language={language}
+        neverSaved={currentProjectPath === null}
+        busy={projectSaving}
+        onSave={handleUnsavedSave}
+        onDiscard={handleUnsavedDiscard}
+        onCancel={handleUnsavedCancel}
+      />
+    ) : null}
+    {savedToast > 0 ? (
+      <div className="save-toast" key={savedToast} role="status" aria-live="polite">
+        <span className="save-toast__check" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4 4L19 7" /></svg>
+        </span>
+        {t("project.savedToast")}
+      </div>
     ) : null}
     </>
   );

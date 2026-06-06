@@ -40,6 +40,7 @@ export function WorkspaceToolbar({
   projectOpening,
   onOpen,
   onSave,
+  onSaveAs,
   onCopy,
   onCut,
   onPaste,
@@ -64,6 +65,7 @@ export function WorkspaceToolbar({
   projectOpening: boolean;
   onOpen: () => void;
   onSave: () => void;
+  onSaveAs: () => void;
   onCopy: () => boolean;
   onCut: () => boolean;
   onPaste: () => boolean;
@@ -91,6 +93,13 @@ export function WorkspaceToolbar({
           icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="14" height="14" rx="2"/><rect x="7" y="3" width="6" height="5" rx="0.5" fill="currentColor" stroke="none"/><rect x="6" y="11" width="8" height="5" rx="1"/></svg>}
           label={nl ? "Opslaan" : "Save"}
           onClick={onSave}
+          disabled={projectOpening || projectSaving}
+        />
+        {/* Save as — floppy disk with a pencil (save to a new file) */}
+        <ToolbarBtn
+          icon={<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5a2 2 0 0 1 2-2h6.5l2.5 2.5V10"/><rect x="6" y="3" width="5" height="4" rx="0.5" fill="currentColor" stroke="none"/><path d="M3 5v9a2 2 0 0 0 2 2h4"/><path d="M16.5 11.5 12 16l-2.2.6.6-2.2 4.5-4.5a1.1 1.1 0 0 1 1.6 1.6z"/></svg>}
+          label={nl ? "Opslaan als" : "Save as"}
+          onClick={onSaveAs}
           disabled={projectOpening || projectSaving}
         />
       </div>
