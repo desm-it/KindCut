@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, MouseEvent, PointerEvent, ReactNode, WheelEvent } from "react";
+import type { ChangeEvent, MouseEvent, PointerEvent, ReactNode } from "react";
 import Moveable from "react-moveable";
 import type {
   OnClick,
@@ -723,11 +723,16 @@ export function DesignWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handleViewportWheel(event: WheelEvent<HTMLDivElement>) {
+  // Wheel handling lives on a native, non-passive listener (attached below). React's own
+  // onWheel is passive, so calling preventDefault() there (to stop ctrl/⌘-zoom from also
+  // scrolling the page) is ignored and logs a console warning.
+  const wheelHandlerRef = useRef<(event: globalThis.WheelEvent) => void>(() => {});
+  wheelHandlerRef.current = (event: globalThis.WheelEvent) => {
     if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
       const sensitivity = event.deltaMode === 0 ? 0.01 : 0.005;
-      const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const rect = viewportRef.current?.getBoundingClientRect();
+      if (!rect) return;
       zoomAroundPoint(zoom - event.deltaY * sensitivity, event.clientX - rect.left, event.clientY - rect.top);
       return;
     }
@@ -735,7 +740,14 @@ export function DesignWorkspace({
     if (recentScrollTimerRef.current) clearTimeout(recentScrollTimerRef.current);
     recentScrollTimerRef.current = setTimeout(() => { recentScrollRef.current = false; }, 300);
     setPan((current) => clampPan({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
-  }
+  };
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const listener = (event: globalThis.WheelEvent) => wheelHandlerRef.current(event);
+    el.addEventListener("wheel", listener, { passive: false });
+    return () => el.removeEventListener("wheel", listener);
+  }, []);
 
   const DRAG_THRESHOLD = 4; // px before a press becomes a drag (vs a click)
 
@@ -1508,7 +1520,6 @@ export function DesignWorkspace({
             ref={viewportRef}
             className="viewport"
             style={spacePanReady ? { cursor: "grab" } : undefined}
-            onWheel={handleViewportWheel}
             onPointerDown={handleViewportPointerDown}
             onPointerMove={handleViewportPointerMove}
             onPointerUp={handleViewportPointerUp}
