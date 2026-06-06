@@ -1887,14 +1887,20 @@ a {
   position: relative;
   min-height: 0;
   overflow: hidden;
-  cursor: grab;
+  cursor: default; /* left = select/marquee; pan is right/middle drag or Space+drag */
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.viewport:active {
-  cursor: grabbing;
+/* Marquee (rubber-band) selection rectangle. */
+.marquee-box {
+  position: absolute;
+  z-index: 50;
+  pointer-events: none;
+  border: 1px solid rgba(143, 79, 43, 0.8);
+  background: rgba(143, 79, 43, 0.1);
+  border-radius: 1px;
 }
 
 .infinite-grid {

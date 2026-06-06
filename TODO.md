@@ -97,7 +97,7 @@ hints for where to start, not exhaustive.
   → layer list renders `item.fileName` in `components/workspace/DesignWorkspace.tsx`;
   text content is `item.textContent.text`.
 
-- [ ] **Ungroup Potrace/AI traced SVGs.** Multi-path imports already ungroup, but a
+- [x] **Ungroup Potrace/AI traced SVGs.** Multi-path imports already ungroup, but a
   traced design that comes in as one compound path can't be split into its separate
   shapes. Allow breaking a traced/compound path into individual editable objects.
   → `workspace-grouping.ts`, `workspace-svg-import.ts`.

@@ -58,7 +58,9 @@ import {
   computeSnugFrame,
   computePathBBoxInDOM,
   parseGroupedPathTransform,
+  isUngroupablePath,
   reframeUngroupedChild,
+  splitCompoundPathByContainment,
 } from "./utils/workspace-geometry";
 import {
   cloneWorkspaceSvgItems,
@@ -564,6 +566,11 @@ export function App() {
     }
     const selectedSet = new Set(idsToGroup);
     const selectedObjects = importedSvgs.filter((item) => selectedSet.has(item.id));
+    // Text renders live from its content (no paths), so it can't be flattened into a
+    // path-based group without disappearing — don't group when text is selected.
+    if (selectedObjects.some((item) => item.textContent)) {
+      return false;
+    }
     const partCount = selectedObjects.reduce((total, item) => total + item.paths.length, 0);
     const groupItem = createWorkspaceGroup({
       id: `group-${Date.now()}`,
@@ -624,18 +631,30 @@ export function App() {
   }
 
   function handleUngroupSvg(): boolean {
-    const group = importedSvgs.find((item) => item.id === selectedSvgId && item.type === "group");
-    if (!group) {
+    const sel = importedSvgs.find((item) => item.id === selectedSvgId);
+    if (!sel) {
       return false;
     }
-    const rawChildren = ungroupWorkspaceObject({
-      group,
-      idPrefix: `${group.id}-part-${Date.now()}`,
-      labelForIndex: (index) => language === "nl" ? `${group.fileName} onderdeel ${index + 1}` : `${group.fileName} part ${index + 1}`,
-    });
-    const children = rawChildren.map((child) => reframeUngroupedChild(child, group.transform));
+    const labelForIndex = (index: number) =>
+      language === "nl" ? `${sel.fileName} onderdeel ${index + 1}` : `${sel.fileName} part ${index + 1}`;
+    const idPrefix = `${sel.id}-part-${Date.now()}`;
+
+    let children: WorkspaceSvgItem[] = [];
+    if (sel.type === "group") {
+      children = ungroupWorkspaceObject({ group: sel, idPrefix, labelForIndex }).map((child) =>
+        reframeUngroupedChild(child, sel.transform),
+      );
+    } else if (sel.type === "path") {
+      // Traced/AI compound path → one object per top-level shape (subpaths contained
+      // inside another stay attached as holes, keeping their fill rule). A single shape
+      // yields < 2 pieces and is left untouched below.
+      children = splitCompoundPathByContainment({ item: sel, idPrefix, labelForIndex });
+    }
+    if (children.length < 2) {
+      return false;
+    }
     pushWorkspaceHistorySnapshot();
-    setImportedSvgs((current) => current.flatMap((item) => (item.id === group.id ? children : [item])));
+    setImportedSvgs((current) => current.flatMap((item) => (item.id === sel.id ? children : [item])));
     const childIds = children.map((item) => item.id);
     setSelectedSvgId(childIds.at(-1) ?? null);
     setSelectedSvgIds(childIds);
@@ -871,10 +890,11 @@ export function App() {
     setImportedPlan(null);
   }
 
-  function handleTextContentChange(id: string, patch: Partial<WorkspaceTextContent>) {
+  function handleTextContentChange(ids: string | string[], patch: Partial<WorkspaceTextContent>) {
+    const idSet = new Set(Array.isArray(ids) ? ids : [ids]);
     setImportedSvgs((current) =>
       current.map((item) => {
-        if (item.id !== id || !item.textContent) return item;
+        if (!idSet.has(item.id) || !item.textContent) return item;
         const newContent = { ...item.textContent, ...patch };
         const frame = measureTextFrame(newContent);
         return { ...item, textContent: newContent, frame, paths: [] as unknown as [WorkspacePathData] };
@@ -888,11 +908,12 @@ export function App() {
     pushWorkspaceHistorySnapshot();
   }
 
-  function handleShapeCornerRadiusChange(id: string, radius: number) {
+  function handleShapeCornerRadiusChange(ids: string | string[], radius: number) {
+    const idSet = new Set(Array.isArray(ids) ? ids : [ids]);
     pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) =>
       current.map((item) => {
-        if (item.id !== id || !item.shapeKind) return item;
+        if (!idSet.has(item.id) || !item.shapeKind) return item;
         const clamped = Math.max(0, Math.min(radius, Math.min(item.frame.width, item.frame.height) / 2));
         // Keep the stored path in sync (scale-1 baseline); the render/cut regenerate
         // scale-aware on top of this.
@@ -918,10 +939,11 @@ export function App() {
     setImportedSvgs((current) => current.map((item) => item.id === id ? { ...item, fileName: trimmed } : item));
   }
 
-  function handleChangeObjectColor(id: string, color: string) {
+  function handleChangeObjectColor(ids: string | string[], color: string) {
+    const idSet = new Set(Array.isArray(ids) ? ids : [ids]);
     setImportedSvgs((current) =>
       current.map((item): WorkspaceObject => {
-        if (item.id !== id) return item;
+        if (!idSet.has(item.id)) return item;
         if (item.type === "path") {
           return { ...item, paths: [{ ...item.paths[0], stroke: color }] };
         }
@@ -933,6 +955,9 @@ export function App() {
   function markWorkspaceContextMenuTarget(selectedObjectCount?: number) {
     lastWorkspaceContextMenuAt.current = Date.now();
     lastWorkspaceContextSelectionCount.current = selectedObjectCount ?? null;
+    // Open the native workspace menu now (on right-click release). A frame later so any
+    // selection change from the right-click has flushed before the menu reads edit state.
+    requestAnimationFrame(() => { void window.cricutCompanion?.showWorkspaceContextMenu?.(); });
   }
 
   async function handleExampleProject() {
@@ -1348,8 +1373,8 @@ export function App() {
         selectedObjectCount: selCount,
         objectCount: importedSvgs.length,
         hasInternalClipboard: workspaceClipboard.current.length > 0,
-        canGroup: selCount >= 2,
-        canUngroup: selectedObjects.some((item) => item.type === "group"),
+        canGroup: selCount >= 2 && !selectedObjects.some((item) => item.textContent),
+        canUngroup: selectedObjects.some((item) => item.type === "group" || isUngroupablePath(item)),
         canReorder: selCount === 1 && importedSvgs.length > 1,
       };
     });

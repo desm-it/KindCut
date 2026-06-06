@@ -65,6 +65,7 @@ import type { AiSvgInput } from "../../ai-svg-generate";
 import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult } from "../../app-types";
 import { cssEscape, isEditableKeyboardTarget } from "../../utils/dom-utils";
 import { FONT_GROUPS } from "../../font-catalog";
+import { isUngroupablePath } from "../../utils/workspace-geometry";
 import { Ruler } from "./Ruler";
 import { WorkspaceToolbar } from "./WorkspaceToolbar";
 import { TextEditOverlay } from "./TextEditOverlay";
@@ -436,7 +437,7 @@ export function DesignWorkspace({
   onMoveLayer: (mode: "forward" | "backward" | "front" | "back") => boolean;
   onReorderLayerToTarget: (draggedId: string, targetId: string) => void;
   onRenameObject: (id: string, newName: string) => void;
-  onChangeObjectColor: (id: string, color: string) => void;
+  onChangeObjectColor: (ids: string | string[], color: string) => void;
   onUndoSvgs: () => boolean;
   onRedoSvgs: () => boolean;
   onWorkspaceContextMenu: (selectedObjectCount?: number) => void;
@@ -461,8 +462,8 @@ export function DesignWorkspace({
   editingTextId: string | null;
   onEnterTextEdit: (id: string) => void;
   onExitTextEdit: (id: string) => void;
-  onTextContentChange: (id: string, patch: Partial<WorkspaceTextContent>) => void;
-  onShapeCornerRadiusChange: (id: string, radius: number) => void;
+  onTextContentChange: (ids: string | string[], patch: Partial<WorkspaceTextContent>) => void;
+  onShapeCornerRadiusChange: (ids: string | string[], radius: number) => void;
 }) {
   const { t } = createTranslator(language);
   const [zoom, setZoom] = useState(0.85);
@@ -487,7 +488,18 @@ export function DesignWorkspace({
   const pendingRenameRef = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const workpieceTransformRef = useRef<HTMLDivElement | null>(null);
-  const dragStart = useRef<null | { pointerId: number; pointer: Point; pan: Point }>(null);
+  // Panning (right/middle/space-drag) and marquee (left-drag on empty) gestures.
+  const panRef = useRef<null | { pointerId: number; start: Point; pan: Point; button: number; moved: boolean }>(null);
+  const marqueeRef = useRef<null | {
+    pointerId: number;
+    origin: Point;
+    baseSelection: string[];
+    mode: "replace" | "add" | "toggle";
+    moved: boolean;
+  }>(null);
+  const spaceHeldRef = useRef(false);
+  const [spacePanReady, setSpacePanReady] = useState(false);
+  const [marqueeRect, setMarqueeRect] = useState<null | { left: number; top: number; width: number; height: number }>(null);
   const recentScrollRef = useRef(false);
   const recentScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const directItemDragStart = useRef<null | {
@@ -538,6 +550,12 @@ export function DesignWorkspace({
   }, []);
   const selectedItems = useMemo(() => importedSvgs.filter((item) => selectedSvgIdSet.has(item.id)), [importedSvgs, selectedSvgIdSet]);
   const selectedGroup = selectedItems.length === 1 && selectedItems[0]?.type === "group" ? selectedItems[0] : null;
+  // Ungroup also applies to a single traced/compound path with 2+ top-level shapes.
+  // Memoized because the check measures path bboxes in the DOM.
+  const canUngroupSelection = useMemo(() => {
+    if (selectedGroup !== null) return true;
+    return selectedItems.length === 1 && !!selectedItems[0] && isUngroupablePath(selectedItems[0]);
+  }, [selectedGroup, selectedItems]);
   // Text renders with preserveAspectRatio="meet" (never stretches) and is cut from a
   // re-measured frame, so a non-uniform scale would make display, edit overlay, and cut
   // disagree. Force uniform scaling whenever the whole selection is text.
@@ -559,6 +577,46 @@ export function DesignWorkspace({
   useEffect(() => {
     requestAnimationFrame(() => { moveableRef.current?.updateRect(); });
   }, [importedSvgs]);
+
+  // Modifier (Ctrl/Cmd/Shift) + click toggles an item in/out of the selection. Handled
+  // in the capture phase so it works even when the item is under the Moveable control
+  // box (which would otherwise swallow the click), for both selected and unselected items.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    function onCapturePointerDown(event: globalThis.PointerEvent) {
+      if (event.button !== 0 || !(event.metaKey || event.ctrlKey || event.shiftKey)) return;
+      const id = itemIdAtPoint(event.clientX, event.clientY);
+      if (!id) return;
+      event.preventDefault();
+      event.stopPropagation();
+      toggleLayerSelection(id);
+    }
+    el.addEventListener("pointerdown", onCapturePointerDown, true);
+    return () => el.removeEventListener("pointerdown", onCapturePointerDown, true);
+  }, [selectedSvgIds]);
+
+  // Hold Space to pan with a left drag (trackpad-friendly fallback for right/middle drag).
+  useEffect(() => {
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.code !== "Space" || event.repeat) return;
+      if (editingTextId || isEditableKeyboardTarget(event.target)) return;
+      event.preventDefault(); // stop the page from scrolling
+      spaceHeldRef.current = true;
+      setSpacePanReady(true);
+    }
+    function onKeyUp(event: globalThis.KeyboardEvent) {
+      if (event.code !== "Space") return;
+      spaceHeldRef.current = false;
+      setSpacePanReady(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [editingTextId]);
 
   useEffect(() => {
     if (pendingRenameRef.current) {
@@ -640,35 +698,120 @@ export function DesignWorkspace({
     setPan((current) => clampPan({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
   }
 
-  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) {
+  const DRAG_THRESHOLD = 4; // px before a press becomes a drag (vs a click)
+
+  // Viewport pointer model:
+  //  • Right / middle button, or Space+left → pan (anywhere, even over objects).
+  //  • Left on empty canvas → marquee select (object/Moveable drags handled elsewhere).
+  function handleViewportPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (event.button === 1 || event.button === 2 || (event.button === 0 && spaceHeldRef.current)) {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      panRef.current = { pointerId: event.pointerId, start: { x: event.clientX, y: event.clientY }, pan, button: event.button, moved: false };
       return;
     }
+    if (event.button !== 0) return;
     const target = event.target as HTMLElement;
-    if (target.closest(".moveable-control-box")) {
-      return;
-    }
-    if (selectedSvgId && !target.closest(".workspace-image-item")) {
-      onSelectSvg(null);
-    }
+    if (target.closest(".moveable-control-box") || target.closest(".workspace-image-item")) return;
+    // Left press on empty canvas → start a marquee (only becomes visible once it moves).
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragStart.current = { pointerId: event.pointerId, pointer: { x: event.clientX, y: event.clientY }, pan };
+    marqueeRef.current = {
+      pointerId: event.pointerId,
+      origin: { x: event.clientX, y: event.clientY },
+      baseSelection: selectedSvgIds.slice(),
+      mode: event.shiftKey ? "add" : (event.metaKey || event.ctrlKey) ? "toggle" : "replace",
+      moved: false,
+    };
   }
 
-  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
-    if (!dragStart.current || dragStart.current.pointerId !== event.pointerId) {
+  function updateMarquee(m: NonNullable<typeof marqueeRef.current>, clientX: number, clientY: number) {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const ox = m.origin.x - rect.left;
+    const oy = m.origin.y - rect.top;
+    const cx = clientX - rect.left;
+    const cy = clientY - rect.top;
+    const left = Math.min(ox, cx), top = Math.min(oy, cy);
+    const width = Math.abs(cx - ox), height = Math.abs(cy - oy);
+    setMarqueeRect({ left, top, width, height });
+    // Marquee rect in workpiece/world coordinates.
+    const wl = (left - pan.x) / zoom, wt = (top - pan.y) / zoom;
+    const wr = (left + width - pan.x) / zoom, wb = (top + height - pan.y) / zoom;
+    const hits = importedSvgs
+      .filter((item) => {
+        const b = getWorkspaceSelectionBounds([item]);
+        return b && !(b.right < wl || b.left > wr || b.bottom < wt || b.top > wb);
+      })
+      .map((item) => item.id);
+    let next: string[];
+    if (m.mode === "add") {
+      next = Array.from(new Set([...m.baseSelection, ...hits]));
+    } else if (m.mode === "toggle") {
+      const hitSet = new Set(hits);
+      const baseSet = new Set(m.baseSelection);
+      next = [...m.baseSelection.filter((id) => !hitSet.has(id)), ...hits.filter((id) => !baseSet.has(id))];
+    } else {
+      next = hits;
+    }
+    onSelectSvgGroup(next);
+  }
+
+  function handleViewportPointerMove(event: PointerEvent<HTMLDivElement>) {
+    const panState = panRef.current;
+    if (panState && panState.pointerId === event.pointerId) {
+      const dx = event.clientX - panState.start.x;
+      const dy = event.clientY - panState.start.y;
+      if (!panState.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) panState.moved = true;
+      setPan(clampPan({ x: panState.pan.x + dx, y: panState.pan.y + dy }));
       return;
     }
-    const deltaX = event.clientX - dragStart.current.pointer.x;
-    const deltaY = event.clientY - dragStart.current.pointer.y;
-    setPan(clampPan({ x: dragStart.current.pan.x + deltaX, y: dragStart.current.pan.y + deltaY }));
+    const m = marqueeRef.current;
+    if (m && m.pointerId === event.pointerId) {
+      const dx = event.clientX - m.origin.x;
+      const dy = event.clientY - m.origin.y;
+      if (!m.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) m.moved = true;
+      if (m.moved) updateMarquee(m, event.clientX, event.clientY);
+    }
   }
 
-  function stopDragging(event: PointerEvent<HTMLDivElement>) {
-    if (dragStart.current?.pointerId === event.pointerId) {
-      dragStart.current = null;
+  function handleViewportPointerUp(event: PointerEvent<HTMLDivElement>) {
+    const panState = panRef.current;
+    if (panState && panState.pointerId === event.pointerId) {
+      panRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      // A right-click without movement opens the context menu (panning suppresses it).
+      if (panState.button === 2 && !panState.moved) {
+        requestContextMenu(itemIdAtPoint(event.clientX, event.clientY));
+      }
+      return;
     }
+    const m = marqueeRef.current;
+    if (m && m.pointerId === event.pointerId) {
+      marqueeRef.current = null;
+      setMarqueeRect(null);
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      // A plain click on empty canvas (no drag) clears the selection.
+      if (!m.moved && m.mode === "replace") onSelectSvg(null);
+    }
+  }
+
+  function handleViewportPointerCancel(event: PointerEvent<HTMLDivElement>) {
+    if (panRef.current?.pointerId === event.pointerId) panRef.current = null;
+    if (marqueeRef.current?.pointerId === event.pointerId) {
+      marqueeRef.current = null;
+      setMarqueeRect(null);
+    }
+  }
+
+  // Select the right-clicked object (if not already selected) then open the menu.
+  function requestContextMenu(id?: string) {
+    if (id && !selectedSvgIdSet.has(id)) {
+      onSelectSvg(id);
+      onWorkspaceContextMenu(1);
+      return;
+    }
+    onWorkspaceContextMenu(id ? selectedSvgIds.length : 0);
   }
 
   // Add the id if it isn't selected, remove it if it is.
@@ -680,13 +823,22 @@ export function DesignWorkspace({
     }
   }
 
-  // Modifier-clicking a *selected* item lands on the Moveable control box (which
-  // overlays the selection), not the item — so toggle deselection from here too.
+  // Find the topmost workspace item under a screen point, seeing *through* the Moveable
+  // control box (which sits on top of the selection and would otherwise be the target).
+  function itemIdAtPoint(x: number, y: number): string | undefined {
+    for (const el of document.elementsFromPoint(x, y)) {
+      const itemEl = (el as Element).closest?.("[data-workspace-item-id]") as HTMLElement | null;
+      if (itemEl?.dataset.workspaceItemId) return itemEl.dataset.workspaceItemId;
+    }
+    return undefined;
+  }
+
+  // Modifier-clicking a *selected* item lands on the Moveable control box, not the item,
+  // so hit-test the item under the cursor and toggle it in/out of the selection.
   function handleMoveableModifierClick(event: OnClick | OnClickGroup) {
     const native = event.inputEvent as MouseEvent | undefined;
     if (!native || !(native.metaKey || native.ctrlKey || native.shiftKey)) return;
-    const el = (event.inputTarget as Element | null)?.closest?.("[data-workspace-item-id]") as HTMLElement | null;
-    const id = el?.dataset.workspaceItemId;
+    const id = itemIdAtPoint(native.clientX, native.clientY);
     if (id) toggleLayerSelection(id);
   }
 
@@ -699,10 +851,12 @@ export function DesignWorkspace({
       event.stopPropagation();
       return;
     }
-    event.stopPropagation();
+    // Let right/middle drags pan the workspace even when starting on an object — don't
+    // swallow them here. (Right-click selection + menu happen on the viewport's up.)
     if (event.button !== 0) {
       return;
     }
+    event.stopPropagation();
 
     // Double-click detection → enter text edit mode
     if (item.textContent) {
@@ -777,14 +931,6 @@ export function DesignWorkspace({
     if (drag.moved) {
       onSvgTransformsCommit([{ id: item.id, transform: next }]);
     }
-  }
-
-  function handleItemContextMenu(event: MouseEvent<HTMLDivElement>, item: WorkspaceSvgItem) {
-    event.stopPropagation();
-    if (!selectedSvgIdSet.has(item.id)) {
-      onSelectSvg(item.id);
-    }
-    onWorkspaceContextMenu(selectedSvgIdSet.has(item.id) ? selectedSvgIds.length : 1);
   }
 
   function beginMoveableTransform(targets: Array<HTMLElement | SVGElement>) {
@@ -1217,8 +1363,8 @@ export function DesignWorkspace({
           canCut={selectedSvgIds.length > 0}
           canPaste={canPaste}
           canDelete={selectedSvgIds.length > 0}
-          canGroup={selectedSvgIds.length >= 2}
-          canUngroup={selectedGroup !== null}
+          canGroup={selectedItems.length >= 2 && !selectedItems.some((item) => item.textContent)}
+          canUngroup={canUngroupSelection}
           canFlip={selectedSvgIds.length > 0}
           canReorder={selectedSvgIds.length === 1 && importedSvgs.length > 1}
           projectSaving={projectSaving}
@@ -1322,14 +1468,21 @@ export function DesignWorkspace({
           <div
             ref={viewportRef}
             className="viewport"
+            style={spacePanReady ? { cursor: "grab" } : undefined}
             onWheel={handleViewportWheel}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={stopDragging}
-            onPointerCancel={stopDragging}
-            onContextMenu={(e) => { if (recentScrollRef.current) { e.preventDefault(); return; } onWorkspaceContextMenu(); }}
+            onPointerDown={handleViewportPointerDown}
+            onPointerMove={handleViewportPointerMove}
+            onPointerUp={handleViewportPointerUp}
+            onPointerCancel={handleViewportPointerCancel}
+            onContextMenu={(e) => e.preventDefault()}
           >
             <div className="infinite-grid" />
+            {marqueeRect ? (
+              <div
+                className="marquee-box"
+                style={{ left: marqueeRect.left, top: marqueeRect.top, width: marqueeRect.width, height: marqueeRect.height }}
+              />
+            ) : null}
             <div
               ref={workpieceTransformRef}
               className="workpiece-transform"
@@ -1393,7 +1546,7 @@ export function DesignWorkspace({
                       onPointerMove={(event) => handleItemPointerMove(event, item)}
                       onPointerUp={(event) => stopDirectItemDrag(event, item)}
                       onPointerCancel={(event) => stopDirectItemDrag(event, item)}
-                      onContextMenu={(event) => handleItemContextMenu(event, item)}
+                      onContextMenu={(event) => event.preventDefault()}
                     >
                       {editingTextId === item.id && item.textContent ? (
                         <TextEditOverlay
@@ -1466,11 +1619,15 @@ export function DesignWorkspace({
           <div className="drawer-section">
             {(() => {
               const nl = language === "nl";
-              const sel = selectedSvgId ? importedSvgs.find((x) => x.id === selectedSvgId) ?? null : null;
+              // Selected objects in SELECTION order — the first one drives the shown values.
+              const selectedObjs = selectedSvgIds
+                .map((id) => importedSvgs.find((x) => x.id === id))
+                .filter((x): x is WorkspaceSvgItem => Boolean(x));
+              const primary = selectedObjs[0] ?? null;
               const pens = getPens(tools);
               const behindColor = getBehindColor(tools);
 
-              if (!sel) return (
+              if (!primary) return (
                 <>
                   <p className="drawer-section__title">{nl ? "Werkstuk" : "Workpiece"}</p>
                   <div className="object-settings">
@@ -1652,164 +1809,170 @@ export function DesignWorkspace({
                 </>
               );
 
-              // Text object selected — show text controls + cut/draw picker
-              if (sel.textContent) {
-                const tc = sel.textContent;
-                return (
-                  <>
-                    <p className="drawer-section__title">{nl ? "Tekst" : "Text"}</p>
-                    <div className="object-settings">
-                      <div className="object-settings__row object-settings__row--swatches">
-                        <label className="object-settings__label">{t("object.tool")}</label>
-                        <SwatchPicker
-                          tools={tools}
-                          selectedColor={tc.color}
-                          onPick={(c) => onTextContentChange(sel.id, { color: c })}
-                          language={language}
-                        />
-                      </div>
-                      <div className="object-settings__row">
-                        <label className="object-settings__label" htmlFor="txt-font">{nl ? "Lettertype" : "Font"}</label>
-                        <select id="txt-font" className="object-settings__select"
-                          value={tc.fontFamily}
-                          onChange={(e) => onTextContentChange(sel.id, { fontFamily: e.target.value })}
-                        >
-                          <optgroup label={nl ? "Generiek" : "Generic"}>
-                            {["sans-serif","serif","monospace","cursive","fantasy"].map((f) => (
-                              <option key={f} value={f}>{f}</option>
-                            ))}
-                          </optgroup>
-                          {FONT_GROUPS.map((g) => (
-                            <optgroup key={g.key} label={nl ? g.nl : g.en}>
-                              {g.families.map((f) => (
-                                <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>
-                              ))}
-                            </optgroup>
-                          ))}
-                          {systemFonts.length > 0 ? (
-                            <optgroup label={nl ? "Systeemlettertypen" : "System fonts"}>
-                              {systemFonts.map((f) => (
-                                <option key={f} value={f}>{f}</option>
-                              ))}
-                            </optgroup>
-                          ) : (
-                            <optgroup label={nl ? "Veelgebruikt" : "Common"}>
-                              {["Arial","Arial Black","Helvetica","Helvetica Neue","Verdana","Tahoma","Trebuchet MS","Georgia","Times New Roman","Palatino","Garamond","Courier New","Lucida Console","Monaco","Menlo","Impact","Comic Sans MS","Gill Sans","Optima","Futura","Century Gothic","Calibri","Cambria","Segoe UI","Franklin Gothic Medium"].map((f) => (
-                                <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </select>
-                      </div>
-                      <div className="object-settings__row">
-                        <label className="object-settings__label">{nl ? "Stijl" : "Style"}</label>
-                        <div className="text-style-btns">
-                          <button type="button" className={`text-style-btn${tc.fontWeight === "bold" ? " text-style-btn--active" : ""}`}
-                            onClick={() => onTextContentChange(sel.id, { fontWeight: tc.fontWeight === "bold" ? "normal" : "bold" })}
-                          ><strong>B</strong></button>
-                          <button type="button" className={`text-style-btn${tc.fontStyle === "italic" ? " text-style-btn--active" : ""}`}
-                            onClick={() => onTextContentChange(sel.id, { fontStyle: tc.fontStyle === "italic" ? "normal" : "italic" })}
-                          ><em>I</em></button>
-                          <button type="button" className={`text-style-btn${tc.textDecoration === "underline" ? " text-style-btn--active" : ""}`}
-                            onClick={() => onTextContentChange(sel.id, { textDecoration: tc.textDecoration === "underline" ? "none" : "underline" })}
-                          ><span style={{ textDecoration: "underline" }}>U</span></button>
-                          <span className="text-style-divider"/>
-                          {(() => {
-                            // Alignment only matters across multiple lines (a single line auto-hugs
-                            // its box), so disable the buttons until the text has a line break.
-                            const isMultiLine = tc.text.includes("\n");
-                            const disabledTip = nl
-                              ? "Alleen voor tekst met meerdere regels"
-                              : "Only available for multi-line text";
-                            return (["left","center","right"] as const).map((align) => (
-                              <button key={align} type="button" disabled={!isMultiLine}
-                                className={`text-style-btn${isMultiLine && (tc.textAlign ?? "left") === align ? " text-style-btn--active" : ""}`}
-                                onClick={() => onTextContentChange(sel.id, { textAlign: align })}
-                                title={isMultiLine ? align : disabledTip}
-                              >
-                                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                  {align === "left"   && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="2" y1="6" x2="9" y2="6"/><line x1="2" y1="9" x2="11" y2="9"/><line x1="2" y1="12" x2="7" y2="12"/></>}
-                                  {align === "center" && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="4" y1="6" x2="10" y2="6"/><line x1="3" y1="9" x2="11" y2="9"/><line x1="5" y1="12" x2="9" y2="12"/></>}
-                                  {align === "right"  && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="5" y1="6" x2="12" y2="6"/><line x1="3" y1="9" x2="12" y2="9"/><line x1="7" y1="12" x2="12" y2="12"/></>}
-                                </svg>
-                              </button>
-                            ));
-                          })()}
-                        </div>
-                      </div>
-                      <div className="object-settings__row">
-                        <label className="object-settings__label" htmlFor="txt-size">{nl ? "Grootte" : "Size"} <em>{tc.fontSize}px</em></label>
-                        <input id="txt-size" type="range" min={10} max={200} step={1} value={tc.fontSize}
-                          onChange={(e) => onTextContentChange(sel.id, { fontSize: Number(e.target.value) })}
-                          className="text-slider"
-                        />
-                      </div>
-                      <div className="object-settings__row">
-                        <label className="object-settings__label" htmlFor="txt-ls">{nl ? "Letterafstand" : "Letter spacing"} <em>{tc.letterSpacing}px</em></label>
-                        <input id="txt-ls" type="range" min={-5} max={30} step={0.5} value={tc.letterSpacing}
-                          onChange={(e) => onTextContentChange(sel.id, { letterSpacing: Number(e.target.value) })}
-                          className="text-slider"
-                        />
-                      </div>
-                      <div className="object-settings__row">
-                        <label className="object-settings__label" htmlFor="txt-lh">{nl ? "Regelafstand" : "Line height"} <em>{tc.lineHeight.toFixed(2)}×</em></label>
-                        <input id="txt-lh" type="range" min={0.8} max={3} step={0.05} value={tc.lineHeight}
-                          onChange={(e) => onTextContentChange(sel.id, { lineHeight: Number(e.target.value) })}
-                          className="text-slider"
-                        />
-                      </div>
-                      <div className="object-settings__row object-settings__row--toggle">
-                        <label className="object-settings__label" htmlFor="txt-singleline">
-                          {nl ? "Eén lijn (pen)" : "Single line (pen)"}
-                        </label>
-                        <button id="txt-singleline" type="button" role="switch"
-                          aria-checked={Boolean(tc.singleLine)}
-                          className={`toggle-switch${tc.singleLine ? " toggle-switch--on" : ""}`}
-                          onClick={() => onTextContentChange(sel.id, { singleLine: !tc.singleLine })}
-                          title={nl
-                            ? "Tekst tekenen/snijden als één pennenlijn in plaats van gevulde letters"
-                            : "Draw/cut text as a single pen line instead of filled letters"}
-                        >
-                          <span className="toggle-switch__knob" />
-                        </button>
-                      </div>
-                      <button type="button" className="object-settings__edit-btn"
-                        onClick={() => onEnterTextEdit(sel.id)}
-                      >
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M11 2l3 3-8 8H3v-3z"/></svg>
-                        {nl ? "Tekst bewerken" : "Edit text"}
-                      </button>
-                    </div>
-                  </>
-                );
-              }
+              // One or more objects selected: show only controls common to ALL of them.
+              // Values come from the first selected (primary); edits apply to every one.
+              const ids = selectedObjs.map((o) => o.id);
+              const multi = selectedObjs.length > 1;
+              const allText = selectedObjs.every((o) => Boolean(o.textContent));
+              const allCorners = selectedObjs.every((o) => o.shapeKind && shapeHasCorners(o.shapeKind));
+              const primaryColor = primary.textContent ? primary.textContent.color : (primary.paths[0]?.stroke ?? "#000000");
 
-              // SVG/shape object selected — show name + cut/draw picker
-              const color = sel.paths[0]?.stroke ?? "#000000";
+              // Apply a tool/pen colour to the whole selection (text stores it in its
+              // content, shapes/SVGs on the path stroke).
+              const applyColor = (c: string) => {
+                const textIds = selectedObjs.filter((o) => o.textContent).map((o) => o.id);
+                const otherIds = selectedObjs.filter((o) => !o.textContent).map((o) => o.id);
+                if (textIds.length) onTextContentChange(textIds, { color: c });
+                if (otherIds.length) onChangeObjectColor(otherIds, c);
+              };
+
+              const title = multi
+                ? (nl ? `${selectedObjs.length} geselecteerd` : `${selectedObjs.length} selected`)
+                : allText ? (nl ? "Tekst" : "Text") : (nl ? "Geselecteerd" : "Selection");
+
               return (
                 <>
-                  <p className="drawer-section__title">{nl ? "Geselecteerd" : "Selection"}</p>
+                  <p className="drawer-section__title">{title}</p>
                   <div className="object-settings">
-                    <p className="object-settings__name">{sel.fileName}</p>
+                    {!multi && !allText ? <p className="object-settings__name">{primary.fileName}</p> : null}
+
                     <div className="object-settings__row object-settings__row--swatches">
                       <label className="object-settings__label">{t("object.tool")}</label>
-                      <SwatchPicker
-                        tools={tools}
-                        selectedColor={color}
-                        onPick={(c) => onChangeObjectColor(sel.id, c)}
-                        language={language}
-                      />
+                      <SwatchPicker tools={tools} selectedColor={primaryColor} onPick={applyColor} language={language} />
                     </div>
-                    {sel.shapeKind && shapeHasCorners(sel.shapeKind) ? (() => {
-                      const maxRadius = Math.round(Math.min(sel.frame.width, sel.frame.height) / 2);
-                      const radius = Math.round(sel.cornerRadius ?? 0);
+
+                    {allText ? (() => {
+                      const tc = primary.textContent!;
+                      return (
+                        <>
+                          <div className="object-settings__row">
+                            <label className="object-settings__label" htmlFor="txt-font">{nl ? "Lettertype" : "Font"}</label>
+                            <select id="txt-font" className="object-settings__select"
+                              value={tc.fontFamily}
+                              onChange={(e) => onTextContentChange(ids, { fontFamily: e.target.value })}
+                            >
+                              <optgroup label={nl ? "Generiek" : "Generic"}>
+                                {["sans-serif","serif","monospace","cursive","fantasy"].map((f) => (
+                                  <option key={f} value={f}>{f}</option>
+                                ))}
+                              </optgroup>
+                              {FONT_GROUPS.map((g) => (
+                                <optgroup key={g.key} label={nl ? g.nl : g.en}>
+                                  {g.families.map((f) => (
+                                    <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                              {systemFonts.length > 0 ? (
+                                <optgroup label={nl ? "Systeemlettertypen" : "System fonts"}>
+                                  {systemFonts.map((f) => (
+                                    <option key={f} value={f}>{f}</option>
+                                  ))}
+                                </optgroup>
+                              ) : (
+                                <optgroup label={nl ? "Veelgebruikt" : "Common"}>
+                                  {["Arial","Arial Black","Helvetica","Helvetica Neue","Verdana","Tahoma","Trebuchet MS","Georgia","Times New Roman","Palatino","Garamond","Courier New","Lucida Console","Monaco","Menlo","Impact","Comic Sans MS","Gill Sans","Optima","Futura","Century Gothic","Calibri","Cambria","Segoe UI","Franklin Gothic Medium"].map((f) => (
+                                    <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </select>
+                          </div>
+                          <div className="object-settings__row">
+                            <label className="object-settings__label">{nl ? "Stijl" : "Style"}</label>
+                            <div className="text-style-btns">
+                              <button type="button" className={`text-style-btn${tc.fontWeight === "bold" ? " text-style-btn--active" : ""}`}
+                                onClick={() => onTextContentChange(ids, { fontWeight: tc.fontWeight === "bold" ? "normal" : "bold" })}
+                              ><strong>B</strong></button>
+                              <button type="button" className={`text-style-btn${tc.fontStyle === "italic" ? " text-style-btn--active" : ""}`}
+                                onClick={() => onTextContentChange(ids, { fontStyle: tc.fontStyle === "italic" ? "normal" : "italic" })}
+                              ><em>I</em></button>
+                              <button type="button" className={`text-style-btn${tc.textDecoration === "underline" ? " text-style-btn--active" : ""}`}
+                                onClick={() => onTextContentChange(ids, { textDecoration: tc.textDecoration === "underline" ? "none" : "underline" })}
+                              ><span style={{ textDecoration: "underline" }}>U</span></button>
+                              <span className="text-style-divider"/>
+                              {(() => {
+                                // Alignment only matters across multiple lines (a single line auto-hugs
+                                // its box), so disable until the (primary) text has a line break.
+                                const isMultiLine = tc.text.includes("\n");
+                                const disabledTip = nl
+                                  ? "Alleen voor tekst met meerdere regels"
+                                  : "Only available for multi-line text";
+                                return (["left","center","right"] as const).map((align) => (
+                                  <button key={align} type="button" disabled={!isMultiLine}
+                                    className={`text-style-btn${isMultiLine && (tc.textAlign ?? "left") === align ? " text-style-btn--active" : ""}`}
+                                    onClick={() => onTextContentChange(ids, { textAlign: align })}
+                                    title={isMultiLine ? align : disabledTip}
+                                  >
+                                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                                      {align === "left"   && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="2" y1="6" x2="9" y2="6"/><line x1="2" y1="9" x2="11" y2="9"/><line x1="2" y1="12" x2="7" y2="12"/></>}
+                                      {align === "center" && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="4" y1="6" x2="10" y2="6"/><line x1="3" y1="9" x2="11" y2="9"/><line x1="5" y1="12" x2="9" y2="12"/></>}
+                                      {align === "right"  && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="5" y1="6" x2="12" y2="6"/><line x1="3" y1="9" x2="12" y2="9"/><line x1="7" y1="12" x2="12" y2="12"/></>}
+                                    </svg>
+                                  </button>
+                                ));
+                              })()}
+                            </div>
+                          </div>
+                          <div className="object-settings__row">
+                            <label className="object-settings__label" htmlFor="txt-size">{nl ? "Grootte" : "Size"} <em>{tc.fontSize}px</em></label>
+                            <input id="txt-size" type="range" min={10} max={200} step={1} value={tc.fontSize}
+                              onChange={(e) => onTextContentChange(ids, { fontSize: Number(e.target.value) })}
+                              className="text-slider"
+                            />
+                          </div>
+                          <div className="object-settings__row">
+                            <label className="object-settings__label" htmlFor="txt-ls">{nl ? "Letterafstand" : "Letter spacing"} <em>{tc.letterSpacing}px</em></label>
+                            <input id="txt-ls" type="range" min={-5} max={30} step={0.5} value={tc.letterSpacing}
+                              onChange={(e) => onTextContentChange(ids, { letterSpacing: Number(e.target.value) })}
+                              className="text-slider"
+                            />
+                          </div>
+                          <div className="object-settings__row">
+                            <label className="object-settings__label" htmlFor="txt-lh">{nl ? "Regelafstand" : "Line height"} <em>{tc.lineHeight.toFixed(2)}×</em></label>
+                            <input id="txt-lh" type="range" min={0.8} max={3} step={0.05} value={tc.lineHeight}
+                              onChange={(e) => onTextContentChange(ids, { lineHeight: Number(e.target.value) })}
+                              className="text-slider"
+                            />
+                          </div>
+                          <div className="object-settings__row object-settings__row--toggle">
+                            <label className="object-settings__label" htmlFor="txt-singleline">
+                              {nl ? "Eén lijn (pen)" : "Single line (pen)"}
+                            </label>
+                            <button id="txt-singleline" type="button" role="switch"
+                              aria-checked={Boolean(tc.singleLine)}
+                              className={`toggle-switch${tc.singleLine ? " toggle-switch--on" : ""}`}
+                              onClick={() => onTextContentChange(ids, { singleLine: !tc.singleLine })}
+                              title={nl
+                                ? "Tekst tekenen/snijden als één pennenlijn in plaats van gevulde letters"
+                                : "Draw/cut text as a single pen line instead of filled letters"}
+                            >
+                              <span className="toggle-switch__knob" />
+                            </button>
+                          </div>
+                          {/* Editing content is single-object only — you wouldn't retype two texts at once. */}
+                          {!multi ? (
+                            <button type="button" className="object-settings__edit-btn"
+                              onClick={() => onEnterTextEdit(primary.id)}
+                            >
+                              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M11 2l3 3-8 8H3v-3z"/></svg>
+                              {nl ? "Tekst bewerken" : "Edit text"}
+                            </button>
+                          ) : null}
+                        </>
+                      );
+                    })() : null}
+
+                    {allCorners ? (() => {
+                      const maxRadius = Math.round(Math.min(primary.frame.width, primary.frame.height) / 2);
+                      const radius = Math.round(primary.cornerRadius ?? 0);
                       return (
                         <div className="object-settings__row">
                           <label className="object-settings__label" htmlFor="shape-radius">
                             {nl ? "Hoekronding" : "Corner radius"} <em>{radius}px</em>
                           </label>
                           <input id="shape-radius" type="range" min={0} max={maxRadius} step={1} value={Math.min(radius, maxRadius)}
-                            onChange={(e) => onShapeCornerRadiusChange(sel.id, Number(e.target.value))}
+                            onChange={(e) => onShapeCornerRadiusChange(ids, Number(e.target.value))}
                             className="text-slider"
                           />
                         </div>

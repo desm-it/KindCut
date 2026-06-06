@@ -70,6 +70,7 @@ const desktopApi = {
     ipcRenderer.on("app:action", listener);
     return () => ipcRenderer.removeListener("app:action", listener);
   },
+  showWorkspaceContextMenu: (): Promise<void> => ipcRenderer.invoke("workspace:show-context-menu"),
   workspaceEditState: {
     setProvider: (provider: (() => WorkspaceEditState) | null): (() => void) => {
       editStateProvider = provider;

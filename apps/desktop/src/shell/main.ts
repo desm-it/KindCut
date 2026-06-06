@@ -293,9 +293,9 @@ async function createMainWindow(): Promise<BrowserWindow> {
         { label: "Select All", enabled: editFlags.canSelectAll, click: () => mainWindow.webContents.selectAll() },
       ]);
       inputMenu.popup({ window: mainWindow });
-    } else {
-      void showContextMenu(mainWindow);
     }
+    // The workspace context menu is shown explicitly on right-click *release* (via the
+    // "workspace:show-context-menu" IPC) so a right-drag can pan without popping a menu.
   });
 
   const rendererEntry = resolveRendererEntry({
@@ -315,6 +315,10 @@ async function createMainWindow(): Promise<BrowserWindow> {
 app.setName("KindCut");
 Menu.setApplicationMenu(createAppMenu());
 
+ipcMain.handle("workspace:show-context-menu", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) void showContextMenu(win);
+});
 ipcMain.handle("project:save", async (_event, input: ProjectSaveInput): Promise<ProjectFileResult> => saveProjectFile(input));
 ipcMain.handle("project:open", async (): Promise<ProjectFileResult> => openProjectFile());
 ipcMain.handle("slicebug:get-status", async () => getSlicebugStatus());

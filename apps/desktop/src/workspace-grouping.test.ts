@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceObject } from "./workspace-objects";
-import { createWorkspaceGroup, ungroupWorkspaceObject } from "./workspace-grouping";
+import {
+  createWorkspaceGroup,
+  isCompoundPathItem,
+  splitCompoundPathItem,
+  splitPathData,
+  ungroupWorkspaceObject,
+} from "./workspace-grouping";
 
 const pathObject: WorkspaceObject = {
   id: "a",
@@ -54,5 +60,42 @@ describe("workspace grouping", () => {
     expect(children.every((item) => item.type === "path")).toBe(true);
     expect(children.map((item) => item.fileName)).toEqual(["a", "b"]);
     expect(children.map((item) => item.transform)).toEqual([group.transform, group.transform]);
+  });
+
+  it("splits a compound path 'd' into its absolute subpaths", () => {
+    expect(splitPathData("M0 0H10Z M20 20H30Z M40 0L45 5Z")).toEqual([
+      "M0 0H10Z",
+      "M20 20H30Z",
+      "M40 0L45 5Z",
+    ]);
+    // A single subpath is not splittable.
+    expect(splitPathData("M0 0H10V10H0Z").length).toBe(1);
+  });
+
+  it("recognizes a compound (multi-subpath) single-path object", () => {
+    const compound = { ...pathObject, paths: [{ ...pathObject.paths[0]!, d: "M0 0H10Z M20 0H30Z" }] } as WorkspaceObject;
+    expect(isCompoundPathItem(compound)).toBe(true);
+    expect(isCompoundPathItem(pathObject)).toBe(false);
+  });
+
+  it("breaks a compound path into one path object per subpath, keeping colours", () => {
+    const compound = {
+      ...pathObject,
+      shapeKind: "square" as const,
+      paths: [{ id: "p", d: "M0 0H10Z M20 0H30Z M40 0H50Z", fill: "none", stroke: "#123456", strokeWidth: "2" }],
+    } as WorkspaceObject;
+
+    const parts = splitCompoundPathItem({
+      item: compound,
+      idPrefix: "part",
+      labelForIndex: (i) => `Part ${i + 1}`,
+    });
+
+    expect(parts).toHaveLength(3);
+    expect(parts.map((p) => p.paths[0]?.d)).toEqual(["M0 0H10Z", "M20 0H30Z", "M40 0H50Z"]);
+    expect(parts.every((p) => p.type === "path")).toBe(true);
+    expect(parts.every((p) => p.paths[0]?.stroke === "#123456")).toBe(true);
+    // Split pieces are no longer the named shape.
+    expect(parts.every((p) => p.shapeKind === undefined)).toBe(true);
   });
 });

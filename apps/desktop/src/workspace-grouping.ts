@@ -80,6 +80,52 @@ export function ungroupWorkspaceObject(input: {
   });
 }
 
+// Split a path "d" into its absolute-moveto subpaths. Traced/Potrace output uses
+// absolute coordinates, so each "M …" run is a standalone shape. (Relative "m"
+// subpaths are left attached, since detaching them would misposition the piece.)
+export function splitPathData(d: string): string[] {
+  const matches = d.match(/M[^M]*/g);
+  return matches ? matches.map((piece) => piece.trim()).filter(Boolean) : [];
+}
+
+// A single path object that contains 2+ subpaths can be broken into separate objects.
+export function isCompoundPathItem(item: WorkspaceObject): boolean {
+  return item.type === "path" && splitPathData(item.paths[0]?.d ?? "").length > 1;
+}
+
+// Break a compound single-path object (e.g. an AI-traced design) into one object per
+// subpath. Each piece keeps the source colours/transform; the caller should snug-frame
+// them afterwards. NOTE: subpaths that were holes (evenodd) become solid shapes.
+export function splitCompoundPathItem(input: {
+  item: WorkspaceObject;
+  idPrefix: string;
+  labelForIndex: (index: number) => string;
+}): WorkspaceObject[] {
+  const { item } = input;
+  const path = item.paths[0];
+  if (item.type !== "path" || !path) {
+    return [];
+  }
+  const subpaths = splitPathData(path.d);
+  if (subpaths.length < 2) {
+    return [];
+  }
+  return subpaths.map((d, index) => ({
+    id: `${input.idPrefix}-${index}`,
+    type: "path" as const,
+    kind: item.kind,
+    sourceKind: item.sourceKind,
+    // The split pieces are no longer the named shape (if any).
+    shapeKind: undefined,
+    fileName: input.labelForIndex(index),
+    fileSize: item.fileSize,
+    sizeCopy: item.sizeCopy,
+    frame: { ...item.frame },
+    transform: { ...item.transform },
+    paths: [{ ...path, id: "path-1", d }] as [WorkspacePathData],
+  }));
+}
+
 function getGroupedPathTransform(
   item: WorkspaceObject,
   pathTransform: string | undefined,

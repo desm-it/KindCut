@@ -306,6 +306,7 @@ function parseWorkspacePath(value: unknown): WorkspacePathData {
     strokeWidth: typeof value.strokeWidth === "string" ? value.strokeWidth : "2",
     strokeLinecap: typeof value.strokeLinecap === "string" ? value.strokeLinecap : undefined,
     strokeLinejoin: typeof value.strokeLinejoin === "string" ? value.strokeLinejoin : undefined,
+    fillRule: value.fillRule === "evenodd" || value.fillRule === "nonzero" ? value.fillRule : undefined,
     pathTransform: typeof value.pathTransform === "string" ? value.pathTransform : undefined,
     sourceLabel: typeof value.sourceLabel === "string" ? value.sourceLabel : undefined,
   };
