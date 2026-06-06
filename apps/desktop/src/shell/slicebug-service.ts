@@ -72,7 +72,7 @@ export interface SlicebugPlanResult {
 export type CutSessionStatus = "idle" | "running" | "waiting" | "finished" | "error" | "stopped" | "blocked";
 
 export interface CutActionState {
-  kind: "idle" | "load-tools" | "load-mat" | "press-go" | "replace-tool" | "finished" | "running" | "error";
+  kind: "idle" | "load-tools" | "load-mat" | "press-go" | "replace-tool" | "unload" | "finished" | "running" | "error";
   title: string;
   message: string;
   requiresContinue: boolean;
@@ -93,10 +93,11 @@ export interface CutSessionSnapshot {
 interface SlicebugProcess {
   stdout: { on(event: "data", listener: (chunk: Buffer | string) => void): unknown };
   stderr: { on(event: "data", listener: (chunk: Buffer | string) => void): unknown };
-  stdin: { write(text: string): unknown };
+  stdin: { write(text: string): unknown; end?(): unknown };
   on(event: "exit", listener: (code: number | null) => void): unknown;
   on(event: "error", listener: (error: Error) => void): unknown;
-  kill(): unknown;
+  kill(signal?: NodeJS.Signals | number): unknown;
+  killed?: boolean;
 }
 
 export interface CutSessionOptions {
@@ -515,7 +516,7 @@ export class SlicebugCutSession {
         status: code === 0 ? "finished" : "error",
         action:
           code === 0
-            ? makeCutAction("finished", "Cut is finished", "Unload the mat when the machine is quiet.", false)
+            ? makeCutAction("finished", "All done!", "Your project is ready. Gently peel it off the mat.", false)
             : makeCutAction("error", "Something needs attention", "SliceBug stopped before the cut finished.", false),
       };
     });
@@ -536,13 +537,34 @@ export class SlicebugCutSession {
   }
 
   stop(): CutSessionSnapshot {
+    // SliceBug has no "cancel cut" command, so the only way to cancel is to fully tear it
+    // down. Closing it drops the device-plugin connection, which halts the Cricut.
     if (this.process && !["finished", "error", "stopped"].includes(this.snapshot.status)) {
-      this.process.kill();
+      const proc = this.process;
+      // Close stdin first: if SliceBug is blocked on a button prompt (input()), the EOF
+      // lets it exit cleanly through its DevicePlugin teardown rather than being killed
+      // mid-write. Then SIGTERM, with a SIGKILL fallback so nothing is left holding the machine.
+      try {
+        proc.stdin.end?.();
+      } catch {
+        // stdin may already be closed — ignore.
+      }
+      proc.kill();
+      const force = setTimeout(() => {
+        try {
+          if (!proc.killed) proc.kill("SIGKILL");
+        } catch {
+          // already gone — ignore.
+        }
+      }, 2000);
+      if (typeof (force as { unref?: () => void }).unref === "function") {
+        (force as { unref: () => void }).unref();
+      }
     }
     this.snapshot = {
       ...this.snapshot,
       status: "stopped",
-      action: makeCutAction("error", "Cut stopped", "KindCut asked SliceBug to stop this cut session.", false),
+      action: makeCutAction("error", "Cut cancelled", "KindCut closed SliceBug and cancelled the cut.", false),
     };
     return this.getSnapshot();
   }
@@ -575,16 +597,18 @@ function appendText(current: string, next: string): string {
 function parseCutAction(text: string): CutActionState {
   const normalized = text.toLowerCase();
   if (/\b(error|failed|failure|traceback|exception)\b/.test(normalized)) {
-    return makeCutAction("error", "Something needs attention", "SliceBug reported a problem. Stop here and check the details.", false);
+    return makeCutAction("error", "Something needs attention", "The cutter reported a problem. Stop here and try again.", false);
   }
-  if (/\b(finished|complete|completed|done|unload)\b/.test(normalized)) {
-    return makeCutAction("finished", "Cut is finished", "Unload the mat when the machine is quiet.", false);
+  // The unload prompt is a wait-for-the-operator step, not the end. (The cut is only truly
+  // done when the process exits, after the software Unload — handled in the exit listener.)
+  if (/\bunload\b/.test(normalized)) {
+    return makeCutAction("unload", "Unload the mat", "Press Unload to release the mat from the machine.", true);
   }
   if (/\b(replace|change|swap).*\b(tool|blade|pen|marker)\b/.test(normalized)) {
-    return makeCutAction("replace-tool", "Change the tool", "Put in the next tool, then press Continue here.", true);
+    return makeCutAction("replace-tool", "Load the next tool", "Put in the requested tool, then press Continue here.", true);
   }
   if (/\b(press|push).*\b(go|start|button)\b/.test(normalized)) {
-    return makeCutAction("press-go", "Start when the machine is ready", "Press Go on the Cricut or continue when SliceBug asks.", true);
+    return makeCutAction("press-go", "Load the tool", "Put the requested tool in the clamp, then press Continue.", true);
   }
   if (/\b(load|insert|place).*\b(mat|card)\b|\bmat\b.*\b(load|insert|ready)\b/.test(normalized)) {
     return makeCutAction("load-mat", "Load the mat", "Place the material on the mat and load it into the Cricut, then press Continue.", true);
@@ -592,13 +616,15 @@ function parseCutAction(text: string): CutActionState {
   if (/\b(load|insert|install).*\b(tool|pen|blade|marker|clamp)\b|\bclamp\b/.test(normalized)) {
     return makeCutAction("load-tools", "Load the tool", "Put the requested pen or blade in the clamp, then press Continue.", true);
   }
-  if (/\b(cutting|running|progress|path\s+\d+)\b/.test(normalized)) {
-    return makeCutAction("running", "Cutting now", "The Cricut is working. Keep hands clear and wait for the next prompt.", false);
+  // "Cutting finished." is treated as ongoing (not terminal) so polling continues until the
+  // unload prompt and the process exit arrive.
+  if (/\b(cutting|running|progress|path\s+\d+|finished|complete|completed|finishing)\b/.test(normalized)) {
+    return makeCutAction("running", "Working", "The Cricut is working. Keep hands clear and wait for the next prompt.", false);
   }
   if (/\b(enter|continue|ready)\b/.test(normalized)) {
     return makeCutAction("load-mat", "Ready for the next step", "Check the Cricut, then press Continue here when you are ready.", true);
   }
-  return makeCutAction("idle", "Waiting for SliceBug", "KindCut is listening for the next cutter step.", false);
+  return makeCutAction("idle", "Waiting for the cutter", "KindCut is listening for the next cutter step.", false);
 }
 
 function makeCutAction(

@@ -108,10 +108,13 @@ hints for where to start, not exhaustive.
   around the whole design. Likely a new object role/flag rather than a new tool.
   → `WorkspaceObjectArtwork` (skip fill), `buildWorkspaceCutSvg`, tool/color model.
 
-- [ ] **Visual cutting progress.** Replace the text-y status with a clear visual
+- [x] **Visual cutting progress.** Replace the text-y status with a clear visual
   sequence: each step (load tool, load mat, draw, cut pass, finish) shown with icons,
   tool changes called out, completed/active/upcoming states. Build on the existing
   step list in `PlanAndCutMonitor` / `CutPreviewModal`.
+  → Done: `CutPreviewModal` rebuilt with a centre step-detail + icon timeline
+  (`CraftIcons.tsx`), per-tool steps, a 15s "is your cutter on?" connection guide,
+  unload/finish flow, and a safe-stop confirmation. See `docs/slicebug-internals.md`.
 
 - [ ] **Cut-time estimate & pass count.** Count paths (have `getWorkspaceObjectPartCount`)
   and estimate real-world cutting time from measured timings. Factor paper weight into
