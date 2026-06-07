@@ -38,9 +38,14 @@ bundle a fresh SliceBug runtime from `desm-it/slicebug` `main`.
 - `.github/workflows/release.yml` builds release artifacts on native runners:
   macOS arm64 on `macos-15`, Windows x64 on `windows-latest`.
 
-The release workflow can be started manually from GitHub Actions. It also runs
-for tags matching `v*`; tag builds create a draft GitHub release and attach the
-generated artifacts.
+The release workflow runs when a GitHub Release is published. It builds native
+macOS and Windows artifacts, then uploads them to that release. It also runs for
+version tags such as `v1.0.0` or `1.0.0`; tag builds create a draft GitHub
+release and attach the generated artifacts.
+
+The workflow can also be started manually from GitHub Actions. Pass
+`release_tag` to attach builds to an existing release, or leave it blank to make
+smoke-test artifacts only.
 
 ## Release Flow
 
@@ -49,15 +54,15 @@ generated artifacts.
 3. Start the `Release Builds` workflow manually for a smoke build, optionally
    choosing a SliceBug ref.
 4. Download and smoke-test the artifacts.
-5. Tag the exact commit when ready:
+5. Publish a GitHub Release for the exact tag when ready:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag 1.0.0
+git push origin 1.0.0
 ```
 
-The tag workflow creates a draft GitHub release with the macOS DMG/zip and
-Windows installer attached.
+Publishing the GitHub Release triggers the native release workflow and attaches
+the macOS DMG/zip and Windows installer to the release.
 
 ## Signing Status
 
