@@ -1,6 +1,6 @@
 {
   "name": "cricut-companion-app",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Local-first Cricut companion app for grandma-easy AI-assisted craft design and SliceBug-based cutting.",
   "type": "module",
@@ -11,12 +11,14 @@
   "scripts": {
     "dev": "npm run dev --workspace @cricut-companion/desktop",
     "build": "npm run build --workspaces --if-present",
+    "build:slicebug": "npm run build:slicebug --workspace @cricut-companion/desktop",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "check": "npm run typecheck && npm run test && npm run build",
     "desktop:shell": "npm run dev:shell --workspace @cricut-companion/desktop",
     "package:desktop:dir": "npm run package:dir --workspace @cricut-companion/desktop",
-    "package:desktop:mac": "npm run package:mac --workspace @cricut-companion/desktop"
+    "package:desktop:mac": "npm run package:mac --workspace @cricut-companion/desktop",
+    "package:desktop:win": "npm run package:win --workspace @cricut-companion/desktop"
   },
   "engines": {
     "node": ">=20"
@@ -26,6 +28,6 @@
     "@vitejs/plugin-react": "latest",
     "typescript": "latest",
     "vite": "latest",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.8"
   }
 }

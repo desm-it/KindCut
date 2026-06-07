@@ -7,9 +7,22 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const JOEL_LOCAL_SLICEBUG = "/Users/joeldesmit/Cricut/SlicebugMac/.venv/bin/slicebug";
+const BUNDLED_SLICEBUG_RESOURCE_DIR = "slicebug";
+
+export interface SlicebugCandidateOptions {
+  platform?: NodeJS.Platform;
+  resourcesPath?: string;
+  appRoot?: string;
+  repoRoot?: string;
+  envExecutable?: string;
+}
 
 export interface SlicebugInvocation {
   args: ["--version"];
+}
+
+export interface SlicebugBootstrapInvocation {
+  args: string[];
 }
 
 export interface SlicebugPlanInvocation {
@@ -34,6 +47,29 @@ export interface SlicebugStatus {
   executable: string | null;
   version: string | null;
   message: string;
+}
+
+export interface SlicebugBootstrapInput {
+  designSpacePath?: string;
+  designSpaceProfilePath?: string;
+}
+
+export interface SlicebugBootstrapResult extends RawSlicebugResult {
+  ok: boolean;
+  message: string;
+}
+
+export interface SlicebugSetupStatus {
+  configRoot: string;
+  keysPath: string;
+  profilesPath: string;
+  devicePluginPath: string;
+  usvgPath: string;
+  hasKeys: boolean;
+  hasProfiles: boolean;
+  hasDevicePlugin: boolean;
+  hasUsvg: boolean;
+  bootstrapped: boolean;
 }
 
 export interface SamplePlanRequest {
@@ -108,12 +144,108 @@ export interface CutSessionOptions {
   spawnProcess?: (command: string, args: string[]) => SlicebugProcess;
 }
 
-export function findSlicebugExecutableCandidates(): string[] {
-  return [JOEL_LOCAL_SLICEBUG, "slicebug"];
+function platformExecutableName(platform: NodeJS.Platform, baseName: string): string {
+  return platform === "win32" ? `${baseName}.exe` : baseName;
+}
+
+function uniqueCandidates(candidates: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(candidates.filter((candidate): candidate is string => Boolean(candidate))));
+}
+
+export function bundledSlicebugExecutablePath(resourcesPath: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(resourcesPath, BUNDLED_SLICEBUG_RESOURCE_DIR, platformExecutableName(platform, "slicebug"));
+}
+
+export function desktopResourceSlicebugExecutablePath(appRoot: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(appRoot, "resources", BUNDLED_SLICEBUG_RESOURCE_DIR, platformExecutableName(platform, "slicebug"));
+}
+
+export function vendoredSlicebugVenvExecutablePath(repoRoot: string, platform: NodeJS.Platform = process.platform): string {
+  return platform === "win32"
+    ? path.join(repoRoot, "vendor", "slicebug", ".venv", "Scripts", "slicebug.exe")
+    : path.join(repoRoot, "vendor", "slicebug", ".venv", "bin", "slicebug");
+}
+
+export function vendoredSlicebugFrozenExecutablePath(repoRoot: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(repoRoot, "apps", "desktop", "resources", BUNDLED_SLICEBUG_RESOURCE_DIR, platformExecutableName(platform, "slicebug"));
+}
+
+export function findSlicebugExecutableCandidates(options: SlicebugCandidateOptions = {}): string[] {
+  const platform = options.platform ?? process.platform;
+  const appRoot = options.appRoot ?? process.cwd();
+  const repoRoot = options.repoRoot ?? path.resolve(appRoot, "..", "..");
+  const resourcesPath = options.resourcesPath ?? process.resourcesPath;
+  const envExecutable = options.envExecutable ?? process.env.KINDCUT_SLICEBUG_EXECUTABLE;
+
+  return uniqueCandidates([
+    envExecutable,
+    resourcesPath ? bundledSlicebugExecutablePath(resourcesPath, platform) : null,
+    desktopResourceSlicebugExecutablePath(appRoot, platform),
+    vendoredSlicebugFrozenExecutablePath(repoRoot, platform),
+    vendoredSlicebugVenvExecutablePath(repoRoot, platform),
+    JOEL_LOCAL_SLICEBUG,
+    "slicebug",
+  ]);
 }
 
 export function buildSlicebugInvocation(): SlicebugInvocation {
   return { args: ["--version"] };
+}
+
+export function defaultDesignSpacePaths(platform: NodeJS.Platform = process.platform, homeDir = os.homedir()): Required<SlicebugBootstrapInput> {
+  if (platform === "win32") {
+    return {
+      designSpacePath: path.join(homeDir, "AppData", "Local", "Programs", "Cricut Design Space"),
+      designSpaceProfilePath: path.join(homeDir, ".cricut-design-space"),
+    };
+  }
+
+  return {
+    designSpacePath: "/Applications/Cricut Design Space.app/Contents/Resources",
+    designSpaceProfilePath: path.join(homeDir, ".cricut-design-space"),
+  };
+}
+
+export function buildBootstrapInvocation(input: SlicebugBootstrapInput = {}): SlicebugBootstrapInvocation {
+  const defaults = defaultDesignSpacePaths();
+  return {
+    args: [
+      "bootstrap",
+      "--design-space-path",
+      input.designSpacePath ?? defaults.designSpacePath,
+      "--design-space-profile-path",
+      input.designSpaceProfilePath ?? defaults.designSpaceProfilePath,
+    ],
+  };
+}
+
+export function slicebugConfigRoot(homeDir = os.homedir()): string {
+  return path.join(homeDir, ".slicebug");
+}
+
+export function getSlicebugSetupStatus(homeDir = os.homedir(), platform: NodeJS.Platform = process.platform): SlicebugSetupStatus {
+  const configRoot = slicebugConfigRoot(homeDir);
+  const executableSuffix = platform === "win32" ? ".exe" : "";
+  const keysPath = path.join(configRoot, "keys.json");
+  const profilesPath = path.join(configRoot, "profiles.json");
+  const devicePluginPath = path.join(configRoot, "plugins", "device-common", `CricutDevice${executableSuffix}`);
+  const usvgPath = path.join(configRoot, "plugins", "usvg", `usvg${executableSuffix}`);
+  const hasKeys = fs.existsSync(keysPath);
+  const hasProfiles = fs.existsSync(profilesPath);
+  const hasDevicePlugin = fs.existsSync(devicePluginPath);
+  const hasUsvg = fs.existsSync(usvgPath);
+  return {
+    configRoot,
+    keysPath,
+    profilesPath,
+    devicePluginPath,
+    usvgPath,
+    hasKeys,
+    hasProfiles,
+    hasDevicePlugin,
+    hasUsvg,
+    bootstrapped: hasKeys && hasProfiles && hasDevicePlugin && hasUsvg,
+  };
 }
 
 export function buildSamplePlanRequest(
@@ -308,6 +440,26 @@ async function runVersion(executable: string): Promise<RawSlicebugResult> {
   }
 }
 
+async function runBootstrap(executable: string, input: SlicebugBootstrapInput = {}): Promise<RawSlicebugResult> {
+  const invocation = buildBootstrapInvocation(input);
+
+  try {
+    const { stdout, stderr } = await execFileAsync(executable, invocation.args, {
+      timeout: 120_000,
+      windowsHide: true,
+    });
+    return { executable, stdout, stderr };
+  } catch (error) {
+    const maybeError = error as Error & { stdout?: string; stderr?: string; code?: unknown };
+    return {
+      executable,
+      stdout: maybeError.stdout ?? "",
+      stderr: maybeError.stderr ?? "",
+      error: maybeError.message,
+    };
+  }
+}
+
 export async function getSlicebugStatus(): Promise<SlicebugStatus> {
   let lastResult: RawSlicebugResult | null = null;
 
@@ -333,6 +485,32 @@ export async function getSlicebugStatus(): Promise<SlicebugStatus> {
     executable: null,
     version: null,
     message: `SliceBug was not found. Expected ${JOEL_LOCAL_SLICEBUG} or slicebug on PATH.`,
+  };
+}
+
+export async function bootstrapSlicebug(input: SlicebugBootstrapInput = {}): Promise<SlicebugBootstrapResult> {
+  const executable = await findAvailableSlicebugExecutable();
+  if (!executable) {
+    return {
+      ok: false,
+      executable: JOEL_LOCAL_SLICEBUG,
+      stdout: "",
+      stderr: "",
+      error: "SliceBug was not found.",
+      message: `SliceBug was not found. Expected a bundled helper, ${JOEL_LOCAL_SLICEBUG}, or slicebug on PATH.`,
+    };
+  }
+
+  const result = await runBootstrap(executable, input);
+  const setup = getSlicebugSetupStatus();
+  const messageParts = [result.error, result.stderr.trim() || result.stdout.trim()].filter(Boolean);
+  return {
+    ...result,
+    ok: !result.error && setup.bootstrapped,
+    message:
+      !result.error && setup.bootstrapped
+        ? "SliceBug setup completed."
+        : messageParts.join("\n") || "SliceBug setup did not complete.",
   };
 }
 

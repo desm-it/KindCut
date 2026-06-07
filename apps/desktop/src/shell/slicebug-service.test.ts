@@ -1,25 +1,119 @@
 import { describe, expect, it } from "vitest";
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   SlicebugCutSession,
+  buildBootstrapInvocation,
   buildSamplePlanRequest,
   buildSvgPlanRequest,
   buildSlicebugInvocation,
+  bundledSlicebugExecutablePath,
+  defaultDesignSpacePaths,
+  desktopResourceSlicebugExecutablePath,
   findSlicebugExecutableCandidates,
+  getSlicebugSetupStatus,
   summarizePlanResult,
   summarizeSlicebugResult,
+  vendoredSlicebugFrozenExecutablePath,
+  vendoredSlicebugVenvExecutablePath,
 } from "./slicebug-service";
 
 describe("slicebug desktop service", () => {
-  it("prefers Joel's local SliceBug venv before PATH", () => {
-    expect(findSlicebugExecutableCandidates()).toEqual([
+  it("looks for packaged and local bundled SliceBug before dev fallbacks", () => {
+    expect(
+      findSlicebugExecutableCandidates({
+        platform: "darwin",
+        resourcesPath: "/Applications/KindCut.app/Contents/Resources",
+        appRoot: "/repo/apps/desktop",
+        repoRoot: "/repo",
+        envExecutable: "/custom/slicebug",
+      }),
+    ).toEqual([
+      "/custom/slicebug",
+      "/Applications/KindCut.app/Contents/Resources/slicebug/slicebug",
+      "/repo/apps/desktop/resources/slicebug/slicebug",
+      "/repo/vendor/slicebug/.venv/bin/slicebug",
       "/Users/joeldesmit/Cricut/SlicebugMac/.venv/bin/slicebug",
       "slicebug",
     ]);
   });
 
+  it("builds platform-specific bundled SliceBug paths", () => {
+    expect(bundledSlicebugExecutablePath("/resources", "darwin")).toBe("/resources/slicebug/slicebug");
+    expect(bundledSlicebugExecutablePath("C:\\KindCut\\resources", "win32")).toBe(
+      path.join("C:\\KindCut\\resources", "slicebug", "slicebug.exe"),
+    );
+    expect(desktopResourceSlicebugExecutablePath("/repo/apps/desktop", "darwin")).toBe(
+      "/repo/apps/desktop/resources/slicebug/slicebug",
+    );
+    expect(vendoredSlicebugFrozenExecutablePath("/repo", "win32")).toBe(
+      path.join("/repo", "apps", "desktop", "resources", "slicebug", "slicebug.exe"),
+    );
+    expect(vendoredSlicebugVenvExecutablePath("/repo", "win32")).toBe(
+      path.join("/repo", "vendor", "slicebug", ".venv", "Scripts", "slicebug.exe"),
+    );
+  });
+
   it("builds only the safe non-cutting status invocation", () => {
     expect(buildSlicebugInvocation()).toEqual({ args: ["--version"] });
+  });
+
+  it("builds an explicit first-run bootstrap invocation", () => {
+    expect(
+      buildBootstrapInvocation({
+        designSpacePath: "/Applications/Cricut Design Space.app/Contents/Resources",
+        designSpaceProfilePath: "/Users/test/.cricut-design-space",
+      }),
+    ).toEqual({
+      args: [
+        "bootstrap",
+        "--design-space-path",
+        "/Applications/Cricut Design Space.app/Contents/Resources",
+        "--design-space-profile-path",
+        "/Users/test/.cricut-design-space",
+      ],
+    });
+  });
+
+  it("knows Cricut Design Space default paths on macOS and Windows", () => {
+    expect(defaultDesignSpacePaths("darwin", "/Users/test")).toEqual({
+      designSpacePath: "/Applications/Cricut Design Space.app/Contents/Resources",
+      designSpaceProfilePath: "/Users/test/.cricut-design-space",
+    });
+    expect(defaultDesignSpacePaths("win32", "C:\\Users\\Test")).toEqual({
+      designSpacePath: path.join("C:\\Users\\Test", "AppData", "Local", "Programs", "Cricut Design Space"),
+      designSpaceProfilePath: path.join("C:\\Users\\Test", ".cricut-design-space"),
+    });
+  });
+
+  it("detects whether SliceBug has been bootstrapped without touching hardware", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "kindcut-slicebug-setup-"));
+    const config = path.join(home, ".slicebug");
+    fs.mkdirSync(path.join(config, "plugins", "device-common"), { recursive: true });
+    fs.mkdirSync(path.join(config, "plugins", "usvg"), { recursive: true });
+
+    expect(getSlicebugSetupStatus(home, "darwin")).toMatchObject({
+      hasKeys: false,
+      hasProfiles: false,
+      hasDevicePlugin: false,
+      hasUsvg: false,
+      bootstrapped: false,
+    });
+
+    fs.writeFileSync(path.join(config, "keys.json"), "{}");
+    fs.writeFileSync(path.join(config, "profiles.json"), "{}");
+    fs.writeFileSync(path.join(config, "plugins", "device-common", "CricutDevice"), "");
+    fs.writeFileSync(path.join(config, "plugins", "usvg", "usvg"), "");
+
+    expect(getSlicebugSetupStatus(home, "darwin")).toMatchObject({
+      hasKeys: true,
+      hasProfiles: true,
+      hasDevicePlugin: true,
+      hasUsvg: true,
+      bootstrapped: true,
+    });
   });
 
   it("summarizes a successful SliceBug response", () => {

@@ -43,6 +43,8 @@ const translations = {
     "buttons.preparingPreview": "Voorbeeld voorbereiden...",
     "buttons.checking": "Controleren...",
     "buttons.checkSetupAgain": "Controleer instellingen opnieuw",
+    "buttons.setupCricutHelper": "Cricut-hulpje instellen",
+    "buttons.settingUp": "Instellen...",
     "buttons.chooseSvg": "Kies afbeelding",
     "buttons.preparing": "Voorbereiden...",
     "buttons.prepareHandoff": "Bereid Cricut-overdracht voor",
@@ -62,6 +64,12 @@ const translations = {
     "status.warningTitle": "Een hulpje heeft aandacht nodig",
     "status.warningMessage":
       "KindCut kan het voorbeeldproject nog tonen, maar kan pas een Cricut-overdracht voorbereiden als het hulpje is ingesteld.",
+    "status.bootstrapTitle": "Cricut-hulpje nog niet ingesteld",
+    "status.bootstrapMessage":
+      "KindCut heeft SliceBug gevonden. Stel het eenmalig in met Cricut Design Space voordat je naar de snijder stuurt.",
+    "status.bootstrapLoadingTitle": "Cricut-hulpje instellen",
+    "status.bootstrapLoadingMessage":
+      "KindCut haalt lokaal de benodigde Cricut Design Space-profielen op. Dit kan even duren.",
     "workflow.label": "KindCut-werkwijze",
     "workflow.describe": "Beschrijf het",
     "workflow.preview": "Bekijk lagen",
@@ -254,6 +262,8 @@ const translations = {
     "buttons.preparingPreview": "Preparing preview...",
     "buttons.checking": "Checking...",
     "buttons.checkSetupAgain": "Check setup again",
+    "buttons.setupCricutHelper": "Set up Cricut helper",
+    "buttons.settingUp": "Setting up...",
     "buttons.chooseSvg": "Choose image",
     "buttons.preparing": "Preparing...",
     "buttons.prepareHandoff": "Prepare Cricut handoff",
@@ -273,6 +283,12 @@ const translations = {
     "status.warningTitle": "One helper needs attention",
     "status.warningMessage":
       "KindCut can still show the sample project, but it cannot prepare a Cricut handoff until the helper app is set up.",
+    "status.bootstrapTitle": "Cricut helper is not set up yet",
+    "status.bootstrapMessage":
+      "KindCut found SliceBug. Set it up once with Cricut Design Space before sending to the cutter.",
+    "status.bootstrapLoadingTitle": "Setting up the Cricut helper",
+    "status.bootstrapLoadingMessage":
+      "KindCut is importing the local Cricut Design Space profiles it needs. This may take a moment.",
     "workflow.label": "KindCut workflow",
     "workflow.describe": "Describe it",
     "workflow.preview": "Preview layers",

@@ -23,8 +23,10 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import type { IpcMainEvent, MenuItemConstructorOptions, OpenDialogOptions, SaveDialogOptions } from "electron";
 import {
   SlicebugCutSession,
+  bootstrapSlicebug,
   generateSampleSlicebugPlan,
   generateSvgSlicebugPlan,
+  getSlicebugSetupStatus,
   getSlicebugStatus,
 } from "./slicebug-service";
 import type { CutSessionSnapshot, SvgPlanInput } from "./slicebug-service";
@@ -32,6 +34,7 @@ import { createMainWindowOptions, resolveRendererEntry } from "./window-config";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 let activeCutSession: SlicebugCutSession | null = null;
+const closeAllowedWindows = new WeakSet<BrowserWindow>();
 
 type RendererAction =
   | "new-project"
@@ -54,7 +57,8 @@ type RendererAction =
   | "edit-bring-forward"
   | "edit-send-backward"
   | "edit-bring-to-front"
-  | "edit-send-to-back";
+  | "edit-send-to-back"
+  | "close-window";
 
 type ProjectSaveInput = {
   content: string;
@@ -78,6 +82,9 @@ type WorkspaceEditState = {
 
 const PROJECT_FILE_FILTER = { name: "KindCut Projects", extensions: ["kindcut"] };
 const EDIT_STATE_REQUEST_TIMEOUT_MS = 250;
+const ABOUT_COPY =
+  "KindCut helps you design, preview, save, and prepare Cricut projects locally. " +
+  "Cutter handoff is powered by the bundled SliceBug helper and always requires explicit confirmation.";
 
 function ensureKindCutExtension(filePath: string): string {
   return filePath.toLowerCase().endsWith(".kindcut") ? filePath : `${filePath}.kindcut`;
@@ -141,6 +148,34 @@ function toggleFocusedWindowDevTools(): void {
   } else {
     focusedWindow.webContents.openDevTools({ mode: "detach" });
   }
+}
+
+function showAboutDialog(): void {
+  const focusedWindow = BrowserWindow.getFocusedWindow();
+  const options = {
+    type: "info" as const,
+    title: "About KindCut",
+    message: `KindCut ${app.getVersion()}`,
+    detail: `${ABOUT_COPY}\n\nCopyright 2026 Joel De Smit.`,
+    buttons: ["OK"],
+  };
+
+  if (focusedWindow) {
+    void dialog.showMessageBox(focusedWindow, options);
+    return;
+  }
+
+  void dialog.showMessageBox(options);
+}
+
+function configureAboutPanel(): void {
+  app.setAboutPanelOptions({
+    applicationName: "KindCut",
+    applicationVersion: app.getVersion(),
+    version: "Cricut companion 1.0",
+    copyright: "Copyright 2026 Joel De Smit",
+    credits: ABOUT_COPY,
+  });
 }
 
 function createProjectMenu(): MenuItemConstructorOptions {
@@ -209,6 +244,14 @@ function createAppMenu(): ReturnType<typeof Menu.buildFromTemplate> {
         },
       ],
     },
+    ...(process.platform === "darwin"
+      ? []
+      : [
+          {
+            role: "help",
+            submenu: [{ label: "About KindCut", click: showAboutDialog }],
+          } satisfies MenuItemConstructorOptions,
+        ]),
   ];
 
   return Menu.buildFromTemplate(template);
@@ -300,6 +343,14 @@ async function createMainWindow(): Promise<BrowserWindow> {
     // "workspace:show-context-menu" IPC) so a right-drag can pan without popping a menu.
   });
 
+  mainWindow.on("close", (event) => {
+    if (closeAllowedWindows.has(mainWindow)) {
+      return;
+    }
+    event.preventDefault();
+    mainWindow.webContents.send("app:action", { action: "close-window" });
+  });
+
   const rendererEntry = resolveRendererEntry({
     appRoot: path.resolve(__dirname, ".."),
     viteDevServerUrl: process.env.VITE_DEV_SERVER_URL,
@@ -315,6 +366,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 }
 
 app.setName("KindCut");
+configureAboutPanel();
 Menu.setApplicationMenu(createAppMenu());
 
 ipcMain.handle("workspace:show-context-menu", (event) => {
@@ -323,7 +375,19 @@ ipcMain.handle("workspace:show-context-menu", (event) => {
 });
 ipcMain.handle("project:save", async (_event, input: ProjectSaveInput): Promise<ProjectFileResult> => saveProjectFile(input));
 ipcMain.handle("project:open", async (): Promise<ProjectFileResult> => openProjectFile());
+ipcMain.handle("app:close-confirmed", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) {
+    return;
+  }
+  closeAllowedWindows.add(win);
+  win.close();
+});
 ipcMain.handle("slicebug:get-status", async () => getSlicebugStatus());
+ipcMain.handle("slicebug:get-setup-status", async () => getSlicebugSetupStatus());
+ipcMain.handle("slicebug:bootstrap", async (_event, input?: { designSpacePath?: string; designSpaceProfilePath?: string }) =>
+  bootstrapSlicebug(input),
+);
 ipcMain.handle("slicebug:generate-sample-plan", async (_event, choices?: { materialId?: number; matPreset?: string }) =>
   generateSampleSlicebugPlan(choices),
 );

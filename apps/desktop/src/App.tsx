@@ -102,6 +102,13 @@ type SlicebugStatus = {
   message: string;
 };
 
+type SlicebugSetupStatus = {
+  bootstrapped: boolean;
+  hasKeys: boolean;
+  hasProfiles: boolean;
+  hasDevicePlugin: boolean;
+  hasUsvg: boolean;
+};
 
 type WorkspaceHistorySnapshot = {
   importedSvgs: WorkspaceSvgItem[];
@@ -133,7 +140,8 @@ type DesktopActionPayload = {
     | "edit-bring-forward"
     | "edit-send-backward"
     | "edit-bring-to-front"
-    | "edit-send-to-back";
+    | "edit-send-to-back"
+    | "close-window";
   value?: string;
 };
 
@@ -166,7 +174,9 @@ export function App() {
   const [screen, setScreen] = useState<AppScreen>("welcome");
   const [language, setLanguage] = useState<Language>(() => loadLanguagePreference());
   const [slicebugStatus, setSlicebugStatus] = useState<SlicebugStatus | null>(null);
+  const [slicebugSetupStatus, setSlicebugSetupStatus] = useState<SlicebugSetupStatus | null>(null);
   const [slicebugLoading, setSlicebugLoading] = useState(false);
+  const [slicebugBootstrapLoading, setSlicebugBootstrapLoading] = useState(false);
   const [samplePlan, setSamplePlan] = useState<SlicebugPlanResult | null>(null);
   const [samplePlanLoading, setSamplePlanLoading] = useState(false);
   const [importedSvgs, setImportedSvgs] = useState<WorkspaceSvgItem[]>([]);
@@ -212,10 +222,33 @@ export function App() {
     [importedSvgs, selectedSvgId],
   );
 
-  const statusCopy = useMemo(
-    () => getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading, language),
-    [language, slicebugLoading, slicebugStatus],
-  );
+  const statusCopy = useMemo(() => {
+    if (slicebugBootstrapLoading) {
+      return {
+        tone: "checking" as const,
+        title: t("status.bootstrapLoadingTitle"),
+        message: t("status.bootstrapLoadingMessage"),
+        details: [],
+      };
+    }
+    if (slicebugStatus?.ok && slicebugSetupStatus && !slicebugSetupStatus.bootstrapped) {
+      return {
+        tone: "warning" as const,
+        title: t("status.bootstrapTitle"),
+        message: t("status.bootstrapMessage"),
+        details: [
+          `SliceBug message: ${slicebugStatus.message}`,
+          slicebugStatus.version ? `SliceBug version: ${slicebugStatus.version}` : null,
+          slicebugStatus.executable ? `Executable: ${slicebugStatus.executable}` : null,
+          `Keys: ${slicebugSetupStatus.hasKeys ? "yes" : "no"}`,
+          `Profiles: ${slicebugSetupStatus.hasProfiles ? "yes" : "no"}`,
+          `Device plugin: ${slicebugSetupStatus.hasDevicePlugin ? "yes" : "no"}`,
+          `usvg: ${slicebugSetupStatus.hasUsvg ? "yes" : "no"}`,
+        ].filter((detail): detail is string => Boolean(detail)),
+      };
+    }
+    return getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading, language);
+  }, [language, slicebugBootstrapLoading, slicebugLoading, slicebugSetupStatus, slicebugStatus, t]);
 
   // --- Unsaved-changes tracking ---------------------------------------------
   // A signature of the persisted project content (objects + settings, ignoring which item is
@@ -267,7 +300,8 @@ export function App() {
     }
   }
 
-  // Ctrl/Cmd+R reload and window close also pass through the unsaved-changes guard.
+  // Ctrl/Cmd+R passes through the unsaved-changes guard. Native window close is
+  // intercepted in Electron main and sent back as the "close-window" app action.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && (event.key === "r" || event.key === "R")) {
@@ -275,18 +309,9 @@ export function App() {
         guardNavigation(() => window.location.reload());
       }
     }
-    function onBeforeUnload(event: BeforeUnloadEvent) {
-      // Safety net for closes/reloads we don't intercept: trigger the native confirm.
-      if (hasUnsavedChanges) {
-        event.preventDefault();
-        event.returnValue = "";
-      }
-    }
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("beforeunload", onBeforeUnload);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("beforeunload", onBeforeUnload);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasUnsavedChanges]);
@@ -1198,6 +1223,11 @@ export function App() {
       case "edit-send-to-back":
         handleMoveSelectedLayer("back");
         break;
+      case "close-window":
+        guardNavigation(() => {
+          void window.cricutCompanion?.appWindow?.closeConfirmed();
+        });
+        break;
     }
   }
 
@@ -1217,7 +1247,12 @@ export function App() {
 
     setSlicebugLoading(true);
     try {
-      setSlicebugStatus(await window.cricutCompanion.slicebug.getStatus());
+      const [status, setup] = await Promise.all([
+        window.cricutCompanion.slicebug.getStatus(),
+        window.cricutCompanion.slicebug.getSetupStatus?.(),
+      ]);
+      setSlicebugStatus(status);
+      setSlicebugSetupStatus(setup ?? null);
     } catch (error) {
       setSlicebugStatus({
         ok: false,
@@ -1232,6 +1267,44 @@ export function App() {
       });
     } finally {
       setSlicebugLoading(false);
+    }
+  }
+
+  async function runSlicebugBootstrap() {
+    if (!window.cricutCompanion?.slicebug?.bootstrap) {
+      setSlicebugStatus({
+        ok: false,
+        executable: null,
+        version: null,
+        message:
+          language === "nl"
+            ? "Open dit scherm in de Electron-desktopapp om SliceBug in te stellen."
+            : "Open this screen in the Electron desktop shell to set up SliceBug.",
+      });
+      return;
+    }
+
+    setSlicebugBootstrapLoading(true);
+    try {
+      const result = await window.cricutCompanion.slicebug.bootstrap();
+      if (!result.ok) {
+        setSlicebugStatus({
+          ok: false,
+          executable: result.executable,
+          version: null,
+          message: result.message,
+        });
+      }
+      await refreshSlicebugStatus();
+    } catch (error) {
+      setSlicebugStatus({
+        ok: false,
+        executable: null,
+        version: null,
+        message: error instanceof Error ? error.message : "SliceBug setup failed.",
+      });
+    } finally {
+      setSlicebugBootstrapLoading(false);
     }
   }
 
@@ -1594,11 +1667,14 @@ export function App() {
         statusDetailsLabel={t("details.advanced")}
         samplePlanLoading={samplePlanLoading}
         slicebugLoading={slicebugLoading}
+        slicebugBootstrapLoading={slicebugBootstrapLoading}
+        showBootstrapSetup={Boolean(slicebugStatus?.ok && slicebugSetupStatus && !slicebugSetupStatus.bootstrapped)}
         onLanguageChange={handleLanguageChange}
         onNewProject={handleNewProject}
         onOpenProject={handleOpenProject}
         onExampleProject={() => void handleExampleProject()}
         onCheckSetup={() => void refreshSlicebugStatus()}
+        onBootstrapSetup={() => void runSlicebugBootstrap()}
       />
     );
   }
@@ -1740,4 +1816,3 @@ export function App() {
     </>
   );
 }
-
