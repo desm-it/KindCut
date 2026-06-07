@@ -7,9 +7,22 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const JOEL_LOCAL_SLICEBUG = "/Users/joeldesmit/Cricut/SlicebugMac/.venv/bin/slicebug";
+const BUNDLED_SLICEBUG_RESOURCE_DIR = "slicebug";
+
+export interface SlicebugCandidateOptions {
+  platform?: NodeJS.Platform;
+  resourcesPath?: string;
+  appRoot?: string;
+  repoRoot?: string;
+  envExecutable?: string;
+}
 
 export interface SlicebugInvocation {
   args: ["--version"];
+}
+
+export interface SlicebugBootstrapInvocation {
+  args: string[];
 }
 
 export interface SlicebugPlanInvocation {
@@ -34,6 +47,30 @@ export interface SlicebugStatus {
   executable: string | null;
   version: string | null;
   message: string;
+}
+
+export interface SlicebugBootstrapInput {
+  designSpacePath?: string;
+  designSpaceProfilePath?: string;
+}
+
+export interface SlicebugBootstrapResult extends RawSlicebugResult {
+  ok: boolean;
+  message: string;
+}
+
+export interface SlicebugSetupStatus {
+  configRoot: string;
+  keysPath: string;
+  profilesPath: string;
+  devicePluginPath: string;
+  usvgPath: string;
+  bundledUsvgPath: string | null;
+  hasKeys: boolean;
+  hasProfiles: boolean;
+  hasDevicePlugin: boolean;
+  hasUsvg: boolean;
+  bootstrapped: boolean;
 }
 
 export interface SamplePlanRequest {
@@ -72,7 +109,7 @@ export interface SlicebugPlanResult {
 export type CutSessionStatus = "idle" | "running" | "waiting" | "finished" | "error" | "stopped" | "blocked";
 
 export interface CutActionState {
-  kind: "idle" | "load-tools" | "load-mat" | "press-go" | "replace-tool" | "finished" | "running" | "error";
+  kind: "idle" | "load-tools" | "load-mat" | "press-go" | "replace-tool" | "unload" | "finished" | "running" | "error";
   title: string;
   message: string;
   requiresContinue: boolean;
@@ -93,10 +130,11 @@ export interface CutSessionSnapshot {
 interface SlicebugProcess {
   stdout: { on(event: "data", listener: (chunk: Buffer | string) => void): unknown };
   stderr: { on(event: "data", listener: (chunk: Buffer | string) => void): unknown };
-  stdin: { write(text: string): unknown };
+  stdin: { write(text: string): unknown; end?(): unknown };
   on(event: "exit", listener: (code: number | null) => void): unknown;
   on(event: "error", listener: (error: Error) => void): unknown;
-  kill(): unknown;
+  kill(signal?: NodeJS.Signals | number): unknown;
+  killed?: boolean;
 }
 
 export interface CutSessionOptions {
@@ -104,15 +142,173 @@ export interface CutSessionOptions {
   executable: string;
   planPath: string;
   smokeMode: boolean;
-  spawnProcess?: (command: string, args: string[]) => SlicebugProcess;
+  spawnProcess?: (command: string, args: string[], env?: NodeJS.ProcessEnv) => SlicebugProcess;
 }
 
-export function findSlicebugExecutableCandidates(): string[] {
-  return [JOEL_LOCAL_SLICEBUG, "slicebug"];
+function platformExecutableName(platform: NodeJS.Platform, baseName: string): string {
+  return platform === "win32" ? `${baseName}.exe` : baseName;
+}
+
+function uniqueCandidates(candidates: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(candidates.filter((candidate): candidate is string => Boolean(candidate))));
+}
+
+export function bundledSlicebugExecutablePath(resourcesPath: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(resourcesPath, BUNDLED_SLICEBUG_RESOURCE_DIR, platformExecutableName(platform, "slicebug"));
+}
+
+export function bundledUsvgExecutablePath(resourcesPath: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(resourcesPath, BUNDLED_SLICEBUG_RESOURCE_DIR, "plugins", "usvg", platformExecutableName(platform, "usvg"));
+}
+
+export function desktopResourceSlicebugExecutablePath(appRoot: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(appRoot, "resources", BUNDLED_SLICEBUG_RESOURCE_DIR, platformExecutableName(platform, "slicebug"));
+}
+
+export function desktopResourceUsvgExecutablePath(appRoot: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(appRoot, "resources", BUNDLED_SLICEBUG_RESOURCE_DIR, "plugins", "usvg", platformExecutableName(platform, "usvg"));
+}
+
+export function vendoredSlicebugVenvExecutablePath(repoRoot: string, platform: NodeJS.Platform = process.platform): string {
+  return platform === "win32"
+    ? path.join(repoRoot, "vendor", "slicebug", ".venv", "Scripts", "slicebug.exe")
+    : path.join(repoRoot, "vendor", "slicebug", ".venv", "bin", "slicebug");
+}
+
+export function vendoredSlicebugFrozenExecutablePath(repoRoot: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(repoRoot, "apps", "desktop", "resources", BUNDLED_SLICEBUG_RESOURCE_DIR, platformExecutableName(platform, "slicebug"));
+}
+
+export function vendoredUsvgFrozenExecutablePath(repoRoot: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(repoRoot, "apps", "desktop", "resources", BUNDLED_SLICEBUG_RESOURCE_DIR, "plugins", "usvg", platformExecutableName(platform, "usvg"));
+}
+
+export function findSlicebugExecutableCandidates(options: SlicebugCandidateOptions = {}): string[] {
+  const platform = options.platform ?? process.platform;
+  const appRoot = options.appRoot ?? process.cwd();
+  const repoRoot = options.repoRoot ?? path.resolve(appRoot, "..", "..");
+  const resourcesPath = options.resourcesPath ?? process.resourcesPath;
+  const envExecutable = options.envExecutable ?? process.env.KINDCUT_SLICEBUG_EXECUTABLE;
+
+  return uniqueCandidates([
+    envExecutable,
+    resourcesPath ? bundledSlicebugExecutablePath(resourcesPath, platform) : null,
+    desktopResourceSlicebugExecutablePath(appRoot, platform),
+    vendoredSlicebugFrozenExecutablePath(repoRoot, platform),
+    vendoredSlicebugVenvExecutablePath(repoRoot, platform),
+    JOEL_LOCAL_SLICEBUG,
+    "slicebug",
+  ]);
+}
+
+export function findBundledUsvgCandidates(options: SlicebugCandidateOptions = {}): string[] {
+  const platform = options.platform ?? process.platform;
+  const appRoot = options.appRoot ?? process.cwd();
+  const repoRoot = options.repoRoot ?? path.resolve(appRoot, "..", "..");
+  const resourcesPath = options.resourcesPath ?? process.resourcesPath;
+
+  return uniqueCandidates([
+    resourcesPath ? bundledUsvgExecutablePath(resourcesPath, platform) : null,
+    desktopResourceUsvgExecutablePath(appRoot, platform),
+    vendoredUsvgFrozenExecutablePath(repoRoot, platform),
+  ]);
+}
+
+function firstExistingFile(candidates: string[]): string | null {
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
+export function buildSlicebugSubprocessEnv(options: SlicebugCandidateOptions = {}): NodeJS.ProcessEnv {
+  const bundledUsvg = firstExistingFile(findBundledUsvgCandidates(options));
+  if (!bundledUsvg) {
+    return process.env;
+  }
+
+  const usvgDir = path.dirname(bundledUsvg);
+  const currentPath = process.env.PATH ?? "";
+  return {
+    ...process.env,
+    PATH: currentPath ? `${usvgDir}${path.delimiter}${currentPath}` : usvgDir,
+  };
 }
 
 export function buildSlicebugInvocation(): SlicebugInvocation {
   return { args: ["--version"] };
+}
+
+export function defaultDesignSpacePaths(platform: NodeJS.Platform = process.platform, homeDir = os.homedir()): Required<SlicebugBootstrapInput> {
+  if (platform === "win32") {
+    return {
+      designSpacePath: path.join(homeDir, "AppData", "Local", "Programs", "Cricut Design Space"),
+      designSpaceProfilePath: path.join(homeDir, ".cricut-design-space"),
+    };
+  }
+
+  return {
+    designSpacePath: "/Applications/Cricut Design Space.app/Contents/Resources",
+    designSpaceProfilePath: path.join(homeDir, ".cricut-design-space"),
+  };
+}
+
+export function buildBootstrapInvocation(input: SlicebugBootstrapInput = {}): SlicebugBootstrapInvocation {
+  const defaults = defaultDesignSpacePaths();
+  return {
+    args: [
+      "bootstrap",
+      "--design-space-path",
+      input.designSpacePath ?? defaults.designSpacePath,
+      "--design-space-profile-path",
+      input.designSpaceProfilePath ?? defaults.designSpaceProfilePath,
+    ],
+  };
+}
+
+export function slicebugConfigRoot(homeDir = os.homedir()): string {
+  return path.join(homeDir, ".slicebug");
+}
+
+export function getSlicebugSetupStatus(
+  homeDir = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+  bundledUsvgPath = firstExistingFile(findBundledUsvgCandidates({ platform })),
+): SlicebugSetupStatus {
+  const configRoot = slicebugConfigRoot(homeDir);
+  const executableSuffix = platform === "win32" ? ".exe" : "";
+  const keysPath = path.join(configRoot, "keys.json");
+  const profilesPath = path.join(configRoot, "profiles.json");
+  const devicePluginPath = path.join(configRoot, "plugins", "device-common", `CricutDevice${executableSuffix}`);
+  const configUsvgPath = path.join(configRoot, "plugins", "usvg", `usvg${executableSuffix}`);
+  const hasKeys = fs.existsSync(keysPath);
+  const hasProfiles = fs.existsSync(profilesPath);
+  const hasDevicePlugin = fs.existsSync(devicePluginPath);
+  const hasConfigUsvg = fs.existsSync(configUsvgPath);
+  const hasBundledUsvg = Boolean(bundledUsvgPath && fs.existsSync(bundledUsvgPath));
+  const hasUsvg = hasConfigUsvg || hasBundledUsvg;
+  return {
+    configRoot,
+    keysPath,
+    profilesPath,
+    devicePluginPath,
+    usvgPath: hasConfigUsvg ? configUsvgPath : bundledUsvgPath ?? configUsvgPath,
+    bundledUsvgPath,
+    hasKeys,
+    hasProfiles,
+    hasDevicePlugin,
+    hasUsvg,
+    bootstrapped: hasKeys && hasProfiles && hasDevicePlugin && hasUsvg,
+  };
+}
+
+export function isBundledUsvgBootstrapFallback(
+  result: Pick<RawSlicebugResult, "error" | "stderr" | "stdout">,
+  setup: Pick<SlicebugSetupStatus, "bootstrapped" | "bundledUsvgPath">,
+): boolean {
+  if (!result.error || !setup.bootstrapped || !setup.bundledUsvgPath) {
+    return false;
+  }
+
+  const output = [result.error, result.stderr, result.stdout].join("\n");
+  return /\b(usvg|resvg)\b|linebender|download/i.test(output);
 }
 
 export function buildSamplePlanRequest(
@@ -294,6 +490,28 @@ async function runVersion(executable: string): Promise<RawSlicebugResult> {
     const { stdout, stderr } = await execFileAsync(executable, invocation.args, {
       timeout: 10_000,
       windowsHide: true,
+      env: buildSlicebugSubprocessEnv(),
+    });
+    return { executable, stdout, stderr };
+  } catch (error) {
+    const maybeError = error as Error & { stdout?: string; stderr?: string; code?: unknown };
+    return {
+      executable,
+      stdout: maybeError.stdout ?? "",
+      stderr: maybeError.stderr ?? "",
+      error: maybeError.message,
+    };
+  }
+}
+
+async function runBootstrap(executable: string, input: SlicebugBootstrapInput = {}): Promise<RawSlicebugResult> {
+  const invocation = buildBootstrapInvocation(input);
+
+  try {
+    const { stdout, stderr } = await execFileAsync(executable, invocation.args, {
+      timeout: 120_000,
+      windowsHide: true,
+      env: buildSlicebugSubprocessEnv(),
     });
     return { executable, stdout, stderr };
   } catch (error) {
@@ -335,6 +553,36 @@ export async function getSlicebugStatus(): Promise<SlicebugStatus> {
   };
 }
 
+export async function bootstrapSlicebug(input: SlicebugBootstrapInput = {}): Promise<SlicebugBootstrapResult> {
+  const executable = await findAvailableSlicebugExecutable();
+  if (!executable) {
+    return {
+      ok: false,
+      executable: JOEL_LOCAL_SLICEBUG,
+      stdout: "",
+      stderr: "",
+      error: "SliceBug was not found.",
+      message: `SliceBug was not found. Expected a bundled helper, ${JOEL_LOCAL_SLICEBUG}, or slicebug on PATH.`,
+    };
+  }
+
+  const result = await runBootstrap(executable, input);
+  const setup = getSlicebugSetupStatus();
+  const messageParts = [result.error, result.stderr.trim() || result.stdout.trim()].filter(Boolean);
+  const bundledUsvgFallback = isBundledUsvgBootstrapFallback(result, setup);
+  const ok = setup.bootstrapped && (!result.error || bundledUsvgFallback);
+  return {
+    ...result,
+    ok,
+    message:
+      ok
+        ? bundledUsvgFallback
+          ? "SliceBug setup completed using KindCut's bundled usvg."
+          : "SliceBug setup completed."
+        : messageParts.join("\n") || "SliceBug setup did not complete.",
+  };
+}
+
 async function runSamplePlan(
   executable: string,
   choices: { materialId?: number; matPreset?: string } = {},
@@ -347,6 +595,7 @@ async function runSamplePlan(
     const { stdout, stderr } = await execFileAsync(executable, request.invocation.args, {
       timeout: 30_000,
       windowsHide: true,
+      env: buildSlicebugSubprocessEnv(),
     });
     const planJson = await fs.promises.readFile(request.outputPlanPath, "utf8");
     return {
@@ -379,6 +628,7 @@ async function runSvgPlan(executable: string, input: SvgPlanInput): Promise<RawS
     const { stdout, stderr } = await execFileAsync(executable, request.invocation.args, {
       timeout: 30_000,
       windowsHide: true,
+      env: buildSlicebugSubprocessEnv(),
     });
     const planJson = await fs.promises.readFile(request.outputPlanPath, "utf8");
     return {
@@ -443,7 +693,7 @@ export async function generateSvgSlicebugPlan(input: SvgPlanInput): Promise<Slic
 export class SlicebugCutSession {
   private readonly command: string;
   private readonly args: string[];
-  private readonly spawnProcess: (command: string, args: string[]) => SlicebugProcess;
+  private readonly spawnProcess: (command: string, args: string[], env?: NodeJS.ProcessEnv) => SlicebugProcess;
   private readonly smokeMode: boolean;
   private process: SlicebugProcess | null = null;
   private snapshot: CutSessionSnapshot;
@@ -454,7 +704,7 @@ export class SlicebugCutSession {
     this.smokeMode = options.smokeMode;
     this.spawnProcess =
       options.spawnProcess ??
-      ((command, args) => spawn(command, args, { windowsHide: true }) as ChildProcessWithoutNullStreams);
+      ((command, args, env) => spawn(command, args, { windowsHide: true, env }) as ChildProcessWithoutNullStreams);
     this.snapshot = {
       id: options.id,
       status: "idle",
@@ -489,7 +739,7 @@ export class SlicebugCutSession {
       return this.getSnapshot();
     }
 
-    this.process = this.spawnProcess(this.command, this.args);
+    this.process = this.spawnProcess(this.command, this.args, buildSlicebugSubprocessEnv());
     this.snapshot = {
       ...this.snapshot,
       status: "running",
@@ -515,7 +765,7 @@ export class SlicebugCutSession {
         status: code === 0 ? "finished" : "error",
         action:
           code === 0
-            ? makeCutAction("finished", "Cut is finished", "Unload the mat when the machine is quiet.", false)
+            ? makeCutAction("finished", "All done!", "Your project is ready. Gently peel it off the mat.", false)
             : makeCutAction("error", "Something needs attention", "SliceBug stopped before the cut finished.", false),
       };
     });
@@ -536,13 +786,34 @@ export class SlicebugCutSession {
   }
 
   stop(): CutSessionSnapshot {
+    // SliceBug has no "cancel cut" command, so the only way to cancel is to fully tear it
+    // down. Closing it drops the device-plugin connection, which halts the Cricut.
     if (this.process && !["finished", "error", "stopped"].includes(this.snapshot.status)) {
-      this.process.kill();
+      const proc = this.process;
+      // Close stdin first: if SliceBug is blocked on a button prompt (input()), the EOF
+      // lets it exit cleanly through its DevicePlugin teardown rather than being killed
+      // mid-write. Then SIGTERM, with a SIGKILL fallback so nothing is left holding the machine.
+      try {
+        proc.stdin.end?.();
+      } catch {
+        // stdin may already be closed — ignore.
+      }
+      proc.kill();
+      const force = setTimeout(() => {
+        try {
+          if (!proc.killed) proc.kill("SIGKILL");
+        } catch {
+          // already gone — ignore.
+        }
+      }, 2000);
+      if (typeof (force as { unref?: () => void }).unref === "function") {
+        (force as { unref: () => void }).unref();
+      }
     }
     this.snapshot = {
       ...this.snapshot,
       status: "stopped",
-      action: makeCutAction("error", "Cut stopped", "KindCut asked SliceBug to stop this cut session.", false),
+      action: makeCutAction("error", "Cut cancelled", "KindCut closed SliceBug and cancelled the cut.", false),
     };
     return this.getSnapshot();
   }
@@ -575,16 +846,18 @@ function appendText(current: string, next: string): string {
 function parseCutAction(text: string): CutActionState {
   const normalized = text.toLowerCase();
   if (/\b(error|failed|failure|traceback|exception)\b/.test(normalized)) {
-    return makeCutAction("error", "Something needs attention", "SliceBug reported a problem. Stop here and check the details.", false);
+    return makeCutAction("error", "Something needs attention", "The cutter reported a problem. Stop here and try again.", false);
   }
-  if (/\b(finished|complete|completed|done|unload)\b/.test(normalized)) {
-    return makeCutAction("finished", "Cut is finished", "Unload the mat when the machine is quiet.", false);
+  // The unload prompt is a wait-for-the-operator step, not the end. (The cut is only truly
+  // done when the process exits, after the software Unload — handled in the exit listener.)
+  if (/\bunload\b/.test(normalized)) {
+    return makeCutAction("unload", "Unload the mat", "Press Unload to release the mat from the machine.", true);
   }
   if (/\b(replace|change|swap).*\b(tool|blade|pen|marker)\b/.test(normalized)) {
-    return makeCutAction("replace-tool", "Change the tool", "Put in the next tool, then press Continue here.", true);
+    return makeCutAction("replace-tool", "Load the next tool", "Put in the requested tool, then press Continue here.", true);
   }
   if (/\b(press|push).*\b(go|start|button)\b/.test(normalized)) {
-    return makeCutAction("press-go", "Start when the machine is ready", "Press Go on the Cricut or continue when SliceBug asks.", true);
+    return makeCutAction("press-go", "Load the tool", "Put the requested tool in the clamp, then press Continue.", true);
   }
   if (/\b(load|insert|place).*\b(mat|card)\b|\bmat\b.*\b(load|insert|ready)\b/.test(normalized)) {
     return makeCutAction("load-mat", "Load the mat", "Place the material on the mat and load it into the Cricut, then press Continue.", true);
@@ -592,13 +865,15 @@ function parseCutAction(text: string): CutActionState {
   if (/\b(load|insert|install).*\b(tool|pen|blade|marker|clamp)\b|\bclamp\b/.test(normalized)) {
     return makeCutAction("load-tools", "Load the tool", "Put the requested pen or blade in the clamp, then press Continue.", true);
   }
-  if (/\b(cutting|running|progress|path\s+\d+)\b/.test(normalized)) {
-    return makeCutAction("running", "Cutting now", "The Cricut is working. Keep hands clear and wait for the next prompt.", false);
+  // "Cutting finished." is treated as ongoing (not terminal) so polling continues until the
+  // unload prompt and the process exit arrive.
+  if (/\b(cutting|running|progress|path\s+\d+|finished|complete|completed|finishing)\b/.test(normalized)) {
+    return makeCutAction("running", "Working", "The Cricut is working. Keep hands clear and wait for the next prompt.", false);
   }
   if (/\b(enter|continue|ready)\b/.test(normalized)) {
     return makeCutAction("load-mat", "Ready for the next step", "Check the Cricut, then press Continue here when you are ready.", true);
   }
-  return makeCutAction("idle", "Waiting for SliceBug", "KindCut is listening for the next cutter step.", false);
+  return makeCutAction("idle", "Waiting for the cutter", "KindCut is listening for the next cutter step.", false);
 }
 
 function makeCutAction(

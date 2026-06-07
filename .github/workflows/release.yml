@@ -1,0 +1,127 @@
+name: Release Builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      slicebug_ref:
+        description: SliceBug git ref to bundle
+        required: false
+        default: main
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SLICEBUG_REPOSITORY: ${{ vars.SLICEBUG_REPOSITORY || 'desm-it/slicebug' }}
+  SLICEBUG_REF: ${{ inputs.slicebug_ref || vars.SLICEBUG_REF || 'main' }}
+
+jobs:
+  mac:
+    name: macOS arm64
+    runs-on: macos-15
+    steps:
+      - name: Check out KindCut
+        uses: actions/checkout@v4
+
+      - name: Check out SliceBug
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SLICEBUG_REPOSITORY }}
+          ref: ${{ env.SLICEBUG_REF }}
+          path: vendor/slicebug
+          token: ${{ secrets.SLICEBUG_TOKEN || github.token }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check
+        run: npm run typecheck && npm run test
+
+      - name: Build mac release
+        run: npm run package:desktop:mac
+
+      - name: Upload mac artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kindcut-macos-arm64
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*-mac.zip
+            apps/desktop/release/*.blockmap
+
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - name: Check out KindCut
+        uses: actions/checkout@v4
+
+      - name: Check out SliceBug
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SLICEBUG_REPOSITORY }}
+          ref: ${{ env.SLICEBUG_REF }}
+          path: vendor/slicebug
+          token: ${{ secrets.SLICEBUG_TOKEN || github.token }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check
+        run: npm run typecheck && npm run test
+
+      - name: Build Windows release
+        run: npm run package:desktop:win
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kindcut-windows-x64
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
+
+  github-release:
+    name: Attach Tag Release Artifacts
+    needs:
+      - mac
+      - windows
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: release-artifacts/**/*

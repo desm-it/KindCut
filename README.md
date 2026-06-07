@@ -1,20 +1,23 @@
-# Cricut Companion App
+# KindCut
 
-Local-first Cricut companion app for grandma-easy craft design, AI-generated Cricut-ready SVGs, local project/library management, and eventual SliceBug-backed machine sending.
+Local-first Cricut companion app for grandma-easy craft design, AI-generated Cricut-ready SVGs, local project/library management, and SliceBug-backed machine sending.
 
 ## Current status
 
-This is a project foundation, not a finished cutter app yet. The first scaffold includes:
+KindCut is being prepared as a local 1.0 desktop release. The app currently includes:
 
 - npm workspaces monorepo
-- React/Vite desktop UI prototype with an Electron shell
-- shared craft project model
-- mat/material/tool recipes for Cricut Joy-oriented MVP work
-- SVG preflight package stub
-- AI designer prompt scaffolding
-- SliceBug bridge command builder scaffolding
-- product/architecture docs
+- React/Vite workspace UI with an Electron desktop shell
+- local `.kindcut` project save/load
+- image library storage under the user's Documents folder
+- AI silhouette generation and SVG tracing helpers
+- editable text, shapes, imported SVGs, grouping, layer reorder, and cut preview
+- Cricut Joy mat/material/tool recipes
+- guarded SliceBug plan/cut handoff with explicit user confirmation
+- bundled SliceBug helper builds for packaged apps
 - curated `AppContext/` folder for Codex and other coding agents
+
+Release builds are still unsigned. Sign and notarize macOS builds before sharing them outside this Mac, and smoke-test Windows builds on Windows hardware before calling them distributable.
 
 ## Quick start
 
@@ -39,7 +42,7 @@ Build an unpacked macOS app bundle for smoke testing:
 
 ```bash
 npm run package:desktop:dir
-open "apps/desktop/release/mac-arm64/Cricut Companion.app"
+open "apps/desktop/release/mac-arm64/KindCut.app"
 ```
 
 Create distributable macOS artifacts:
@@ -48,27 +51,47 @@ Create distributable macOS artifacts:
 npm run package:desktop:mac
 ```
 
-The desktop shell includes a safe SliceBug status bridge. It currently calls only:
+Create distributable Windows artifacts on Windows or through GitHub Actions:
 
 ```bash
-/Users/joeldesmit/Cricut/SlicebugMac/.venv/bin/slicebug --version
+npm run package:desktop:win
 ```
 
-from the Electron main process and exposes the result to the renderer. It does **not** run `slicebug cut` yet.
+KindCut refuses to cross-package macOS/Windows release builds by default because
+the bundled SliceBug Python runtime must be frozen on the target OS. See
+`docs/github-release-ci.md` for the GitHub Actions release setup.
 
-The generated app is unsigned for now; add a real app icon and signing/notarization before sharing it outside this Mac.
+The desktop shell includes a safe SliceBug bridge. Normal status/setup checks call commands such as:
+
+```bash
+slicebug --version
+slicebug bootstrap --design-space-path "<Design Space app>"
+```
+
+from the Electron main process and expose user-friendly status to the renderer.
+
+`slicebug cut` is a real machine-control command. KindCut must only run it after the user has opened the cut preview and explicitly pressed the start/continue controls.
+
+Bundled SliceBug runtime:
+
+```bash
+npm run build:slicebug
+npm run verify:slicebug
+```
+
+This reads the ignored local checkout at `vendor/slicebug/` and writes the frozen helper to `apps/desktop/resources/slicebug/`, which electron-builder includes as an app resource.
 
 ## Workspace layout
 
 ```text
-apps/desktop/              React/Vite desktop UI prototype
+apps/desktop/              React/Vite desktop UI and Electron shell
 packages/craft-core/       Project model, mats, materials, operations, validation
 packages/svg-preflight/    SVG import/preflight checks for Cricut-safe output
 packages/ai-designer/      AI prompt contracts for craft-ready SVG generation
 packages/slicebug-bridge/  Safe command builder for SliceBug plan/cut flows
 AppContext/                Curated notes safe to expose to Codex
-_docs/                     Reserved for generated docs, if needed later
 docs/                      Product, architecture, plans, decisions
+vendor/                    Ignored local third-party/runtime checkouts
 ```
 
 ## Codex usage

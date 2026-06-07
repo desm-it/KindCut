@@ -2,15 +2,15 @@
 
 ## Approach
 
-Use a TypeScript monorepo with pure domain packages and a React desktop UI prototype. Keep machine control behind a SliceBug bridge boundary so UI and AI features can be built safely before executing hardware side effects.
+Use a TypeScript monorepo with pure domain packages and a React/Electron desktop app. Keep machine control behind a SliceBug boundary so UI and AI features stay testable and hardware side effects require explicit user confirmation.
 
 ## Packages
 
 - `craft-core`: project schema, recipes, machine/mat/material compatibility, validation.
-- `svg-preflight`: SVG checks and future cleanup transforms.
-- `ai-designer`: prompt contracts and future provider adapters.
-- `slicebug-bridge`: command builders and future subprocess wrapper.
-- `desktop`: UI shell.
+- `svg-preflight`: SVG checks and cleanup transforms.
+- `ai-designer`: prompt contracts and provider validation helpers.
+- `slicebug-bridge`: safe command builders.
+- `desktop`: UI composition, local files, Electron IPC, and the SliceBug subprocess wrapper.
 
 ## Data flow
 
@@ -21,9 +21,9 @@ User prompt
   → SVG candidate
   → svg-preflight validation
   → craft-core layer/operation mapping
-  → slicebug-bridge plan command
+  → desktop SliceBug plan/cut wrapper
   → explicit user confirmation
-  → SliceBug cut command later
+  → SliceBug cut command
 ```
 
 ## Local-first principles
@@ -35,4 +35,4 @@ User prompt
 
 ## Hardware safety boundary
 
-`buildCutCommand()` marks commands as `sideEffect: "hardware"`. Future runner code must require explicit user confirmation and visible machine status before executing it.
+`buildCutCommand()` marks commands as `sideEffect: "hardware"`. The Electron wrapper must require explicit user confirmation and visible machine status before starting or continuing a cut session. Tests must use command builders, smoke mode, or fakes rather than a real cutter.

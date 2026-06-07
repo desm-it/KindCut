@@ -1998,7 +1998,7 @@ a {
 
 .mat-icon {
   position: relative;
-  width: 30px;
+  width: 30px; /* fallback; MatIcon sets an aspect-correct width inline */
   border-radius: 4px;
   overflow: hidden;
   flex-shrink: 0;
@@ -2997,7 +2997,285 @@ a {
   z-index: 1000;
 }
 
+/* Visual cutting progress — a row of steps with done / active / upcoming states. */
+.cut-steps {
+  list-style: none;
+  margin: auto 0 0; /* push the icon timeline to the bottom of the info column */
+  padding: 14px 0 2px;
+  display: flex;
+  align-items: center;
+  border-top: 1px solid rgba(121, 82, 51, 0.12);
+}
+
+.cut-step {
+  position: relative;
+  flex: 1 1 0;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+/* Connector line between steps (sits behind the dots). */
+.cut-step::before {
+  content: "";
+  position: absolute;
+  top: 24px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: rgba(121, 82, 51, 0.18);
+  z-index: 0;
+}
+
+.cut-step:first-child::before {
+  display: none;
+}
+
+.cut-step__tile {
+  position: relative;
+  z-index: 1;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: #fffdf9;
+  border: 2px solid rgba(121, 82, 51, 0.22);
+  color: rgba(121, 82, 51, 0.55);
+  overflow: hidden;
+}
+
+.cut-step__tile svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* The mat glyph brings its own colours/sizing; keep it compact inside the tile. */
+.cut-step__tile .mat-icon {
+  transform: scale(0.7);
+}
+
+.cut-step__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #8b6d55;
+}
+
+.cut-step--upcoming .cut-step__tile {
+  opacity: 0.55;
+}
+
+.cut-step--done .cut-step__tile {
+  border-color: #4f7b47;
+  box-shadow: 0 0 0 2px rgba(79, 123, 71, 0.18);
+}
+
+.cut-step--done::before {
+  background: #4f7b47;
+}
+
+.cut-step--active .cut-step__tile {
+  border-color: #8f4f2b;
+  animation: cut-step-pulse 1.4s ease-in-out infinite;
+}
+
+/* Pulsing ring on the current step so it's obvious where you are. */
+@keyframes cut-step-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(143, 79, 43, 0.10); }
+  50% { box-shadow: 0 0 0 6px rgba(143, 79, 43, 0.22); }
+}
+
+@keyframes cut-step-pulse-error {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(192, 80, 58, 0.10); }
+  50% { box-shadow: 0 0 0 6px rgba(192, 80, 58, 0.24); }
+}
+
+.cut-step--active .cut-step__label {
+  color: #5a3a1a;
+}
+
+.cut-steps--error .cut-step--active .cut-step__tile {
+  border-color: #c0503a;
+  animation: cut-step-pulse-error 1.4s ease-in-out infinite;
+}
+
+/* ---- Current-step detail (the big middle view) ---- */
+.cut-detail {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 180px;
+  padding: 18px 10px;
+  text-align: center;
+}
+
+.cut-detail__visual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+}
+
+.cut-detail__glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.cut-detail__glyph svg {
+  width: 64px;
+  height: 64px;
+}
+
+.cut-detail__glyph--play { color: #8f4f2b; }
+.cut-detail__glyph--done { color: #4f7b47; }
+.cut-detail__glyph--error { color: #c0503a; }
+.cut-detail__glyph--tool .tool-glyph svg { width: 60px; height: 60px; }
+
+/* The mat glyph paired with an in/out arrow. */
+.cut-detail__arrow {
+  position: absolute;
+  top: 50%;
+  right: -34px;
+  transform: translateY(-50%);
+  color: #8f4f2b;
+}
+.cut-detail__arrow svg { width: 26px; height: 26px; }
+.cut-detail__glyph--done .cut-detail__arrow { color: #4f7b47; }
+
+.cut-detail__name {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #4a3320;
+}
+
+.cut-detail--error .cut-detail__name { color: #c0503a; }
+
+.cut-detail__hint {
+  margin: 0;
+  max-width: 340px;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  color: #8b6d55;
+}
+
+/* Spinner shown while the machine is connecting / cutting / moving the mat. */
+.cut-spinner {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 5px solid rgba(143, 79, 43, 0.18);
+  border-top-color: #8f4f2b;
+  animation: cut-spin 0.8s linear infinite;
+}
+
+.cut-spinner--sm {
+  width: 18px;
+  height: 18px;
+  border-width: 3px;
+  flex: 0 0 auto;
+}
+
+@keyframes cut-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- "Is your cutter ready?" help panel (after the connect timeout) ---- */
+.cut-detail--help {
+  gap: 14px;
+}
+
+.cut-conncheck {
+  display: flex;
+  gap: 22px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.cut-conncheck__item {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: 130px;
+  text-align: center;
+}
+
+.cut-conncheck__illo svg {
+  width: 60px;
+  height: 60px;
+}
+
+.cut-conncheck__label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #5a3a1a;
+}
+
+.cut-conncheck__foot {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  font-size: 0.84rem;
+  color: #8b6d55;
+}
+
+/* Material + tools shown as icon tiles with a label underneath. */
+.cut-modal__tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.cut-modal__tile {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  width: 64px;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #6a4d38;
+}
+
+.cut-modal__tile > .material-icon,
+.cut-modal__tile > .tool-glyph {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+}
+
+.cut-modal__tile svg {
+  width: 26px;
+  height: 26px;
+}
+
+.tool-glyph {
+  display: inline-grid;
+  place-items: center;
+}
+
+.cut-step__badge {
+  display: block;
+  margin-top: 2px;
+  font-style: normal;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #b66530;
+}
+
 .cut-modal {
+  position: relative;
   width: min(720px, 92vw);
   background: linear-gradient(180deg, #fffdf9, #fbf4ea);
   border: 1px solid rgba(121, 82, 51, 0.16);
@@ -3051,7 +3329,7 @@ a {
   grid-template-columns: auto 1fr;
   gap: 24px;
   padding: 24px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .cut-modal__preview-area {
@@ -3230,6 +3508,148 @@ a {
 
 .cut-modal__btn--primary:hover:not(:disabled) {
   background: #5a7234;
+}
+
+.cut-modal__btn--danger {
+  background: #c0503a;
+  border: 1px solid transparent;
+  color: #fff;
+}
+
+.cut-modal__btn--danger:hover:not(:disabled) {
+  background: #a8412d;
+}
+
+.cut-modal__btn--danger-soft {
+  background: transparent;
+  border: 1px solid rgba(192, 80, 58, 0.4);
+  color: #b0432f;
+}
+
+.cut-modal__btn--danger-soft:hover:not(:disabled) {
+  background: rgba(192, 80, 58, 0.08);
+}
+
+/* Big "are you sure you want to stop?" warning over the whole cut modal. */
+.cut-stop-warn {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(60, 22, 12, 0.55);
+  backdrop-filter: blur(2px);
+  animation: cut-stop-warn-in 0.18s ease-out;
+}
+
+@keyframes cut-stop-warn-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.cut-stop-warn__panel {
+  width: min(440px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 28px 26px 22px;
+  text-align: center;
+  background: #fffdf9;
+  border: 2px solid #c0503a;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(40, 20, 6, 0.32);
+}
+
+.cut-stop-warn__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(192, 80, 58, 0.12);
+  color: #c0503a;
+}
+
+.cut-stop-warn__icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.cut-stop-warn__title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #b0432f;
+}
+
+.cut-stop-warn__body {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: #5a3a1a;
+}
+
+.cut-stop-warn__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+/* Shared small confirm dialog (unsaved-changes prompt). */
+.confirm-modal {
+  width: min(440px, 92vw);
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 28px 26px 22px;
+  text-align: center;
+  background: linear-gradient(180deg, #fffdf9, #fbf4ea);
+  border: 1px solid rgba(121, 82, 51, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 32px 80px rgba(40, 20, 6, 0.24);
+}
+
+.confirm-modal__icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+}
+
+.confirm-modal__icon--warn {
+  background: rgba(200, 150, 60, 0.16);
+  color: #c08a2e;
+}
+
+.confirm-modal__icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.confirm-modal__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #4a3320;
+}
+
+.confirm-modal__body {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: #6a4d38;
+}
+
+.confirm-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 10px;
 }
 
 .cut-modal__btn:disabled {
@@ -3902,4 +4322,59 @@ a {
 /* Tool button warning state (no API key) */
 .tool-button--warn {
   color: rgba(121, 82, 51, 0.45);
+}
+
+/* "Saved!" confirmation that flies in from the top, gives a little bounce, then falls away. */
+.save-toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 22px 11px 13px;
+  border-radius: 999px;
+  background: #4f7b47;
+  color: #fff;
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+  box-shadow: 0 14px 32px rgba(40, 80, 40, 0.34);
+  pointer-events: none;
+  will-change: transform, opacity;
+  animation: save-toast 2.4s ease-in-out forwards;
+}
+
+.save-toast__check {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.save-toast__check svg {
+  width: 16px;
+  height: 16px;
+}
+
+@keyframes save-toast {
+  0% { transform: translate(-50%, -140px) scale(0.8); opacity: 0; }
+  12% { opacity: 1; }
+  22% { transform: translate(-50%, 8px) scale(1.05); opacity: 1; } /* overshoot */
+  32% { transform: translate(-50%, 0) scale(1); opacity: 1; } /* settle */
+  68% { transform: translate(-50%, 0) scale(1); opacity: 1; } /* hold */
+  100% { transform: translate(-50%, 170px) scale(0.9); opacity: 0; } /* fall away */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .save-toast {
+    animation: save-toast-fade 2s ease-in-out forwards;
+  }
+  @keyframes save-toast-fade {
+    0%, 85% { transform: translate(-50%, 0); opacity: 1; }
+    100% { transform: translate(-50%, 0); opacity: 0; }
+  }
 }

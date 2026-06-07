@@ -1,6 +1,8 @@
 node_modules/
 dist/
 build/
+!apps/desktop/build/
+!apps/desktop/build/icon.*
 release/
 coverage/
 .DS_Store
@@ -10,3 +12,9 @@ coverage/
 *.log
 .vite/
 .claude/
+
+# Local vendored SliceBug checkout/build outputs. The checkout is intentionally
+# ignored for now so it can be updated independently and later replaced by a
+# proper submodule/subtree without churning KindCut history.
+vendor/slicebug/
+apps/desktop/resources/slicebug/

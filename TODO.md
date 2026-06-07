@@ -1,175 +1,118 @@
-# KindCut — TODO
+# KindCut — 1.1 TODO
 
-Working backlog of bugs and features. Checkboxes track status. File pointers are
-hints for where to start, not exhaustive.
-
----
-
-## 🐞 Bugs
-
-- [x] **Text size & text-edit size mismatch.** The on-canvas text, the inline edit
-  overlay, and the committed/cut size don't stay consistent. The edit overlay scales
-  `fontSize * transform.scaleX`, so editing a scaled or resized text box shows the
-  wrong size and can jump when you commit.
-  → `components/workspace/TextEditOverlay.tsx`, `handleTextContentChange` / text frame
-  measuring in `App.tsx`.
-
-- [x] **Keyboard shortcuts hijack text editing.** When editing/selecting text you
-  can't reliably copy, paste, cut, or select-all — the global workspace shortcut
-  handler (and the Electron Edit-menu accelerators) grab Cmd/Ctrl+C/V/X/A instead of
-  the focused field. There's an `isEditableKeyboardTarget` guard but it isn't fully
-  covering the cases (inline text overlay, native inputs).
-  → `handleKeyDown` in `components/workspace/DesignWorkspace.tsx`,
-  `handleDesktopAction` + menu accelerators in `App.tsx` / `shell/main.ts`.
-
-- [x] **Shapes don't get a snug bounding box.** Imported SVGs are tightened with
-  `computeSnugFrame` (so the selection box hugs the artwork), but shapes skip it —
-  `createWorkspaceShapeItem` → `createWorkspaceObjectItem` never calls it, while
-  `createWorkspaceSvgItem` does. Shapes should get the same tight frame.
-  → `utils/workspace-factory.ts`.
-
-- [x] **Cut status doesn't reset after finishing — can't cut again.** Once a cut
-  session reaches `finished` (or error/stopped), `cutSession` is never cleared, so the
-  UI stays in "cutting" state and a second cut can't be started. The poll loop only
-  runs for `running`/`waiting`, so nothing resets it.
-  → `cutSession` handling + poll effect in `App.tsx` (~L1246), `CutPreviewModal`.
-
-- [x] **Can't deselect from a multi-selection.** Ctrl/Cmd+Click or Shift+Click adds
-  objects to the selection, but clicking an already-selected object with the modifier
-  doesn't remove it from the selection (toggle-off). The toggle-off branch in the
-  item pointer-down handler only triggers under specific conditions and misses cases.
-  → `handleItemPointerDown` (modifier + `selectedSvgIdSet.has`) in
-  `components/workspace/DesignWorkspace.tsx`.
-
-- [x] **Shapes missing from the cut preview.** Built-in shapes don't appear in the
-  Cut preview (and likely the exported cut SVG), so they wouldn't be sent to slicebug.
-  Imported SVGs/text show up but shapes don't — probably a gap in how shape items are
-  serialised by `buildWorkspaceCutSvg` / the resolve-for-cutting step (e.g. fill/stroke
-  or path handling specific to shape objects).
-  → `buildWorkspaceCutSvg` in `workspace-objects.ts`, `handleOpenCutPreview` /
-  `resolveTextItemsForCutting` in `App.tsx`, `CutPreviewModal`.
-
-- [x] **Bounding box clips the shape.** The snug bounding box hugs the path's
-  geometry (DOM `getBBox`, which excludes stroke width), so the shape's stroke/edges
-  can get cut off at the frame — the artwork SVG / item box clips at the tight bounds.
-  Either let the shape overflow its frame (SVG `overflow: visible`, no clipping on the
-  item) or pad the snug frame by the stroke width. (Surfaced after adding snug frames
-  to shapes.)
-  → `components/workspace/WorkspaceObjectArtwork.tsx` (svg viewBox/overflow),
-  `computeSnugFrame` in `utils/workspace-geometry.ts`, `.workspace-image-item` CSS.
-
-- [x] **Pen hexes have inconsistent / broken hover.** Hovering the "add pen" hexagon
-  shows a white rectangle behind the hex shape (the button's box bleeds around the
-  clipped hexagon). The workpiece Pens (color hexes + add-pen) should use the *same*
-  hover treatment as the pen hexes in the object-settings "Tool" pane (`.pen-hex-btn`
-  — a soft tinted rounded backdrop), instead of the current rectangular/white hover.
-  → `.pen-hex`, `.pen-hex--add`, `.pen-hex-btn` in `styles.css`; Pens section in
-  `components/workspace/DesignWorkspace.tsx`.
-
-- [x] **Zoom buttons zoom from the paper's top-left, not the view center.** The
-  bottom-right −/%/+ buttons just change `zoom`, so the workpiece scales from its
-  top-left origin and drifts off-screen. They should zoom toward the center of the
-  viewport (keep the visible center fixed), like the Ctrl/Cmd+wheel zoom already does
-  around the cursor.
-  → `zoom-controls` buttons + `handleViewportWheel` math in
-  `components/workspace/DesignWorkspace.tsx`.
-
-- [x] **No final "eject mat" step.** After the cut completes there's no step that
-  unloads/ejects the mat from the machine — the flow just ends. Add it as the last
-  step of the cut sequence.
-  → slicebug cut flow (`shell/slicebug-service.ts`, cut session steps), cut UI.
+Active backlog for the next release. Keep this file focused on unfinished work:
+when an item ships, remove it instead of leaving a checked-off history trail.
+File pointers are starting points, not exhaustive.
 
 ---
 
-## ✨ Features
+## Bugs
 
-- [x] **Reorder layers.** Let users change stacking order (which determines draw/cut
-  order and visual overlap) via: right-click menu (move up/down, to front/back),
-  top toolbar buttons, and drag-to-reorder in the Layers pane. Order = the
-  `importedSvgs` array order.
-  → Layers list in `components/workspace/DesignWorkspace.tsx`, context menu in
-  `shell/main.ts`, `App.tsx` reorder handlers.
+- [ ] **White text disappears while editing.** Inline text editing uses the saved
+  text colour directly (`TextEditOverlay` sets `color: tc.color`), so white or very
+  pale text is invisible on the white textarea surface. Editing mode should always
+  use a readable dark ink colour, without changing the actual project/tool colour.
+  Also set caret/selection styles if needed so editing stays readable at every zoom.
+  → `apps/desktop/src/components/workspace/TextEditOverlay.tsx`,
+  `.text-edit-overlay` in `apps/desktop/src/styles.css`.
+  Tests: add a component/unit-level guard if practical, or at least cover the helper
+  that chooses the edit colour.
 
-- [x] **Layer name reflects text content.** In the Layers pane, text boxes should
-  show their actual text (e.g. truncated first line like "Happy Birthday") instead of a
-  generic "Text" label, so layers are easy to tell apart. Fall back to the generic name
-  when the text is empty.
-  → layer list renders `item.fileName` in `components/workspace/DesignWorkspace.tsx`;
-  text content is `item.textContent.text`.
+- [ ] **Release audit: replace or isolate Potrace/Jimp dependency.** `npm audit
+  --omit=dev` reports the known moderate `potrace` → Jimp → `phin` advisory. npm's
+  suggested downgrade pulls older high/critical dependencies, so 1.0 intentionally did
+  not downgrade. For 1.1, either move raster tracing to a safer dependency, vendor a
+  tiny Potrace subprocess, or isolate the existing tracer so user-provided images do
+  not pass through a stale dependency path without size/type limits.
+  → `apps/desktop/src/shell/main.ts` (`ai:trace-png-to-svg`), `package.json`,
+  `apps/desktop/package.json`, `docs/release-checklist.md`.
+  Tests: add file-size/type rejection cases before enabling general PNG import.
 
-- [x] **Ungroup Potrace/AI traced SVGs.** Multi-path imports already ungroup, but a
-  traced design that comes in as one compound path can't be split into its separate
-  shapes. Allow breaking a traced/compound path into individual editable objects.
-  → `workspace-grouping.ts`, `workspace-svg-import.ts`.
+---
 
-- [ ] **Border / boundary cut.** A cut that uses the exact same cut logic as a normal
-  cut, but: (1) is **not filled** in the editor or cut preview (outline only), and
-  (2) automatically sits on the **bottom layer**. Useful for a card's outer trim cut
-  around the whole design. Likely a new object role/flag rather than a new tool.
-  → `WorkspaceObjectArtwork` (skip fill), `buildWorkspaceCutSvg`, tool/color model.
+## Features
 
-- [ ] **Visual cutting progress.** Replace the text-y status with a clear visual
-  sequence: each step (load tool, load mat, draw, cut pass, finish) shown with icons,
-  tool changes called out, completed/active/upcoming states. Build on the existing
-  step list in `PlanAndCutMonitor` / `CutPreviewModal`.
+- [ ] **PNG/JPEG import with Potrace tracing.** The app can already trace AI-rendered
+  PNGs through `window.cricutCompanion.ai.tracePngToSvg`, but normal file import only
+  accepts SVG files. Extend import to accept `.png`, `.jpg`, and `.jpeg`, trace raster
+  files into SVG paths, normalize/preflight the result, and add the traced artwork to
+  the workspace and local image library. Start with a simple black silhouette workflow:
+  threshold, optional invert, preview before commit, and clear messaging when the image
+  is too detailed for a clean cut.
+  → `handleSvgFileChange` in `apps/desktop/src/App.tsx`,
+  file input in `apps/desktop/src/components/panels/ImageLibraryPanel.tsx`,
+  `ai:trace-png-to-svg` IPC in `apps/desktop/src/shell/main.ts` / `preload.ts`,
+  `extractWorkspacePathsFromSvg` in `apps/desktop/src/workspace-svg-import.ts`.
+  Tests: add mixed SVG/raster import helpers, size/type limits, and traced SVG path
+  extraction cases.
 
-- [ ] **Cut-time estimate & pass count.** Count paths (have `getWorkspaceObjectPartCount`)
-  and estimate real-world cutting time from measured timings. Factor paper weight into
-  the number of cut passes (heavier stock → more/deeper passes) and reflect that in the
-  estimate and the progress steps.
+- [ ] **Text transforms: arc, circle, wave, and bend.** Add text effects that keep
+  the object editable as text while rendering and cutting the transformed geometry.
+  Start with arc text because it is the common craft use case, then add wave/bend only
+  after the model is solid. Do not make this a visual-only CSS transform; the cut SVG
+  must match the canvas preview. Likely add a `textTransform` field to
+  `WorkspaceTextContent` with `{ type, amount, radius/angle }`, then share one geometry
+  path between preview, export, project save/load, undo, and cut preview.
+  → `WorkspaceTextContent` in `apps/desktop/src/workspace-objects.ts`,
+  text settings in `apps/desktop/src/components/workspace/DesignWorkspace.tsx`,
+  `WorkspaceObjectArtwork.tsx`, `measureTextFrame` / `resolveTextItemsForCutting` in
+  `apps/desktop/src/App.tsx`, `project-file.ts`.
+  Tests: project-file round trip, transformed text frame measurement, cut SVG geometry
+  parity, and single-line text interaction.
 
-- [x] **Insert-card corner cutaways.** Auto-generate the 4 small diagonal corner
-  slots that hold a Cricut insert card — the colored insert slides behind the card
-  front and its corners tuck into these diagonal slits. One-click "add insert slots"
-  sized/positioned to the chosen card blank (tie in with the CardMat card-size guides:
-  3.5×4.9" / 4.25×5.5"). These are cut paths placed at the four corners of the insert
-  area, on the cut tool.
-  → cut-path generation alongside `buildWorkspaceCutSvg`; card sizes in `workspace-utils`
-  (`CARD_GUIDES`); behind/insert colour model.
+- [ ] **Pen "Color in" / infill mode.** When a selected object is assigned to a pen
+  tool, show a toggle in Object Settings for "Color in". This should generate pen
+  hatch lines inside the shape/text, similar to 3D-print infill: pattern, angle, and
+  density/spacing controls. The Cricut pen is a fine liner, so the goal is a pleasant
+  shaded fill, not a solid marker flood. Keep it pen-only and never turn it into a cut
+  fill. The generated infill must appear in preview and in the cut SVG as draw paths.
+  A conservative first version can support closed shape/SVG paths only; text and open
+  paths can show a disabled reason until clipping is reliable.
+  → object settings tool section in `DesignWorkspace.tsx`,
+  tool matching/render logic in `WorkspaceObjectArtwork.tsx`,
+  cut export in `buildItemInnerSvg` / `buildWorkspaceCutSvg` in
+  `apps/desktop/src/workspace-objects.ts`, project persistence in `project-file.ts`.
+  Suggested model: add `penInfill?: { enabled: boolean; pattern: "lines" | "crosshatch";
+  spacing: number; angle: number }` on objects or paths, then implement geometry in a
+  pure `workspace-infill.ts` helper.
+  Tests: hatch generation bounds, density/angle snapshots, project round trip, and
+  cut SVG output with `fill="none"` draw lines.
 
-- [x] **Start new projects with the mat centered.** When entering the workspace
-  (new project / open), the mat should be centered and sensibly zoomed in the viewport
-  instead of using the fixed default pan/zoom. Reuse the existing `resetZoomToActualSize`
-  centering logic on workspace entry.
-  → pan/zoom init + `resetZoomToActualSize` in `components/workspace/DesignWorkspace.tsx`;
-  workspace-entry in `App.tsx`.
+- [ ] **Border / boundary cut.** A cut that uses the same cut pipeline as a normal
+  cut, but is not filled in the editor or cut preview and automatically sits on the
+  bottom layer. Useful for card trim cuts around the whole design. This probably wants
+  an object role/flag rather than a separate tool colour, so it can stay visually
+  outline-only while still resolving to the existing cut tool.
+  → `WorkspaceObjectArtwork.tsx` (outline-only render), `buildWorkspaceCutSvg` in
+  `workspace-objects.ts`, layer insertion/reorder in `App.tsx` and
+  `DesignWorkspace.tsx`, tool/color model in `project-file.ts`.
+  Tests: bottom-layer insertion, outline-only preview, and cut SVG still using the cut
+  tool colour.
 
-- [x] **More appealing start screen.** Redesign `WelcomeScreen` — warmer, more visual,
-  less utilitarian (project cards, imagery), keeping it grandma-friendly.
-  → `components/screens/WelcomeScreen.tsx`.
+- [ ] **Cut-time estimate and pass count.** Count drawable/cuttable paths and show a
+  realistic estimate before cutting. Factor material/paper weight into pass count
+  once measured timings exist. Keep the estimate honest: "about 3 minutes" is better
+  than fake precision. This should feed the cut preview and progress modal without
+  changing hardware behavior.
+  → `getWorkspaceObjectPartCount` and `buildWorkspaceCutSvg` in
+  `apps/desktop/src/workspace-objects.ts`, material recipes in packages, cut preview
+  UI in `apps/desktop/src/components/modals/CutPreviewModal.tsx`.
+  Tests: path counts for groups/shapes/text, material-based pass count, and copy text
+  for unknown estimates.
 
-- [x] **Remove developer/debug text.** Hide technical output from end users:
-  the "project opened" path message, `console.log`s (e.g. ImageLibrary save), and the
-  raw slicebug `stdout`/`stderr`/transcript shown in the "advanced details" panes.
-  Keep them behind a dev flag if useful for debugging.
-  → `App.tsx` (`project.opened`, `console.log`), `onboarding-copy.ts` (details build),
-  cut modal transcript.
+---
 
-- [x] **Single-line ("stroke") text — draw/cut text as centerline paths.** Add an
-  option so text is rendered and cut as single-line paths (a single pen/blade stroke
-  following the letter centerlines) instead of the current filled outline (a "rectangle"
-  / closed-contour glyph). Good for pen drawing and quick line-cuts. Needs a single-line
-  (Hershey/stroke) font or a centerline/skeleton conversion of the glyph outlines, plus a
-  per-text toggle in the text settings, and the cut/preview pipeline must emit open
-  stroke paths (no fill) for these.
-  → text settings UI + `WorkspaceTextContent` model (`project-file.ts` / `workspace-objects.ts`),
-  `renderTextToCanvas` / `resolveTextItemsForCutting` in `App.tsx`, `WorkspaceObjectArtwork`,
-  `buildWorkspaceCutSvg`.
+## Release Polish
 
-- [x] **Per-shape extra options (corner radius slider).** Some shapes need shape-specific
-  controls. Shapes with corners (rectangle, square, triangle, polygons) get a corner-radius
-  slider, and the "rounded rectangle" becomes just a rectangle with a preset non-zero
-  radius. Store the radius on the shape and regenerate its path/snug frame when it changes.
-  → shape factory `utils/workspace-factory.ts` (shape path generation), shape settings UI
-  in `components/workspace/DesignWorkspace.tsx`, shape model in `workspace-objects.ts`.
+- [ ] **Windows 1.1 smoke build.** The Windows icon/config exists, but 1.0 was only
+  built and tested on macOS. Build on Windows, confirm the bundled SliceBug executable
+  path resolves to `resources/slicebug/slicebug.exe`, and test project save/open plus
+  setup status. Do not test real cutting unless explicitly approved.
+  → `apps/desktop/package.json`, `apps/desktop/scripts/build-slicebug-runtime.cjs`,
+  `apps/desktop/src/shell/slicebug-service.ts`.
 
-- [x] **Fix rounded-rectangle radius under non-uniform scaling.** Rounded rectangles
-  currently scale their corners wrong. Desired behavior: scaling a single axis (x *or* y
-  alone) keeps the corner radius constant; scaling both axes together changes the radius
-  proportionally to the box size (so the square doesn't morph into a circle). Guard against
-  overlapping/cross-over corners and weird distortion when the radius is large and the box
-  is then scaled smaller than the radius on one axis — clamp radius to `min(width,height)/2`.
-  Likely folds into the per-shape corner-radius feature (store radius as a real value and
-  rebuild the path on resize rather than CSS/transform-scaling the corners).
-  → rounded-rect path generation in `utils/workspace-factory.ts`, scale-commit /
-  `normalizeWorkspaceItemTransform` handling, `components/workspace/DesignWorkspace.tsx`.
+- [ ] **macOS signing/notarization plan.** The 1.0 artifacts are unsigned/ad-hoc.
+  For a shareable 1.1 build, add Developer ID signing, hardened runtime settings, and
+  notarization docs/scripts. Keep local unsigned builds easy for development.
+  → electron-builder `mac` config in `apps/desktop/package.json`,
+  `docs/release-checklist.md`.

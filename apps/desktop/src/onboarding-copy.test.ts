@@ -16,8 +16,8 @@ describe("onboarding copy", () => {
       {
         ok: true,
         executable: "/Users/joeldesmit/Cricut/SlicebugMac/.venv/bin/slicebug",
-        version: "0.2",
-        message: "SliceBug 0.2 is available.",
+        version: "0.3",
+        message: "SliceBug 0.3 is available.",
       },
       false,
     );

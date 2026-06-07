@@ -92,22 +92,28 @@ export function WelcomeScreen({
   statusDetailsLabel,
   samplePlanLoading,
   slicebugLoading,
+  slicebugBootstrapLoading,
+  showBootstrapSetup,
   onLanguageChange,
   onNewProject,
   onOpenProject,
   onExampleProject,
   onCheckSetup,
+  onBootstrapSetup,
 }: {
   language: Language;
   statusCopy: ReturnType<typeof getFriendlySlicebugStatusCopy>;
   statusDetailsLabel: string;
   samplePlanLoading: boolean;
   slicebugLoading: boolean;
+  slicebugBootstrapLoading: boolean;
+  showBootstrapSetup: boolean;
   onLanguageChange: (language: Language) => void;
   onNewProject: () => void;
   onOpenProject: () => void;
   onExampleProject: () => void;
   onCheckSetup: () => void;
+  onBootstrapSetup: () => void;
 }) {
   const { t } = createTranslator(language);
 
@@ -170,7 +176,11 @@ export function WelcomeScreen({
             <strong className="setup-bar__title">{statusCopy.title}</strong>{" "}
             <span className="setup-bar__msg">{statusCopy.message}</span>
           </p>
-          {statusCopy.tone === "warning" ? (
+          {statusCopy.tone === "warning" && showBootstrapSetup ? (
+            <button className="secondary-button setup-bar__btn" type="button" onClick={onBootstrapSetup} disabled={slicebugBootstrapLoading}>
+              {slicebugBootstrapLoading ? t("buttons.settingUp") : t("buttons.setupCricutHelper")}
+            </button>
+          ) : statusCopy.tone === "warning" ? (
             <button className="secondary-button setup-bar__btn" type="button" onClick={onCheckSetup} disabled={slicebugLoading}>
               {slicebugLoading ? t("buttons.checking") : t("buttons.checkSetupAgain")}
             </button>

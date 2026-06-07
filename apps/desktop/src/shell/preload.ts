@@ -1,12 +1,21 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { IpcRendererEvent } from "electron";
-import type { CutSessionSnapshot, SlicebugPlanResult, SlicebugStatus, SvgPlanInput } from "./slicebug-service";
+import type {
+  CutSessionSnapshot,
+  SlicebugBootstrapInput,
+  SlicebugBootstrapResult,
+  SlicebugPlanResult,
+  SlicebugSetupStatus,
+  SlicebugStatus,
+  SvgPlanInput,
+} from "./slicebug-service";
 
 type AppActionPayload = {
   action:
     | "new-project"
     | "open-project"
     | "save-project"
+    | "save-project-as"
     | "example-project"
     | "set-language"
     | "edit-cut"
@@ -15,7 +24,16 @@ type AppActionPayload = {
     | "edit-delete"
     | "edit-select-all"
     | "edit-undo"
-    | "edit-redo";
+    | "edit-redo"
+    | "edit-group"
+    | "edit-ungroup"
+    | "edit-flip-x"
+    | "edit-flip-y"
+    | "edit-bring-forward"
+    | "edit-send-backward"
+    | "edit-bring-to-front"
+    | "edit-send-to-back"
+    | "close-window";
   value?: string;
 };
 
@@ -63,7 +81,7 @@ export type LibraryImageMeta = { name: string; path: string; isAi: boolean; svg:
 const desktopApi = {
   platform: process.platform,
   versions: {
-    app: process.env.npm_package_version ?? "0.1.0",
+    app: process.env.npm_package_version ?? "1.0.0",
   },
   onAppAction: (callback: (payload: AppActionPayload) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, payload: AppActionPayload) => callback(payload);
@@ -85,6 +103,9 @@ const desktopApi = {
     save: (input: ProjectSaveInput): Promise<ProjectFileResult> => ipcRenderer.invoke("project:save", input),
     open: (): Promise<ProjectFileResult> => ipcRenderer.invoke("project:open"),
   },
+  appWindow: {
+    closeConfirmed: (): Promise<void> => ipcRenderer.invoke("app:close-confirmed"),
+  },
   imageLibrary: {
     list: (): Promise<LibraryImageMeta[]> => ipcRenderer.invoke("library:list"),
     save: (input: { name: string; svg: string; isAi: boolean }): Promise<string> =>
@@ -103,6 +124,9 @@ const desktopApi = {
   },
   slicebug: {
     getStatus: (): Promise<SlicebugStatus> => ipcRenderer.invoke("slicebug:get-status"),
+    getSetupStatus: (): Promise<SlicebugSetupStatus> => ipcRenderer.invoke("slicebug:get-setup-status"),
+    bootstrap: (input?: SlicebugBootstrapInput): Promise<SlicebugBootstrapResult> =>
+      ipcRenderer.invoke("slicebug:bootstrap", input),
     generateSamplePlan: (choices?: { materialId?: number; matPreset?: string }): Promise<SlicebugPlanResult> =>
       ipcRenderer.invoke("slicebug:generate-sample-plan", choices),
     createPlan: (input: SvgPlanInput): Promise<SlicebugPlanResult> => ipcRenderer.invoke("slicebug:create-plan", input),
@@ -117,4 +141,12 @@ const desktopApi = {
 contextBridge.exposeInMainWorld("cricutCompanion", desktopApi);
 
 export type CricutCompanionDesktopApi = typeof desktopApi;
-export type { CutSessionSnapshot, SlicebugPlanResult, SlicebugStatus, SvgPlanInput };
+export type {
+  CutSessionSnapshot,
+  SlicebugBootstrapInput,
+  SlicebugBootstrapResult,
+  SlicebugPlanResult,
+  SlicebugSetupStatus,
+  SlicebugStatus,
+  SvgPlanInput,
+};

@@ -57,6 +57,7 @@ import {
   normalizeWorkspaceItemTransform,
   rotatePoint,
   saveMeasurementUnitPreference,
+  type WorkspaceItemFrame,
 } from "./workspace-utils";
 import {
   computeSnugFrame,
@@ -92,6 +93,7 @@ import { WelcomeScreen } from "./components/screens/WelcomeScreen";
 import { SettingsModal } from "./components/modals/SettingsModal";
 import { AiGenerateModal } from "./components/modals/AiGenerateModal";
 import { CutPreviewModal } from "./components/modals/CutPreviewModal";
+import { UnsavedChangesModal } from "./components/modals/UnsavedChangesModal";
 
 type SlicebugStatus = {
   ok: boolean;
@@ -100,6 +102,13 @@ type SlicebugStatus = {
   message: string;
 };
 
+type SlicebugSetupStatus = {
+  bootstrapped: boolean;
+  hasKeys: boolean;
+  hasProfiles: boolean;
+  hasDevicePlugin: boolean;
+  hasUsvg: boolean;
+};
 
 type WorkspaceHistorySnapshot = {
   importedSvgs: WorkspaceSvgItem[];
@@ -114,6 +123,7 @@ type DesktopActionPayload = {
     | "new-project"
     | "open-project"
     | "save-project"
+    | "save-project-as"
     | "example-project"
     | "set-language"
     | "edit-cut"
@@ -130,7 +140,8 @@ type DesktopActionPayload = {
     | "edit-bring-forward"
     | "edit-send-backward"
     | "edit-bring-to-front"
-    | "edit-send-to-back";
+    | "edit-send-to-back"
+    | "close-window";
   value?: string;
 };
 
@@ -163,7 +174,9 @@ export function App() {
   const [screen, setScreen] = useState<AppScreen>("welcome");
   const [language, setLanguage] = useState<Language>(() => loadLanguagePreference());
   const [slicebugStatus, setSlicebugStatus] = useState<SlicebugStatus | null>(null);
+  const [slicebugSetupStatus, setSlicebugSetupStatus] = useState<SlicebugSetupStatus | null>(null);
   const [slicebugLoading, setSlicebugLoading] = useState(false);
+  const [slicebugBootstrapLoading, setSlicebugBootstrapLoading] = useState(false);
   const [samplePlan, setSamplePlan] = useState<SlicebugPlanResult | null>(null);
   const [samplePlanLoading, setSamplePlanLoading] = useState(false);
   const [importedSvgs, setImportedSvgs] = useState<WorkspaceSvgItem[]>([]);
@@ -178,6 +191,8 @@ export function App() {
   const lastWorkspaceContextMenuAt = useRef(0);
   const lastWorkspaceContextSelectionCount = useRef<number | null>(null);
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
+  // Bumped on each successful save; used as a key to replay the "Saved!" fly-in toast.
+  const [savedToast, setSavedToast] = useState(0);
   const [projectMessage, setProjectMessage] = useState<string | null>(null);
   const [projectSaving, setProjectSaving] = useState(false);
   const [projectOpening, setProjectOpening] = useState(false);
@@ -207,10 +222,117 @@ export function App() {
     [importedSvgs, selectedSvgId],
   );
 
-  const statusCopy = useMemo(
-    () => getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading, language),
-    [language, slicebugLoading, slicebugStatus],
+  const statusCopy = useMemo(() => {
+    if (slicebugBootstrapLoading) {
+      return {
+        tone: "checking" as const,
+        title: t("status.bootstrapLoadingTitle"),
+        message: t("status.bootstrapLoadingMessage"),
+        details: [],
+      };
+    }
+    if (slicebugStatus?.ok && slicebugSetupStatus && !slicebugSetupStatus.bootstrapped) {
+      return {
+        tone: "warning" as const,
+        title: t("status.bootstrapTitle"),
+        message: t("status.bootstrapMessage"),
+        details: [
+          `SliceBug message: ${slicebugStatus.message}`,
+          slicebugStatus.version ? `SliceBug version: ${slicebugStatus.version}` : null,
+          slicebugStatus.executable ? `Executable: ${slicebugStatus.executable}` : null,
+          `Keys: ${slicebugSetupStatus.hasKeys ? "yes" : "no"}`,
+          `Profiles: ${slicebugSetupStatus.hasProfiles ? "yes" : "no"}`,
+          `Device plugin: ${slicebugSetupStatus.hasDevicePlugin ? "yes" : "no"}`,
+          `usvg: ${slicebugSetupStatus.hasUsvg ? "yes" : "no"}`,
+        ].filter((detail): detail is string => Boolean(detail)),
+      };
+    }
+    return getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading, language);
+  }, [language, slicebugBootstrapLoading, slicebugLoading, slicebugSetupStatus, slicebugStatus, t]);
+
+  // --- Unsaved-changes tracking ---------------------------------------------
+  // A signature of the persisted project content (objects + settings, ignoring which item is
+  // selected). When it differs from the baseline taken at the last save/open/new, there are
+  // unsaved changes. Used to guard reload / Home / open / new with a Save prompt.
+  const currentSignature = useMemo(
+    () =>
+      JSON.stringify({
+        m: selectedMaterialId,
+        mat: selectedMatPreset,
+        unit: measurementUnit,
+        tools,
+        paper: paperColor,
+        card: cardSize,
+        slots: insertSlots,
+        objects: importedSvgs.map((o) => ({
+          id: o.id,
+          type: o.type,
+          kind: o.kind,
+          shapeKind: o.shapeKind,
+          fileName: o.fileName,
+          paths: o.paths,
+          frame: o.frame,
+          transform: o.transform,
+          textContent: o.textContent,
+          cornerRadius: o.cornerRadius,
+        })),
+      }),
+    [importedSvgs, selectedMaterialId, selectedMatPreset, measurementUnit, tools, paperColor, cardSize, insertSlots],
   );
+  const [savedSignature, setSavedSignature] = useState("");
+  const [rebaseline, setRebaseline] = useState(0);
+  const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
+  const signatureRef = useRef(currentSignature);
+  signatureRef.current = currentSignature;
+  // Re-baseline on mount and whenever a save/open/new declares "this is the clean state now".
+  useEffect(() => {
+    setSavedSignature(signatureRef.current);
+  }, [rebaseline]);
+  const hasUnsavedChanges = currentSignature !== savedSignature;
+
+  // If there are unsaved changes, route the navigation through a Save / Don't save / Cancel
+  // prompt; otherwise run it straight away.
+  function guardNavigation(action: () => void) {
+    if (hasUnsavedChanges) {
+      setPendingNav(() => action);
+    } else {
+      action();
+    }
+  }
+
+  // Ctrl/Cmd+R passes through the unsaved-changes guard. Native window close is
+  // intercepted in Electron main and sent back as the "close-window" app action.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && (event.key === "r" || event.key === "R")) {
+        event.preventDefault();
+        guardNavigation(() => window.location.reload());
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasUnsavedChanges]);
+
+  function handleUnsavedSave() {
+    void handleSaveProject().then((saved) => {
+      const next = pendingNav;
+      setPendingNav(null);
+      if (saved) next?.();
+    });
+  }
+
+  function handleUnsavedDiscard() {
+    const next = pendingNav;
+    setPendingNav(null);
+    next?.();
+  }
+
+  function handleUnsavedCancel() {
+    setPendingNav(null);
+  }
 
   async function loadImageLibrary() {
     if (!window.cricutCompanion?.imageLibrary) {
@@ -322,6 +444,10 @@ export function App() {
   }
 
   function handleNewProject() {
+    guardNavigation(doNewProject);
+  }
+
+  function doNewProject() {
     resetWorkspaceHistory();
     setImportedSvgs([]);
     setSelectedSvgId(null);
@@ -334,10 +460,15 @@ export function App() {
     setCutSession(null);
     setTools(DEFAULT_TOOLS);
     setPaperColor(DEFAULT_PAPER_COLOR);
+    setRebaseline((n) => n + 1); // fresh project = clean
     enterWorkspace();
   }
 
-  async function handleOpenProject() {
+  function handleOpenProject() {
+    guardNavigation(() => void doOpenProject());
+  }
+
+  async function doOpenProject() {
     if (!window.cricutCompanion?.project) {
       setProjectMessage(t("project.openInDesktop"));
       enterWorkspace();
@@ -364,11 +495,11 @@ export function App() {
     }
   }
 
-  async function handleSaveProject() {
+  async function handleSaveProject(options: { saveAs?: boolean } = {}): Promise<boolean> {
     if (!window.cricutCompanion?.project) {
       setProjectMessage(t("project.saveInDesktop"));
       enterWorkspace();
-      return;
+      return false;
     }
 
     const projectFile = createCurrentProjectFile();
@@ -377,17 +508,22 @@ export function App() {
       const result = await window.cricutCompanion.project.save({
         content: serializeProjectFile(projectFile),
         defaultFileName: `${getSafeProjectFileName(projectFile.name)}.kindcut`,
-        currentPath: currentProjectPath,
+        // "Save as" always asks for a new location; a plain save reuses the known path.
+        currentPath: options.saveAs ? null : currentProjectPath,
       });
       if (result.canceled) {
-        return;
+        return false;
       }
       setCurrentProjectPath(result.path);
       setProjectMessage(DEBUG ? t("project.saved", { path: result.path }) : null);
+      setSavedToast((n) => n + 1); // cute fly-in confirmation
+      setRebaseline((n) => n + 1); // saved = clean
       enterWorkspace();
+      return true;
     } catch (error) {
       setProjectMessage(error instanceof Error ? error.message : t("project.saveError"));
       enterWorkspace();
+      return false;
     } finally {
       setProjectSaving(false);
     }
@@ -463,6 +599,7 @@ export function App() {
     setSelectedSvgId(restoredSelectedId);
     setSelectedSvgIds(restoredSelectedId ? [restoredSelectedId] : []);
     resetWorkspaceHistory();
+    setRebaseline((n) => n + 1); // just-opened project = clean
   }
 
   function handleSelectAllSvgs() {
@@ -759,50 +896,53 @@ export function App() {
     return { width: Math.ceil(maxW) + 2, height: Math.ceil(lineH * lines.length) + 2 };
   }
 
-  function renderTextToCanvas(tc: WorkspaceTextContent): string {
-    // Render text at 3× scale for clean Potrace input, return base64 PNG
+  // Render text into the item's frame coordinate space (scaled up for clean Potrace input),
+  // using the SAME baseline (alphabetic, y = fontSize + i·lineH) and horizontal anchor as the
+  // workspace <text> render in buildTextContentSvg. The returned canvas maps 1:1 (× SCALE) onto
+  // the frame, so the traced paths land exactly where the on-screen text sits — no ink-bbox
+  // renormalisation, which is what used to shift/stretch the cut text relative to the preview.
+  function renderTextToCanvas(tc: WorkspaceTextContent, frame: WorkspaceItemFrame): { base64: string; width: number; height: number } {
     const SCALE = 3;
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d")!;
     const fontStr = `${tc.fontStyle === "italic" ? "italic " : ""}${tc.fontWeight === "bold" ? "bold " : ""}${tc.fontSize * SCALE}px ${tc.fontFamily}`;
-    ctx.font = fontStr;
-    const lines = tc.text.split("\n");
-    const lineH = tc.fontSize * SCALE * tc.lineHeight;
-    const widths = lines.map((l) => {
-      const chars = [...l];
-      if (!chars.length) return 0;
-      return chars.reduce((w, c) => w + ctx.measureText(c).width, 0) + Math.max(0, chars.length - 1) * tc.letterSpacing * SCALE;
-    });
-    const maxW = Math.max(10, ...widths);
-    const PAD = 8 * SCALE;
-    canvas.width = Math.ceil(maxW) + PAD * 2;
-    canvas.height = Math.ceil(lineH * lines.length) + PAD * 2;
-    // White background
+    canvas.width = Math.max(1, Math.ceil(frame.width * SCALE));
+    canvas.height = Math.max(1, Math.ceil(frame.height * SCALE));
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // Re-set font after resize
     ctx.font = fontStr;
     ctx.fillStyle = "#000000";
-    ctx.textBaseline = "top";
+    ctx.textBaseline = "alphabetic";
+
+    const lines = tc.text.split("\n");
+    const lineH = tc.fontSize * SCALE * tc.lineHeight;
+    const letterSpacing = tc.letterSpacing * SCALE;
     lines.forEach((line, i) => {
-      const y = PAD + i * lineH;
-      const lineW = widths[i] ?? 0;
+      const chars = [...line];
+      const lineW = chars.length === 0
+        ? 0
+        : chars.reduce((w, c) => w + ctx.measureText(c).width, 0) + Math.max(0, chars.length - 1) * letterSpacing;
+      // Mirror buildTextContentSvg anchors: center → width/2, right → width-1, left → 1.
       const xStart = tc.textAlign === "center"
-        ? (canvas.width - lineW) / 2
+        ? (frame.width * SCALE - lineW) / 2
         : tc.textAlign === "right"
-          ? canvas.width - PAD - lineW
-          : PAD;
+          ? (frame.width - 1) * SCALE - lineW
+          : 1 * SCALE;
+      const baselineY = (tc.fontSize + i * lineH / SCALE) * SCALE; // = (fontSize + i·lineH)·SCALE
       let x = xStart;
-      for (const char of [...line]) {
-        ctx.fillText(char, x, y);
-        x += ctx.measureText(char).width + tc.letterSpacing * SCALE;
+      for (const char of chars) {
+        ctx.fillText(char, x, baselineY);
+        x += ctx.measureText(char).width + letterSpacing;
       }
       if (tc.textDecoration === "underline") {
-        const ulY = y + tc.fontSize * SCALE + 2 * SCALE;
-        ctx.fillRect(xStart, ulY, lineW, Math.max(2, tc.fontSize * SCALE * 0.06));
+        ctx.fillRect(xStart, baselineY + 2 * SCALE, lineW, Math.max(2, tc.fontSize * SCALE * 0.06));
       }
     });
-    return canvas.toDataURL("image/png").replace("data:image/png;base64,", "");
+    return {
+      base64: canvas.toDataURL("image/png").replace("data:image/png;base64,", ""),
+      width: canvas.width,
+      height: canvas.height,
+    };
   }
 
   async function resolveTextItemsForCutting(items: WorkspaceSvgItem[]): Promise<WorkspaceSvgItem[]> {
@@ -827,15 +967,16 @@ export function App() {
         return { ...item, paths: [strokePath] as unknown as [WorkspacePathData] };
       }
       try {
-        const pngBase64 = renderTextToCanvas(item.textContent);
-        const rawSvg = await window.cricutCompanion?.ai?.tracePngToSvg(pngBase64);
+        const rendered = renderTextToCanvas(item.textContent, item.frame);
+        const rawSvg = await window.cricutCompanion?.ai?.tracePngToSvg(rendered.base64);
         if (!rawSvg) return item;
         const svg = normalizeAiSvg(rawSvg);
         const extracted = extractWorkspacePathsFromSvg(svg);
-        // The canvas was rendered at 3× scale, so Potrace paths are 3× too large.
-        // Scale them back down to fit the original text item frame.
-        const scaleX = item.frame.width / extracted.frame.width;
-        const scaleY = item.frame.height / extracted.frame.height;
+        // The canvas is the frame coordinate space × SCALE, so the traced paths already sit
+        // where the on-screen text does — just scale the whole canvas back down to the frame
+        // (NOT the ink bounding box, which would drop the baseline/line-height offset).
+        const scaleX = item.frame.width / rendered.width;
+        const scaleY = item.frame.height / rendered.height;
         const color = item.textContent.color;
         const paths = extracted.paths.map((p) => ({
           ...p,
@@ -987,9 +1128,14 @@ export function App() {
     setCardSize((current) => (current === size ? null : size)); // clicking the active one turns it off
   }
 
-  async function handleExampleProject() {
+  function handleExampleProject() {
+    guardNavigation(() => void doExampleProject());
+  }
+
+  async function doExampleProject() {
     enterWorkspace();
     await generateSamplePlan();
+    setRebaseline((n) => n + 1); // example loaded = clean starting point
   }
 
   function handleDesktopAction(payload: DesktopActionPayload) {
@@ -1020,6 +1166,9 @@ export function App() {
         break;
       case "save-project":
         void handleSaveProject();
+        break;
+      case "save-project-as":
+        void handleSaveProject({ saveAs: true });
         break;
       case "example-project":
         void handleExampleProject();
@@ -1074,6 +1223,11 @@ export function App() {
       case "edit-send-to-back":
         handleMoveSelectedLayer("back");
         break;
+      case "close-window":
+        guardNavigation(() => {
+          void window.cricutCompanion?.appWindow?.closeConfirmed();
+        });
+        break;
     }
   }
 
@@ -1093,7 +1247,12 @@ export function App() {
 
     setSlicebugLoading(true);
     try {
-      setSlicebugStatus(await window.cricutCompanion.slicebug.getStatus());
+      const [status, setup] = await Promise.all([
+        window.cricutCompanion.slicebug.getStatus(),
+        window.cricutCompanion.slicebug.getSetupStatus?.(),
+      ]);
+      setSlicebugStatus(status);
+      setSlicebugSetupStatus(setup ?? null);
     } catch (error) {
       setSlicebugStatus({
         ok: false,
@@ -1108,6 +1267,44 @@ export function App() {
       });
     } finally {
       setSlicebugLoading(false);
+    }
+  }
+
+  async function runSlicebugBootstrap() {
+    if (!window.cricutCompanion?.slicebug?.bootstrap) {
+      setSlicebugStatus({
+        ok: false,
+        executable: null,
+        version: null,
+        message:
+          language === "nl"
+            ? "Open dit scherm in de Electron-desktopapp om SliceBug in te stellen."
+            : "Open this screen in the Electron desktop shell to set up SliceBug.",
+      });
+      return;
+    }
+
+    setSlicebugBootstrapLoading(true);
+    try {
+      const result = await window.cricutCompanion.slicebug.bootstrap();
+      if (!result.ok) {
+        setSlicebugStatus({
+          ok: false,
+          executable: result.executable,
+          version: null,
+          message: result.message,
+        });
+      }
+      await refreshSlicebugStatus();
+    } catch (error) {
+      setSlicebugStatus({
+        ok: false,
+        executable: null,
+        version: null,
+        message: error instanceof Error ? error.message : "SliceBug setup failed.",
+      });
+    } finally {
+      setSlicebugBootstrapLoading(false);
     }
   }
 
@@ -1214,6 +1411,21 @@ export function App() {
     }
     return map;
   }
+
+  // The tools actually used by the design (matched to path/text colours), in the order
+  // they run: pens draw first, the blade cuts last. Drives the visual cut steps.
+  const usedCutTools = useMemo(() => {
+    const used = new Set<string>();
+    for (const item of importedSvgs) {
+      if (item.textContent) used.add(item.textContent.color.toLowerCase());
+      for (const path of item.paths) if (path.stroke) used.add(path.stroke.toLowerCase());
+    }
+    if (selectedMaterialId === MATERIAL_INSERT_ID && insertSlots) used.add(getBehindColor(tools).toLowerCase());
+    const list = tools
+      .filter((tool) => used.has(tool.color.toLowerCase()))
+      .map((tool) => ({ tool: (tool.type === "pen" ? "pen" : "fine_point_blade") as "pen" | "fine_point_blade", color: tool.color }));
+    return [...list.filter((t) => t.tool === "pen"), ...list.filter((t) => t.tool !== "pen")];
+  }, [importedSvgs, tools, selectedMaterialId, insertSlots]);
 
   async function handleOpenCutPreview() {
     if (importedSvgs.length === 0) return;
@@ -1455,11 +1667,14 @@ export function App() {
         statusDetailsLabel={t("details.advanced")}
         samplePlanLoading={samplePlanLoading}
         slicebugLoading={slicebugLoading}
+        slicebugBootstrapLoading={slicebugBootstrapLoading}
+        showBootstrapSetup={Boolean(slicebugStatus?.ok && slicebugSetupStatus && !slicebugSetupStatus.bootstrapped)}
         onLanguageChange={handleLanguageChange}
         onNewProject={handleNewProject}
         onOpenProject={handleOpenProject}
         onExampleProject={() => void handleExampleProject()}
         onCheckSetup={() => void refreshSlicebugStatus()}
+        onBootstrapSetup={() => void runSlicebugBootstrap()}
       />
     );
   }
@@ -1491,7 +1706,7 @@ export function App() {
       projectOpening={projectOpening}
       cutSession={cutSession}
       cutBusy={cutBusy}
-      onBackWelcome={() => setScreen("welcome")}
+      onBackWelcome={() => guardNavigation(() => setScreen("welcome"))}
       onMaterialChange={handleMaterialChange}
       onMatChange={setSelectedMatPreset}
       tools={tools}
@@ -1529,6 +1744,7 @@ export function App() {
       onPrepareImportedPlan={() => void prepareImportedPlan()}
       onOpenProject={() => void handleOpenProject()}
       onSaveProject={() => void handleSaveProject()}
+      onSaveProjectAs={() => void handleSaveProject({ saveAs: true })}
       onGenerateSamplePlan={() => void generateSamplePlan()}
       onStartCut={() => void handleOpenCutPreview()}
       onContinueCut={() => void continueCutSession()}
@@ -1567,6 +1783,8 @@ export function App() {
         preview={cutPreview}
         cutBusy={cutBusy}
         cutSession={cutSession}
+        materialId={selectedMaterialId}
+        cutTools={usedCutTools}
         onClose={() => { setCutPreview(null); setCutSession(null); }}
         onConfirmCut={() => {
           if (cutPreview.plan.outputPlanPath) {
@@ -1577,7 +1795,24 @@ export function App() {
         onStopCut={() => { void stopCutSession(); setCutPreview(null); }}
       />
     ) : null}
+    {pendingNav ? (
+      <UnsavedChangesModal
+        language={language}
+        neverSaved={currentProjectPath === null}
+        busy={projectSaving}
+        onSave={handleUnsavedSave}
+        onDiscard={handleUnsavedDiscard}
+        onCancel={handleUnsavedCancel}
+      />
+    ) : null}
+    {savedToast > 0 ? (
+      <div className="save-toast" key={savedToast} role="status" aria-live="polite">
+        <span className="save-toast__check" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4 4L19 7" /></svg>
+        </span>
+        {t("project.savedToast")}
+      </div>
+    ) : null}
     </>
   );
 }
-
