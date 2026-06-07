@@ -2,7 +2,7 @@
 
 How SliceBug works, how KindCut drives it, and where it can fail. Written from a hands-on
 investigation of the local checkout at `/Users/joeldesmit/Cricut/SlicebugMac` (slicebug
-version `0.2`) plus how `apps/desktop/src/shell/slicebug-service.ts` calls it.
+version `0.3`) plus how `apps/desktop/src/shell/slicebug-service.ts` calls it.
 
 > SliceBug is a third-party reverse-engineering of Cricut Design Space's local protocol. It
 > reuses Design Space's own keys, plugins, and machine profiles. It is **not** an official
@@ -28,7 +28,7 @@ usage: slicebug [-h] [--version] [--profile PROFILE]
 | `cut` | yes | yes | **yes** | Connects to the machine and executes a plan. |
 
 Notes that bit us:
-- There is **no `version` subcommand** — it's the flag `slicebug --version` (prints e.g. `0.2`).
+- There is **no `version` subcommand** — it's the flag `slicebug --version` (prints e.g. `0.3`).
 - `--software-buttons` (on `cut`) makes SliceBug simulate the physical Load/Unload and Go
   buttons, for buttonless machines like the **Cricut Joy**. In this mode it **blocks on
   `input()`** waiting for the operator to press Enter before sending each simulated button.
@@ -110,7 +110,7 @@ Defaults (macOS):
 **Implications / footguns**
 - bootstrap rotates `keys.json` to whatever the **currently installed** Design Space uses. The
   keys and the device plugin are imported from the same Design Space, so they stay mutually
-  consistent — but if Design Space has changed protocol since SliceBug `0.2` was written, the
+  consistent — but if Design Space has changed protocol since SliceBug `0.3` was written, the
   whole thing can drift.
 - The plugin copy is a **merge** (`dirs_exist_ok=True`); a truly clean reinstall means deleting
   `~/.slicebug/plugins/device-common` first, then re-bootstrapping.

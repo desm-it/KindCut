@@ -51,6 +51,16 @@ Create distributable macOS artifacts:
 npm run package:desktop:mac
 ```
 
+Create distributable Windows artifacts on Windows or through GitHub Actions:
+
+```bash
+npm run package:desktop:win
+```
+
+KindCut refuses to cross-package macOS/Windows release builds by default because
+the bundled SliceBug Python runtime must be frozen on the target OS. See
+`docs/github-release-ci.md` for the GitHub Actions release setup.
+
 The desktop shell includes a safe SliceBug bridge. Normal status/setup checks call commands such as:
 
 ```bash
@@ -66,6 +76,7 @@ Bundled SliceBug runtime:
 
 ```bash
 npm run build:slicebug
+npm run verify:slicebug
 ```
 
 This reads the ignored local checkout at `vendor/slicebug/` and writes the frozen helper to `apps/desktop/resources/slicebug/`, which electron-builder includes as an app resource.

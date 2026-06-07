@@ -65,6 +65,7 @@ export interface SlicebugSetupStatus {
   profilesPath: string;
   devicePluginPath: string;
   usvgPath: string;
+  bundledUsvgPath: string | null;
   hasKeys: boolean;
   hasProfiles: boolean;
   hasDevicePlugin: boolean;
@@ -141,7 +142,7 @@ export interface CutSessionOptions {
   executable: string;
   planPath: string;
   smokeMode: boolean;
-  spawnProcess?: (command: string, args: string[]) => SlicebugProcess;
+  spawnProcess?: (command: string, args: string[], env?: NodeJS.ProcessEnv) => SlicebugProcess;
 }
 
 function platformExecutableName(platform: NodeJS.Platform, baseName: string): string {
@@ -156,8 +157,16 @@ export function bundledSlicebugExecutablePath(resourcesPath: string, platform: N
   return path.join(resourcesPath, BUNDLED_SLICEBUG_RESOURCE_DIR, platformExecutableName(platform, "slicebug"));
 }
 
+export function bundledUsvgExecutablePath(resourcesPath: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(resourcesPath, BUNDLED_SLICEBUG_RESOURCE_DIR, "plugins", "usvg", platformExecutableName(platform, "usvg"));
+}
+
 export function desktopResourceSlicebugExecutablePath(appRoot: string, platform: NodeJS.Platform = process.platform): string {
   return path.join(appRoot, "resources", BUNDLED_SLICEBUG_RESOURCE_DIR, platformExecutableName(platform, "slicebug"));
+}
+
+export function desktopResourceUsvgExecutablePath(appRoot: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(appRoot, "resources", BUNDLED_SLICEBUG_RESOURCE_DIR, "plugins", "usvg", platformExecutableName(platform, "usvg"));
 }
 
 export function vendoredSlicebugVenvExecutablePath(repoRoot: string, platform: NodeJS.Platform = process.platform): string {
@@ -168,6 +177,10 @@ export function vendoredSlicebugVenvExecutablePath(repoRoot: string, platform: N
 
 export function vendoredSlicebugFrozenExecutablePath(repoRoot: string, platform: NodeJS.Platform = process.platform): string {
   return path.join(repoRoot, "apps", "desktop", "resources", BUNDLED_SLICEBUG_RESOURCE_DIR, platformExecutableName(platform, "slicebug"));
+}
+
+export function vendoredUsvgFrozenExecutablePath(repoRoot: string, platform: NodeJS.Platform = process.platform): string {
+  return path.join(repoRoot, "apps", "desktop", "resources", BUNDLED_SLICEBUG_RESOURCE_DIR, "plugins", "usvg", platformExecutableName(platform, "usvg"));
 }
 
 export function findSlicebugExecutableCandidates(options: SlicebugCandidateOptions = {}): string[] {
@@ -186,6 +199,37 @@ export function findSlicebugExecutableCandidates(options: SlicebugCandidateOptio
     JOEL_LOCAL_SLICEBUG,
     "slicebug",
   ]);
+}
+
+export function findBundledUsvgCandidates(options: SlicebugCandidateOptions = {}): string[] {
+  const platform = options.platform ?? process.platform;
+  const appRoot = options.appRoot ?? process.cwd();
+  const repoRoot = options.repoRoot ?? path.resolve(appRoot, "..", "..");
+  const resourcesPath = options.resourcesPath ?? process.resourcesPath;
+
+  return uniqueCandidates([
+    resourcesPath ? bundledUsvgExecutablePath(resourcesPath, platform) : null,
+    desktopResourceUsvgExecutablePath(appRoot, platform),
+    vendoredUsvgFrozenExecutablePath(repoRoot, platform),
+  ]);
+}
+
+function firstExistingFile(candidates: string[]): string | null {
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
+export function buildSlicebugSubprocessEnv(options: SlicebugCandidateOptions = {}): NodeJS.ProcessEnv {
+  const bundledUsvg = firstExistingFile(findBundledUsvgCandidates(options));
+  if (!bundledUsvg) {
+    return process.env;
+  }
+
+  const usvgDir = path.dirname(bundledUsvg);
+  const currentPath = process.env.PATH ?? "";
+  return {
+    ...process.env,
+    PATH: currentPath ? `${usvgDir}${path.delimiter}${currentPath}` : usvgDir,
+  };
 }
 
 export function buildSlicebugInvocation(): SlicebugInvocation {
@@ -223,29 +267,48 @@ export function slicebugConfigRoot(homeDir = os.homedir()): string {
   return path.join(homeDir, ".slicebug");
 }
 
-export function getSlicebugSetupStatus(homeDir = os.homedir(), platform: NodeJS.Platform = process.platform): SlicebugSetupStatus {
+export function getSlicebugSetupStatus(
+  homeDir = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+  bundledUsvgPath = firstExistingFile(findBundledUsvgCandidates({ platform })),
+): SlicebugSetupStatus {
   const configRoot = slicebugConfigRoot(homeDir);
   const executableSuffix = platform === "win32" ? ".exe" : "";
   const keysPath = path.join(configRoot, "keys.json");
   const profilesPath = path.join(configRoot, "profiles.json");
   const devicePluginPath = path.join(configRoot, "plugins", "device-common", `CricutDevice${executableSuffix}`);
-  const usvgPath = path.join(configRoot, "plugins", "usvg", `usvg${executableSuffix}`);
+  const configUsvgPath = path.join(configRoot, "plugins", "usvg", `usvg${executableSuffix}`);
   const hasKeys = fs.existsSync(keysPath);
   const hasProfiles = fs.existsSync(profilesPath);
   const hasDevicePlugin = fs.existsSync(devicePluginPath);
-  const hasUsvg = fs.existsSync(usvgPath);
+  const hasConfigUsvg = fs.existsSync(configUsvgPath);
+  const hasBundledUsvg = Boolean(bundledUsvgPath && fs.existsSync(bundledUsvgPath));
+  const hasUsvg = hasConfigUsvg || hasBundledUsvg;
   return {
     configRoot,
     keysPath,
     profilesPath,
     devicePluginPath,
-    usvgPath,
+    usvgPath: hasConfigUsvg ? configUsvgPath : bundledUsvgPath ?? configUsvgPath,
+    bundledUsvgPath,
     hasKeys,
     hasProfiles,
     hasDevicePlugin,
     hasUsvg,
     bootstrapped: hasKeys && hasProfiles && hasDevicePlugin && hasUsvg,
   };
+}
+
+export function isBundledUsvgBootstrapFallback(
+  result: Pick<RawSlicebugResult, "error" | "stderr" | "stdout">,
+  setup: Pick<SlicebugSetupStatus, "bootstrapped" | "bundledUsvgPath">,
+): boolean {
+  if (!result.error || !setup.bootstrapped || !setup.bundledUsvgPath) {
+    return false;
+  }
+
+  const output = [result.error, result.stderr, result.stdout].join("\n");
+  return /\b(usvg|resvg)\b|linebender|download/i.test(output);
 }
 
 export function buildSamplePlanRequest(
@@ -427,6 +490,7 @@ async function runVersion(executable: string): Promise<RawSlicebugResult> {
     const { stdout, stderr } = await execFileAsync(executable, invocation.args, {
       timeout: 10_000,
       windowsHide: true,
+      env: buildSlicebugSubprocessEnv(),
     });
     return { executable, stdout, stderr };
   } catch (error) {
@@ -447,6 +511,7 @@ async function runBootstrap(executable: string, input: SlicebugBootstrapInput = 
     const { stdout, stderr } = await execFileAsync(executable, invocation.args, {
       timeout: 120_000,
       windowsHide: true,
+      env: buildSlicebugSubprocessEnv(),
     });
     return { executable, stdout, stderr };
   } catch (error) {
@@ -504,12 +569,16 @@ export async function bootstrapSlicebug(input: SlicebugBootstrapInput = {}): Pro
   const result = await runBootstrap(executable, input);
   const setup = getSlicebugSetupStatus();
   const messageParts = [result.error, result.stderr.trim() || result.stdout.trim()].filter(Boolean);
+  const bundledUsvgFallback = isBundledUsvgBootstrapFallback(result, setup);
+  const ok = setup.bootstrapped && (!result.error || bundledUsvgFallback);
   return {
     ...result,
-    ok: !result.error && setup.bootstrapped,
+    ok,
     message:
-      !result.error && setup.bootstrapped
-        ? "SliceBug setup completed."
+      ok
+        ? bundledUsvgFallback
+          ? "SliceBug setup completed using KindCut's bundled usvg."
+          : "SliceBug setup completed."
         : messageParts.join("\n") || "SliceBug setup did not complete.",
   };
 }
@@ -526,6 +595,7 @@ async function runSamplePlan(
     const { stdout, stderr } = await execFileAsync(executable, request.invocation.args, {
       timeout: 30_000,
       windowsHide: true,
+      env: buildSlicebugSubprocessEnv(),
     });
     const planJson = await fs.promises.readFile(request.outputPlanPath, "utf8");
     return {
@@ -558,6 +628,7 @@ async function runSvgPlan(executable: string, input: SvgPlanInput): Promise<RawS
     const { stdout, stderr } = await execFileAsync(executable, request.invocation.args, {
       timeout: 30_000,
       windowsHide: true,
+      env: buildSlicebugSubprocessEnv(),
     });
     const planJson = await fs.promises.readFile(request.outputPlanPath, "utf8");
     return {
@@ -622,7 +693,7 @@ export async function generateSvgSlicebugPlan(input: SvgPlanInput): Promise<Slic
 export class SlicebugCutSession {
   private readonly command: string;
   private readonly args: string[];
-  private readonly spawnProcess: (command: string, args: string[]) => SlicebugProcess;
+  private readonly spawnProcess: (command: string, args: string[], env?: NodeJS.ProcessEnv) => SlicebugProcess;
   private readonly smokeMode: boolean;
   private process: SlicebugProcess | null = null;
   private snapshot: CutSessionSnapshot;
@@ -633,7 +704,7 @@ export class SlicebugCutSession {
     this.smokeMode = options.smokeMode;
     this.spawnProcess =
       options.spawnProcess ??
-      ((command, args) => spawn(command, args, { windowsHide: true }) as ChildProcessWithoutNullStreams);
+      ((command, args, env) => spawn(command, args, { windowsHide: true, env }) as ChildProcessWithoutNullStreams);
     this.snapshot = {
       id: options.id,
       status: "idle",
@@ -668,7 +739,7 @@ export class SlicebugCutSession {
       return this.getSnapshot();
     }
 
-    this.process = this.spawnProcess(this.command, this.args);
+    this.process = this.spawnProcess(this.command, this.args, buildSlicebugSubprocessEnv());
     this.snapshot = {
       ...this.snapshot,
       status: "running",

@@ -17,6 +17,9 @@ vendor/slicebug/
   requirements-dev.txt
 ```
 
+For release CI, GitHub Actions checks out `desm-it/slicebug` `main` into this
+same path before building native macOS and Windows packages.
+
 Build the bundled runtime with:
 
 ```bash
@@ -24,4 +27,7 @@ npm run build:slicebug
 ```
 
 The frozen helper is written to `apps/desktop/resources/slicebug/`, which is
-also ignored and included in Electron packages as an app resource.
+also ignored and included in Electron packages as an app resource. The build
+also vendors SliceBug's pinned `usvg` helper into
+`apps/desktop/resources/slicebug/plugins/usvg/` so the packaged app can run SVG
+planning without relying on SliceBug's first-run downloader.

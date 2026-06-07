@@ -8,13 +8,16 @@ Use this checklist before tagging or sharing a KindCut release build.
 - Confirm `package-lock.json` was refreshed after version changes.
 - Confirm the working tree only contains intentional release changes.
 - Commit locally before packaging final artifacts.
-- Do not push or tag until the local smoke build has been tested.
+- Push a branch and wait for GitHub CI before tagging.
+- Do not tag until the local or CI smoke build has been tested.
 
 ## SliceBug Runtime
 
 - Keep the current local SliceBug checkout at `vendor/slicebug/`.
 - Run `npm run build:slicebug`.
-- Confirm `apps/desktop/resources/slicebug/slicebug --version` prints `0.2` or the expected SliceBug version.
+- Run `npm run verify:slicebug`.
+- Confirm `apps/desktop/resources/slicebug/slicebug --version` prints `0.3` or the expected SliceBug version.
+- Confirm `apps/desktop/resources/slicebug/plugins/usvg/usvg --version` prints `0.27.0` on macOS/Linux, or `apps/desktop/resources/slicebug/plugins/usvg/usvg.exe --version` prints `0.27.0` on Windows.
 - Confirm `vendor/slicebug/` and `apps/desktop/resources/slicebug/` stay ignored by the KindCut repo.
 - Do not run `slicebug cut` from release checks unless the user is deliberately testing hardware.
 
@@ -39,7 +42,11 @@ npm run package:desktop:mac
 npm run package:desktop:win
 ```
 
-Build Windows artifacts on Windows before release-signing them.
+Build Windows artifacts on Windows, preferably with `.github/workflows/release.yml`,
+before release-signing them. Local cross-packaging is blocked unless
+`KINDCUT_ALLOW_CROSS_PACKAGE=1` is deliberately set for shell-only experiments.
+
+For CI release setup, see `docs/github-release-ci.md`.
 
 ## Manual Smoke Test
 

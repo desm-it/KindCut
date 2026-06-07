@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 const { spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
+const https = require("node:https");
 const path = require("node:path");
 
 const desktopRoot = path.resolve(__dirname, "..");
@@ -8,6 +10,18 @@ const repoRoot = path.resolve(desktopRoot, "..", "..");
 const slicebugRoot = path.join(repoRoot, "vendor", "slicebug");
 const outputDir = path.join(desktopRoot, "resources", "slicebug");
 const venvDir = path.join(slicebugRoot, ".kindcut-build-venv");
+const usvgDownloads = {
+  darwin: {
+    url: "https://github.com/linebender/resvg/releases/download/v0.27.0/usvg-macos-x86_64.zip",
+    sha256: "48c0ca0fbe0a7e195c84545a6924a7aec526070a98facc5c54829620d8e49887",
+    member: "usvg",
+  },
+  win32: {
+    url: "https://github.com/linebender/resvg/releases/download/v0.27.0/usvg-win64.zip",
+    sha256: "fc30023106bc846ba43713a620b638a04cae761a9fa899b7bd31f4ef9236b96d",
+    member: "usvg.exe",
+  },
+};
 
 function getPythonVersion(command) {
   const result = spawnSync(command, ["--version"], { encoding: "utf8", shell: false });
@@ -59,6 +73,26 @@ function run(command, args, options = {}) {
   }
 }
 
+function download(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (response) => {
+      if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        response.resume();
+        download(response.headers.location).then(resolve, reject);
+        return;
+      }
+      if (response.statusCode !== 200) {
+        response.resume();
+        reject(new Error(`Download failed (${response.statusCode}) for ${url}`));
+        return;
+      }
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => resolve(Buffer.concat(chunks)));
+    }).on("error", reject);
+  });
+}
+
 function executableName(name) {
   return process.platform === "win32" ? `${name}.exe` : name;
 }
@@ -73,6 +107,49 @@ function venvExecutablePath(name) {
   return process.platform === "win32"
     ? path.join(venvDir, "Scripts", executableName(name))
     : path.join(venvDir, "bin", name);
+}
+
+async function bundleUsvg() {
+  const info = usvgDownloads[process.platform];
+  if (!info) {
+    console.log(`Skipping bundled usvg: no pinned download for ${process.platform}.`);
+    return;
+  }
+
+  const usvgDir = path.join(outputDir, "plugins", "usvg");
+  const zipPath = path.join(outputDir, "plugins", "usvg.zip");
+  fs.mkdirSync(usvgDir, { recursive: true });
+
+  console.log(`Downloading bundled usvg for ${process.platform}...`);
+  const zipBytes = await download(info.url);
+  const actual = crypto.createHash("sha256").update(zipBytes).digest("hex");
+  if (actual !== info.sha256) {
+    throw new Error(`usvg checksum mismatch. Expected ${info.sha256}, saw ${actual}.`);
+  }
+
+  fs.writeFileSync(zipPath, zipBytes);
+  run(venvPythonPath(), [
+    "-c",
+    [
+      "import os, stat, sys, zipfile",
+      "zip_path, member, out_dir = sys.argv[1:]",
+      "with zipfile.ZipFile(zip_path) as z:",
+      "    z.extract(member, out_dir)",
+      "target = os.path.join(out_dir, member)",
+      "if os.name != 'nt':",
+      "    os.chmod(target, os.stat(target).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)",
+    ].join("\n"),
+    zipPath,
+    info.member,
+    usvgDir,
+  ], { cwd: slicebugRoot });
+  fs.rmSync(zipPath, { force: true });
+
+  const usvgPath = path.join(usvgDir, info.member);
+  if (!fs.existsSync(usvgPath)) {
+    throw new Error(`Expected bundled usvg at ${usvgPath}, but it was not created.`);
+  }
+  console.log(`Bundled usvg ready: ${usvgPath}`);
 }
 
 if (!fs.existsSync(path.join(slicebugRoot, "setup.py"))) {
@@ -134,3 +211,8 @@ if (!fs.existsSync(helperPath)) {
 }
 
 console.log(`Bundled SliceBug runtime ready: ${helperPath}`);
+
+bundleUsvg().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});

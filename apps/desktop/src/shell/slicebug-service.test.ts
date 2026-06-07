@@ -7,13 +7,18 @@ import {
   SlicebugCutSession,
   buildBootstrapInvocation,
   buildSamplePlanRequest,
+  buildSlicebugSubprocessEnv,
   buildSvgPlanRequest,
   buildSlicebugInvocation,
   bundledSlicebugExecutablePath,
+  bundledUsvgExecutablePath,
   defaultDesignSpacePaths,
   desktopResourceSlicebugExecutablePath,
+  desktopResourceUsvgExecutablePath,
+  findBundledUsvgCandidates,
   findSlicebugExecutableCandidates,
   getSlicebugSetupStatus,
+  isBundledUsvgBootstrapFallback,
   summarizePlanResult,
   summarizeSlicebugResult,
   vendoredSlicebugFrozenExecutablePath,
@@ -40,13 +45,20 @@ describe("slicebug desktop service", () => {
     ]);
   });
 
-  it("builds platform-specific bundled SliceBug paths", () => {
+  it("builds platform-specific bundled SliceBug and usvg paths", () => {
     expect(bundledSlicebugExecutablePath("/resources", "darwin")).toBe("/resources/slicebug/slicebug");
+    expect(bundledUsvgExecutablePath("/resources", "darwin")).toBe("/resources/slicebug/plugins/usvg/usvg");
     expect(bundledSlicebugExecutablePath("C:\\KindCut\\resources", "win32")).toBe(
       path.join("C:\\KindCut\\resources", "slicebug", "slicebug.exe"),
     );
+    expect(bundledUsvgExecutablePath("C:\\KindCut\\resources", "win32")).toBe(
+      path.join("C:\\KindCut\\resources", "slicebug", "plugins", "usvg", "usvg.exe"),
+    );
     expect(desktopResourceSlicebugExecutablePath("/repo/apps/desktop", "darwin")).toBe(
       "/repo/apps/desktop/resources/slicebug/slicebug",
+    );
+    expect(desktopResourceUsvgExecutablePath("/repo/apps/desktop", "darwin")).toBe(
+      "/repo/apps/desktop/resources/slicebug/plugins/usvg/usvg",
     );
     expect(vendoredSlicebugFrozenExecutablePath("/repo", "win32")).toBe(
       path.join("/repo", "apps", "desktop", "resources", "slicebug", "slicebug.exe"),
@@ -54,6 +66,28 @@ describe("slicebug desktop service", () => {
     expect(vendoredSlicebugVenvExecutablePath("/repo", "win32")).toBe(
       path.join("/repo", "vendor", "slicebug", ".venv", "Scripts", "slicebug.exe"),
     );
+  });
+
+  it("finds bundled usvg candidates and prepends their directory to PATH", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "kindcut-usvg-path-"));
+    const resources = path.join(root, "resources");
+    const usvg = path.join(resources, "slicebug", "plugins", "usvg", "usvg");
+    fs.mkdirSync(path.dirname(usvg), { recursive: true });
+    fs.writeFileSync(usvg, "");
+
+    expect(findBundledUsvgCandidates({ platform: "darwin", resourcesPath: resources, appRoot: "/missing/app", repoRoot: "/missing/repo" })).toEqual([
+      usvg,
+      "/missing/app/resources/slicebug/plugins/usvg/usvg",
+      "/missing/repo/apps/desktop/resources/slicebug/plugins/usvg/usvg",
+    ]);
+
+    const env = buildSlicebugSubprocessEnv({
+      platform: "darwin",
+      resourcesPath: resources,
+      appRoot: "/missing/app",
+      repoRoot: "/missing/repo",
+    });
+    expect(env.PATH?.split(path.delimiter)[0]).toBe(path.dirname(usvg));
   });
 
   it("builds only the safe non-cutting status invocation", () => {
@@ -94,7 +128,7 @@ describe("slicebug desktop service", () => {
     fs.mkdirSync(path.join(config, "plugins", "device-common"), { recursive: true });
     fs.mkdirSync(path.join(config, "plugins", "usvg"), { recursive: true });
 
-    expect(getSlicebugSetupStatus(home, "darwin")).toMatchObject({
+    expect(getSlicebugSetupStatus(home, "darwin", null)).toMatchObject({
       hasKeys: false,
       hasProfiles: false,
       hasDevicePlugin: false,
@@ -107,7 +141,7 @@ describe("slicebug desktop service", () => {
     fs.writeFileSync(path.join(config, "plugins", "device-common", "CricutDevice"), "");
     fs.writeFileSync(path.join(config, "plugins", "usvg", "usvg"), "");
 
-    expect(getSlicebugSetupStatus(home, "darwin")).toMatchObject({
+    expect(getSlicebugSetupStatus(home, "darwin", null)).toMatchObject({
       hasKeys: true,
       hasProfiles: true,
       hasDevicePlugin: true,
@@ -116,18 +150,69 @@ describe("slicebug desktop service", () => {
     });
   });
 
+  it("accepts bundled usvg as setup-ready when Design Space keys and plugins exist", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "kindcut-slicebug-setup-"));
+    const bundled = path.join(home, "bundle", "plugins", "usvg", "usvg");
+    const config = path.join(home, ".slicebug");
+    fs.mkdirSync(path.join(config, "plugins", "device-common"), { recursive: true });
+    fs.mkdirSync(path.dirname(bundled), { recursive: true });
+    fs.writeFileSync(path.join(config, "keys.json"), "{}");
+    fs.writeFileSync(path.join(config, "profiles.json"), "{}");
+    fs.writeFileSync(path.join(config, "plugins", "device-common", "CricutDevice"), "");
+    fs.writeFileSync(bundled, "");
+
+    expect(getSlicebugSetupStatus(home, "darwin", bundled)).toMatchObject({
+      hasKeys: true,
+      hasProfiles: true,
+      hasDevicePlugin: true,
+      hasUsvg: true,
+      usvgPath: bundled,
+      bundledUsvgPath: bundled,
+      bootstrapped: true,
+    });
+  });
+
+  it("only treats bootstrap errors as success when bundled usvg covers a usvg download failure", () => {
+    const setup = {
+      bootstrapped: true,
+      bundledUsvgPath: "/KindCut.app/Contents/Resources/slicebug/plugins/usvg/usvg",
+    };
+
+    expect(
+      isBundledUsvgBootstrapFallback(
+        {
+          error: "Command failed: slicebug bootstrap",
+          stderr: "Could not download usvg from linebender.",
+          stdout: "",
+        },
+        setup,
+      ),
+    ).toBe(true);
+
+    expect(
+      isBundledUsvgBootstrapFallback(
+        {
+          error: "Command failed: slicebug bootstrap",
+          stderr: "Design Space path does not exist.",
+          stdout: "",
+        },
+        setup,
+      ),
+    ).toBe(false);
+  });
+
   it("summarizes a successful SliceBug response", () => {
     expect(
       summarizeSlicebugResult({
         executable: "/Users/joeldesmit/Cricut/SlicebugMac/.venv/bin/slicebug",
-        stdout: "0.2\n",
+        stdout: "0.3\n",
         stderr: "",
       }),
     ).toEqual({
       ok: true,
       executable: "/Users/joeldesmit/Cricut/SlicebugMac/.venv/bin/slicebug",
-      version: "0.2",
-      message: "SliceBug 0.2 is available.",
+      version: "0.3",
+      message: "SliceBug 0.3 is available.",
     });
   });
 
