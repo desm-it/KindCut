@@ -15,6 +15,7 @@ permissions:
   contents: write
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   SLICEBUG_REPOSITORY: ${{ vars.SLICEBUG_REPOSITORY || 'desm-it/slicebug' }}
   SLICEBUG_REF: ${{ inputs.slicebug_ref || vars.SLICEBUG_REF || 'main' }}
 
