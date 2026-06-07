@@ -32,9 +32,7 @@ KindCut is built for a simple flow: describe or import an idea, place it on a re
 
 ## Screenshots
 
-| Design workspace | Import and AI modal |
-| --- | --- |
-| ![KindCut design workspace](docs/assets/readme-workspace.jpg) | ![KindCut import modal](docs/assets/readme-import.jpg) |
+![KindCut card workspace](docs/assets/readme-feature.png)
 
 ## Install
 
