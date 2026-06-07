@@ -37,6 +37,8 @@ bundle a fresh SliceBug runtime from `desm-it/slicebug` `main`.
   pull requests and branch pushes.
 - `.github/workflows/release.yml` builds release artifacts on native runners:
   macOS arm64 on `macos-15`, Windows x64 on `windows-latest`.
+- Windows packaging uses Python 3.10 because SliceBug's pinned
+  `cx-Freeze==6.13.2` provides a compatible prebuilt Windows wheel there.
 
 The release workflow runs when a GitHub Release is published. It builds native
 macOS and Windows artifacts, then uploads them to that release. It also runs for

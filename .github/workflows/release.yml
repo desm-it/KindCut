@@ -55,7 +55,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.10"
 
       - name: Install dependencies
         run: npm ci
@@ -110,6 +110,8 @@ jobs:
         run: npm run typecheck && npm run test
 
       - name: Build Windows release
+        env:
+          PYTHON: python
         run: npm run package:desktop:win
 
       - name: Upload Windows artifacts

@@ -35,12 +35,18 @@ function getPythonVersion(command) {
 function findPython() {
   const preferred = [process.env.PYTHON, process.env.PYTHON3, "python3.10", "python3.11", "python3"].filter(Boolean);
   const seen = new Set();
+  const isCompatible = (version) => {
+    if (version.major !== 3) return false;
+    if (process.platform === "win32") return version.minor === 10;
+    return version.minor <= 11;
+  };
+
   for (const candidate of preferred) {
     if (seen.has(candidate)) continue;
     seen.add(candidate);
     const version = getPythonVersion(candidate);
     if (!version) continue;
-    if (version.major === 3 && version.minor <= 11) {
+    if (isCompatible(version)) {
       return { command: candidate, version };
     }
   }
@@ -51,7 +57,8 @@ function findPython() {
     .map((entry) => `${entry.candidate} (${entry.version.label})`)
     .join(", ");
   throw new Error(
-    `SliceBug's cx_Freeze pin needs Python 3.10 or 3.11. Found: ${found || "no usable Python"}. ` +
+    `SliceBug's cx_Freeze pin needs ${process.platform === "win32" ? "Python 3.10 on Windows" : "Python 3.10 or 3.11"}. ` +
+      `Found: ${found || "no usable Python"}. ` +
       "Set PYTHON=/path/to/python3.10 and try again.",
   );
 }
