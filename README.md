@@ -18,8 +18,6 @@
   <a href="#build-from-source">Build from source</a>
 </p>
 
-![KindCut workspace](docs/assets/readme-workspace.jpg)
-
 ## Why KindCut
 
 KindCut is built for a simple flow: describe or import an idea, place it on a real-size mat, preview the layers, save the project locally, and prepare it for a cutter only when you are ready.
@@ -34,13 +32,9 @@ KindCut is built for a simple flow: describe or import an idea, place it on a re
 
 ## Screenshots
 
-### Design Workspace
-
-![KindCut design workspace](docs/assets/readme-workspace.jpg)
-
-### Import And AI Panel
-
-![KindCut import panel](docs/assets/readme-import.jpg)
+| Design workspace | Import and AI panel |
+| --- | --- |
+| ![KindCut design workspace](docs/assets/readme-workspace.jpg) | ![KindCut import panel](docs/assets/readme-import.jpg) |
 
 ## Install
 
