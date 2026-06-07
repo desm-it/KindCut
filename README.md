@@ -1,108 +1,155 @@
-# KindCut
+<p align="center">
+  <img src="apps/desktop/build/icon.png" alt="KindCut logo" width="112" height="112">
+</p>
 
-Local-first Cricut companion app for grandma-easy craft design, AI-generated Cricut-ready SVGs, local project/library management, and SliceBug-backed machine sending.
+<h1 align="center">KindCut</h1>
 
-## Current status
+<p align="center">
+  A calm, local-first desktop design app for simple cards, decals, labels, and pen-friendly craft projects.
+</p>
 
-KindCut is being prepared as a local 1.0 desktop release. The app currently includes:
+<p align="center">
+  <a href="https://github.com/desm-it/KindCut/releases/latest"><strong>Download latest release</strong></a>
+  ·
+  <a href="#install">Install</a>
+  ·
+  <a href="#update">Update</a>
+  ·
+  <a href="#build-from-source">Build from source</a>
+</p>
 
-- npm workspaces monorepo
-- React/Vite workspace UI with an Electron desktop shell
-- local `.kindcut` project save/load
-- image library storage under the user's Documents folder
-- AI silhouette generation and SVG tracing helpers
-- editable text, shapes, imported SVGs, grouping, layer reorder, and cut preview
-- Cricut Joy mat/material/tool recipes
-- guarded SliceBug plan/cut handoff with explicit user confirmation
-- bundled SliceBug helper builds for packaged apps
-- curated `AppContext/` folder for Codex and other coding agents
+![KindCut workspace](docs/assets/readme-workspace.jpg)
 
-Release builds are still unsigned. Sign and notarize macOS builds before sharing them outside this Mac, and smoke-test Windows builds on Windows hardware before calling them distributable.
+## Why KindCut
 
-## Quick start
+KindCut is built for a simple flow: describe or import an idea, place it on a real-size mat, preview the layers, save the project locally, and prepare it for a cutter only when you are ready.
+
+- **Beginner-friendly workspace** with clear tools for images, text, and basic shapes.
+- **Local project files** so designs stay on your computer.
+- **Layer preview** for cut and pen work before sending anything onward.
+- **Text tools** with font choices, sizing, spacing, and pen-style options.
+- **Image import** for SVGs, plus traced image workflows.
+- **Bundled helper runtime** so release builds include the bridge needed for machine handoff.
+- **No surprise hardware actions**. KindCut prepares and previews; the final action stays explicit.
+
+## Screenshots
+
+### Design Workspace
+
+![KindCut design workspace](docs/assets/readme-workspace.jpg)
+
+### Import And AI Panel
+
+![KindCut import panel](docs/assets/readme-import.jpg)
+
+## Install
+
+Download the latest release from the [KindCut releases page](https://github.com/desm-it/KindCut/releases/latest).
+
+### macOS
+
+1. Download `KindCut-...-arm64.dmg`.
+2. Open the DMG.
+3. Drag `KindCut` into `Applications`.
+4. Open KindCut from `Applications`.
+
+If macOS says the app cannot be opened because it is from an unidentified developer, open it once from Finder with right-click, then choose **Open**. Release signing is planned, but the current public builds are unsigned.
+
+### Windows
+
+1. Download `KindCut.Setup...exe`.
+2. Run the installer.
+3. Open KindCut from the Start menu or desktop shortcut.
+
+If Windows SmartScreen warns about the app, choose **More info**, then **Run anyway** only if the file came from the official release page.
+
+## First Run
+
+1. Pick a language.
+2. Start a new project or open an existing `.kindcut` file.
+3. Open **Settings** and check the helper status.
+4. If prompted, choose the installed design app location.
+5. Run the one-time bootstrap from KindCut so local keys and materials can be detected.
+
+After that, KindCut can prepare project handoff locally. It will not start a real machine action without an explicit preview and confirmation flow.
+
+## Update
+
+### macOS
+
+1. Download the newest DMG from [Releases](https://github.com/desm-it/KindCut/releases/latest).
+2. Quit KindCut.
+3. Replace the old app in `Applications` with the new one.
+4. Open KindCut again.
+
+Your saved `.kindcut` files and local library stay separate from the app bundle.
+
+### Windows
+
+1. Download the newest setup `.exe` from [Releases](https://github.com/desm-it/KindCut/releases/latest).
+2. Quit KindCut.
+3. Run the installer.
+4. Open KindCut again.
+
+The installer updates the app while keeping local projects and settings in place.
+
+## File Types
+
+- `.kindcut` for editable KindCut projects.
+- `.svg` for vector imports.
+- `.png`, `.jpg`, and `.jpeg` for traced image workflows.
+
+## Build From Source
+
+Install dependencies:
 
 ```bash
-cd /Users/joeldesmit/Cricut/CricutCompanionApp
 npm install
+```
+
+Run the development app:
+
+```bash
+npm run dev
+```
+
+Run checks:
+
+```bash
 npm run check
-npm run dev
 ```
 
-Run the packaged desktop shell from source:
-
-```bash
-# Terminal 1: renderer dev server
-npm run dev
-
-# Terminal 2: Electron shell pointing at the dev server
-npm run desktop:shell
-```
-
-Build an unpacked macOS app bundle for smoke testing:
-
-```bash
-npm run package:desktop:dir
-open "apps/desktop/release/mac-arm64/KindCut.app"
-```
-
-Create distributable macOS artifacts:
+Build release artifacts:
 
 ```bash
 npm run package:desktop:mac
-```
-
-Create distributable Windows artifacts on Windows or through GitHub Actions:
-
-```bash
 npm run package:desktop:win
 ```
 
-KindCut refuses to cross-package macOS/Windows release builds by default because
-the bundled SliceBug Python runtime must be frozen on the target OS. See
-`docs/github-release-ci.md` for the GitHub Actions release setup.
+Native desktop packages must be built on their target operating system because the bundled helper runtime is frozen per platform. The GitHub release workflow handles that automatically for official releases.
 
-The desktop shell includes a safe SliceBug bridge. Normal status/setup checks call commands such as:
+## Release Builds
 
-```bash
-slicebug --version
-slicebug bootstrap --design-space-path "<Design Space app>"
-```
+When a GitHub Release is published, the release workflow builds:
 
-from the Electron main process and expose user-friendly status to the renderer.
+- macOS Apple silicon DMG and ZIP
+- Windows x64 setup installer
+- update blockmaps for both platforms
 
-`slicebug cut` is a real machine-control command. KindCut must only run it after the user has opened the cut preview and explicitly pressed the start/continue controls.
+The generated files are attached to the release automatically.
 
-Bundled SliceBug runtime:
-
-```bash
-npm run build:slicebug
-npm run verify:slicebug
-```
-
-This reads the ignored local checkout at `vendor/slicebug/` and writes the frozen helper to `apps/desktop/resources/slicebug/`, which electron-builder includes as an app resource.
-
-## Workspace layout
+## Project Layout
 
 ```text
-apps/desktop/              React/Vite desktop UI and Electron shell
-packages/craft-core/       Project model, mats, materials, operations, validation
-packages/svg-preflight/    SVG import/preflight checks for Cricut-safe output
-packages/ai-designer/      AI prompt contracts for craft-ready SVG generation
-packages/slicebug-bridge/  Safe command builder for SliceBug plan/cut flows
-AppContext/                Curated notes safe to expose to Codex
-docs/                      Product, architecture, plans, decisions
-vendor/                    Ignored local third-party/runtime checkouts
+apps/desktop/              Desktop UI and shell
+packages/craft-core/       Project model, mats, materials, and validation
+packages/svg-preflight/    SVG cleanup and safety checks
+packages/ai-designer/      AI prompt contracts and output validation
+packages/slicebug-bridge/  Helper command construction and subprocess boundary
+docs/                      Product, release, and architecture notes
+vendor/                    Ignored third-party helper checkout
 ```
 
-## Codex usage
+## Safety
 
-Codex CLI is installed on this Mac. Run it inside this git repo and provide it the relevant file/task scope.
-
-Example:
-
-```bash
-cd /Users/joeldesmit/Cricut/CricutCompanionApp
-codex exec "Read AGENTS.md and AppContext/product-vision.md. Add tests for craft-core validation edge cases."
-```
-
-Do not point Codex at Joel's entire Obsidian vault by default. Use `AppContext/` as the curated context boundary.
+KindCut treats machine output as a deliberate final step. Tests and demos should use previews, command builders, or fakes. Do not trigger real hardware from automated tests.
