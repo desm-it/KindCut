@@ -21,6 +21,7 @@ const Jimp = require("jimp") as {
 };
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import type { IpcMainEvent, MenuItemConstructorOptions, OpenDialogOptions, SaveDialogOptions } from "electron";
+import { autoUpdater } from "electron-updater";
 import {
   SlicebugCutSession,
   bootstrapSlicebug,
@@ -35,6 +36,8 @@ import { createMainWindowOptions, resolveRendererEntry } from "./window-config";
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 let activeCutSession: SlicebugCutSession | null = null;
 const closeAllowedWindows = new WeakSet<BrowserWindow>();
+const UPDATE_CHECK_DELAY_MS = 30_000;
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 type RendererAction =
   | "new-project"
@@ -176,6 +179,26 @@ function configureAboutPanel(): void {
     copyright: "Copyright 2026 Joel De Smit",
     credits: ABOUT_COPY,
   });
+}
+
+function configureSilentUpdates(): void {
+  if (!app.isPackaged || isDevelopment || process.env.KINDCUT_DISABLE_AUTO_UPDATE === "1") {
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = null;
+
+  const ignoreUpdateError = () => undefined;
+  autoUpdater.on("error", ignoreUpdateError);
+
+  const checkForUpdatesSilently = () => {
+    void autoUpdater.checkForUpdates().catch(ignoreUpdateError);
+  };
+
+  setTimeout(checkForUpdatesSilently, UPDATE_CHECK_DELAY_MS);
+  setInterval(checkForUpdatesSilently, UPDATE_CHECK_INTERVAL_MS).unref();
 }
 
 function createProjectMenu(): MenuItemConstructorOptions {
@@ -589,6 +612,7 @@ ipcMain.handle("ai:trace-png-to-svg", async (_event, pngBase64: string): Promise
 
 app.whenReady().then(async () => {
   await createMainWindow();
+  configureSilentUpdates();
 
   if (process.env.CRICUT_COMPANION_SMOKE_SLICEBUG === "1") {
     console.log(JSON.stringify({ slicebug: await getSlicebugStatus() }));

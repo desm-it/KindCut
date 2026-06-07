@@ -74,6 +74,7 @@ jobs:
             apps/desktop/release/*.dmg
             apps/desktop/release/*-mac.zip
             apps/desktop/release/*.blockmap
+            apps/desktop/release/latest-mac.yml
 
   windows:
     name: Windows x64
@@ -121,6 +122,7 @@ jobs:
           path: |
             apps/desktop/release/*.exe
             apps/desktop/release/*.blockmap
+            apps/desktop/release/latest.yml
 
   github-release:
     name: Attach Release Artifacts

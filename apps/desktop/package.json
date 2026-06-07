@@ -24,6 +24,7 @@
     "@cricut-companion/slicebug-bridge": "*",
     "@cricut-companion/svg-preflight": "*",
     "@xmldom/xmldom": "^0.8.13",
+    "electron-updater": "^6.8.9",
     "potrace": "^2.1.8",
     "react": "latest",
     "react-dom": "latest",
@@ -41,6 +42,12 @@
   "build": {
     "appId": "nl.joeldesmit.kindcut",
     "productName": "KindCut",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://kindcut.joeldesmit.nl/"
+      }
+    ],
     "directories": {
       "output": "release"
     },
