@@ -186,6 +186,7 @@ if (!fs.existsSync(venvPythonPath())) {
 const venvPython = venvPythonPath();
 console.log("Installing SliceBug build dependencies...");
 run(venvPython, ["-m", "pip", "install", "-r", "requirements-dev.txt"]);
+run(venvPython, ["-m", "pip", "install", "lief>=0.12.0,<0.13"]);
 
 console.log("Freezing SliceBug runtime...");
 // SliceBug's setup.py imports setup() from setuptools, so some environments do
