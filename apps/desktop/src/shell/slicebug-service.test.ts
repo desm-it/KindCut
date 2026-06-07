@@ -37,17 +37,19 @@ describe("slicebug desktop service", () => {
       }),
     ).toEqual([
       "/custom/slicebug",
-      "/Applications/KindCut.app/Contents/Resources/slicebug/slicebug",
-      "/repo/apps/desktop/resources/slicebug/slicebug",
-      "/repo/vendor/slicebug/.venv/bin/slicebug",
+      path.join("/Applications/KindCut.app/Contents/Resources", "slicebug", "slicebug"),
+      path.join("/repo/apps/desktop", "resources", "slicebug", "slicebug"),
+      path.join("/repo", "vendor", "slicebug", ".venv", "bin", "slicebug"),
       "/Users/joeldesmit/Cricut/SlicebugMac/.venv/bin/slicebug",
       "slicebug",
     ]);
   });
 
   it("builds platform-specific bundled SliceBug and usvg paths", () => {
-    expect(bundledSlicebugExecutablePath("/resources", "darwin")).toBe("/resources/slicebug/slicebug");
-    expect(bundledUsvgExecutablePath("/resources", "darwin")).toBe("/resources/slicebug/plugins/usvg/usvg");
+    expect(bundledSlicebugExecutablePath("/resources", "darwin")).toBe(path.join("/resources", "slicebug", "slicebug"));
+    expect(bundledUsvgExecutablePath("/resources", "darwin")).toBe(
+      path.join("/resources", "slicebug", "plugins", "usvg", "usvg"),
+    );
     expect(bundledSlicebugExecutablePath("C:\\KindCut\\resources", "win32")).toBe(
       path.join("C:\\KindCut\\resources", "slicebug", "slicebug.exe"),
     );
@@ -55,10 +57,10 @@ describe("slicebug desktop service", () => {
       path.join("C:\\KindCut\\resources", "slicebug", "plugins", "usvg", "usvg.exe"),
     );
     expect(desktopResourceSlicebugExecutablePath("/repo/apps/desktop", "darwin")).toBe(
-      "/repo/apps/desktop/resources/slicebug/slicebug",
+      path.join("/repo/apps/desktop", "resources", "slicebug", "slicebug"),
     );
     expect(desktopResourceUsvgExecutablePath("/repo/apps/desktop", "darwin")).toBe(
-      "/repo/apps/desktop/resources/slicebug/plugins/usvg/usvg",
+      path.join("/repo/apps/desktop", "resources", "slicebug", "plugins", "usvg", "usvg"),
     );
     expect(vendoredSlicebugFrozenExecutablePath("/repo", "win32")).toBe(
       path.join("/repo", "apps", "desktop", "resources", "slicebug", "slicebug.exe"),
@@ -77,8 +79,8 @@ describe("slicebug desktop service", () => {
 
     expect(findBundledUsvgCandidates({ platform: "darwin", resourcesPath: resources, appRoot: "/missing/app", repoRoot: "/missing/repo" })).toEqual([
       usvg,
-      "/missing/app/resources/slicebug/plugins/usvg/usvg",
-      "/missing/repo/apps/desktop/resources/slicebug/plugins/usvg/usvg",
+      path.join("/missing/app", "resources", "slicebug", "plugins", "usvg", "usvg"),
+      path.join("/missing/repo", "apps", "desktop", "resources", "slicebug", "plugins", "usvg", "usvg"),
     ]);
 
     const env = buildSlicebugSubprocessEnv({
@@ -114,7 +116,7 @@ describe("slicebug desktop service", () => {
   it("knows Cricut Design Space default paths on macOS and Windows", () => {
     expect(defaultDesignSpacePaths("darwin", "/Users/test")).toEqual({
       designSpacePath: "/Applications/Cricut Design Space.app/Contents/Resources",
-      designSpaceProfilePath: "/Users/test/.cricut-design-space",
+      designSpaceProfilePath: path.join("/Users/test", ".cricut-design-space"),
     });
     expect(defaultDesignSpacePaths("win32", "C:\\Users\\Test")).toEqual({
       designSpacePath: path.join("C:\\Users\\Test", "AppData", "Local", "Programs", "Cricut Design Space"),
@@ -233,16 +235,19 @@ describe("slicebug desktop service", () => {
   });
 
   it("builds a safe non-cutting sample plan request", () => {
-    const request = buildSamplePlanRequest("/tmp/cricut-companion-plan");
+    const workspaceDir = path.join("/tmp", "cricut-companion-plan");
+    const request = buildSamplePlanRequest(workspaceDir);
+    const inputSvgPath = path.join(workspaceDir, "sample-card.svg");
+    const outputPlanPath = path.join(workspaceDir, "sample-card.json");
 
-    expect(request.inputSvgPath).toBe("/tmp/cricut-companion-plan/sample-card.svg");
-    expect(request.outputPlanPath).toBe("/tmp/cricut-companion-plan/sample-card.json");
+    expect(request.inputSvgPath).toBe(inputSvgPath);
+    expect(request.outputPlanPath).toBe(outputPlanPath);
     expect(request.svg).toContain("stroke=\"#ff0000\"");
     expect(request.invocation).toEqual({
       args: [
         "plan",
-        "/tmp/cricut-companion-plan/sample-card.svg",
-        "/tmp/cricut-companion-plan/sample-card.json",
+        inputSvgPath,
+        outputPlanPath,
         "--material",
         "218",
         "--mat-preset",
@@ -256,20 +261,23 @@ describe("slicebug desktop service", () => {
   });
 
   it("builds a selectable non-cutting SVG plan request", () => {
-    const request = buildSvgPlanRequest("/tmp/cricut-companion-plan", {
+    const workspaceDir = path.join("/tmp", "cricut-companion-plan");
+    const request = buildSvgPlanRequest(workspaceDir, {
       svg: "<svg />",
       fileName: "Mom card.svg",
       materialId: 535,
       matPreset: "joy-card",
     });
+    const inputSvgPath = path.join(workspaceDir, "mom-card.svg");
+    const outputPlanPath = path.join(workspaceDir, "mom-card.json");
 
-    expect(request.inputSvgPath).toBe("/tmp/cricut-companion-plan/mom-card.svg");
-    expect(request.outputPlanPath).toBe("/tmp/cricut-companion-plan/mom-card.json");
+    expect(request.inputSvgPath).toBe(inputSvgPath);
+    expect(request.outputPlanPath).toBe(outputPlanPath);
     expect(request.invocation).toEqual({
       args: [
         "plan",
-        "/tmp/cricut-companion-plan/mom-card.svg",
-        "/tmp/cricut-companion-plan/mom-card.json",
+        inputSvgPath,
+        outputPlanPath,
         "--material",
         "535",
         "--mat-preset",

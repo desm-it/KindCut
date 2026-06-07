@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import path from "node:path";
 import { createMainWindowOptions, resolveRendererEntry } from "./window-config";
 
 describe("desktop shell window config", () => {
@@ -25,6 +26,6 @@ describe("desktop shell window config", () => {
   it("loads the packaged renderer html in production", () => {
     const entry = resolveRendererEntry({ appRoot: "/app" });
 
-    expect(entry).toEqual({ type: "file", value: "/app/renderer/index.html" });
+    expect(entry).toEqual({ type: "file", value: path.join("/app", "renderer", "index.html") });
   });
 });
