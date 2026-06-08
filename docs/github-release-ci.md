@@ -51,20 +51,20 @@ The workflow can also be started manually from GitHub Actions. Pass
 `release_tag` to attach builds to an existing release, or leave it blank to make
 smoke-test artifacts only.
 
-Release builds also generate updater metadata for the generic update feed:
+Release builds also generate updater metadata for GitHub Releases:
 
 ```text
 latest-mac.yml
 latest.yml
 ```
 
-KindCut is configured to check `https://kindcut.joeldesmit.nl/` silently in
-packaged builds. The sibling `KindCutUpdateServer/` project serves those files
-and installers from a Proxmox-hosted VM or container. If the update feed is
-unreachable or has no newer version, KindCut does not notify the user.
+KindCut is configured to check the public `desm-it/KindCut` GitHub Releases
+feed silently in packaged builds. If GitHub is unreachable, metadata is missing,
+or there is no newer version, KindCut does not notify the user.
 
-For local smoke testing, start the update server on localhost and override the
-feed URL explicitly:
+For local smoke testing against a generic feed, start the optional sibling
+`KindCutUpdateServer/` project on localhost and override the feed URL
+explicitly:
 
 ```bash
 KINDCUT_UPDATE_URL=http://127.0.0.1:8080/ \

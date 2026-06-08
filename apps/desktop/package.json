@@ -44,8 +44,10 @@
     "productName": "KindCut",
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://kindcut.joeldesmit.nl/"
+        "provider": "github",
+        "owner": "desm-it",
+        "repo": "KindCut",
+        "releaseType": "release"
       }
     ],
     "directories": {
