@@ -45,6 +45,7 @@ let activeCutSession: SlicebugCutSession | null = null;
 const closeAllowedWindows = new WeakSet<BrowserWindow>();
 let updateCheckInProgress = false;
 let installingUpdate = false;
+let updateEventsConfigured = false;
 
 type RendererAction =
   | "new-project"
@@ -95,9 +96,17 @@ type ProjectState = {
   hasUnsavedChanges: boolean;
 };
 
+type PendingUpdateState = {
+  version: string;
+  status: "ready" | "installing";
+  createdAt: string;
+  updatedAt: string;
+};
+
 const PROJECT_FILE_FILTER = { name: "KindCut Projects", extensions: ["kindcut"] };
 const EDIT_STATE_REQUEST_TIMEOUT_MS = 250;
 const PROJECT_STATE_REQUEST_TIMEOUT_MS = 500;
+const PENDING_UPDATE_FILE_NAME = "pending-update.json";
 const ABOUT_COPY =
   "KindCut helps you design, preview, save, and prepare Cricut projects locally. " +
   "Cutter handoff is powered by the bundled SliceBug helper and always requires explicit confirmation.";
@@ -202,6 +211,50 @@ function showMessage(window: BrowserWindow | null, options: MessageBoxOptions): 
   return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
 }
 
+function pendingUpdatePath(): string {
+  return path.join(app.getPath("userData"), PENDING_UPDATE_FILE_NAME);
+}
+
+function isPendingUpdateState(value: unknown): value is PendingUpdateState {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.version === "string" &&
+    (record.status === "ready" || record.status === "installing") &&
+    typeof record.createdAt === "string" &&
+    typeof record.updatedAt === "string"
+  );
+}
+
+async function readPendingUpdate(): Promise<PendingUpdateState | null> {
+  try {
+    const content = await fs.readFile(pendingUpdatePath(), "utf8");
+    const parsed = JSON.parse(content) as unknown;
+    return isPendingUpdateState(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writePendingUpdate(version: string, status: PendingUpdateState["status"]): Promise<void> {
+  const existing = await readPendingUpdate();
+  const now = new Date().toISOString();
+  const next: PendingUpdateState = {
+    version,
+    status,
+    createdAt: existing?.version === version ? existing.createdAt : now,
+    updatedAt: now,
+  };
+  await fs.mkdir(path.dirname(pendingUpdatePath()), { recursive: true });
+  await fs.writeFile(pendingUpdatePath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+}
+
+async function clearPendingUpdate(): Promise<void> {
+  await fs.rm(pendingUpdatePath(), { force: true });
+}
+
 function configureUpdates(mainWindow: BrowserWindow): void {
   const allowDevUpdateCheck = process.env.KINDCUT_ENABLE_DEV_AUTO_UPDATE === "1";
   if (
@@ -225,29 +278,102 @@ function configureUpdates(mainWindow: BrowserWindow): void {
   autoUpdater.autoRunAppAfterInstall = true;
   autoUpdater.logger = null;
 
-  const ignoreUpdateError = () => undefined;
-  autoUpdater.on("error", ignoreUpdateError);
-  autoUpdater.on("download-progress", (progress) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      window.setProgressBar(progress.percent / 100);
-    }
-  });
-  autoUpdater.on("update-downloaded", () => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      window.setProgressBar(-1);
-    }
-  });
+  if (!updateEventsConfigured) {
+    updateEventsConfigured = true;
+    const ignoreUpdateError = () => undefined;
+    autoUpdater.on("error", ignoreUpdateError);
+    autoUpdater.on("download-progress", (progress) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.setProgressBar(progress.percent / 100);
+      }
+    });
+    autoUpdater.on("update-downloaded", () => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.setProgressBar(-1);
+      }
+    });
+  }
 
-  void checkForUpdates({ interactive: false, sourceWindow: mainWindow });
+  void startUpdateFlow(mainWindow);
+}
+
+async function startUpdateFlow(mainWindow: BrowserWindow): Promise<void> {
+  const pendingUpdate = await readPendingUpdate();
+  if (pendingUpdate?.status === "ready") {
+    await installPendingUpdateOnStartup(mainWindow, pendingUpdate);
+    return;
+  }
+  if (pendingUpdate?.status === "installing") {
+    return;
+  }
+
+  await checkForUpdates({ interactive: false, sourceWindow: mainWindow });
+}
+
+async function installPendingUpdateOnStartup(window: BrowserWindow, pendingUpdate: PendingUpdateState): Promise<void> {
+  installingUpdate = true;
+  window.setProgressBar(2);
+
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    const updateInfo = result?.updateInfo;
+    if (!result?.isUpdateAvailable || !updateInfo || updateInfo.version !== pendingUpdate.version) {
+      await clearPendingUpdate();
+      installingUpdate = false;
+      window.setProgressBar(-1);
+      return;
+    }
+
+    await writePendingUpdate(pendingUpdate.version, "installing");
+    await autoUpdater.downloadUpdate();
+    for (const openWindow of BrowserWindow.getAllWindows()) {
+      closeAllowedWindows.add(openWindow);
+      openWindow.setProgressBar(-1);
+    }
+    autoUpdater.quitAndInstall(false, true);
+  } catch {
+    installingUpdate = false;
+    for (const openWindow of BrowserWindow.getAllWindows()) {
+      openWindow.setProgressBar(-1);
+    }
+  }
+}
+
+async function restartForPendingUpdate(version: string): Promise<void> {
+  await writePendingUpdate(version, "ready");
+  installingUpdate = true;
+  for (const window of BrowserWindow.getAllWindows()) {
+    closeAllowedWindows.add(window);
+    window.setProgressBar(-1);
+  }
+  app.relaunch();
+  app.quit();
+}
+
+async function promptForPreparedUpdate(window: BrowserWindow | null, version: string): Promise<void> {
+  const restartChoice = await showMessage(window, {
+    type: "info",
+    title: "KindCut Update",
+    message: `KindCut ${version} is ready.`,
+    detail: "KindCut will install this update the next time it starts.",
+    buttons: ["Restart Now", "Update on Next Start"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (restartChoice.response === 0) {
+    await restartForPendingUpdate(version);
+  } else {
+    await writePendingUpdate(version, "ready");
+  }
 }
 
 async function checkForUpdates({ interactive, sourceWindow }: { interactive: boolean; sourceWindow?: BrowserWindow | null }): Promise<void> {
-  if (updateCheckInProgress || installingUpdate) {
+  if (updateCheckInProgress || (installingUpdate && !interactive)) {
     if (interactive) {
       await showMessage(sourceWindow ?? getPreferredWindow(), {
         type: "info",
         title: "KindCut Update",
-        message: "KindCut is already checking for an update.",
+        message: updateCheckInProgress ? "KindCut is already checking for an update." : "KindCut is already preparing an update.",
         buttons: ["OK"],
       });
     }
@@ -258,6 +384,14 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
   const window = sourceWindow ?? getPreferredWindow();
 
   try {
+    const pendingUpdate = await readPendingUpdate();
+    if (pendingUpdate && !installingUpdate) {
+      if (interactive) {
+        await promptForPreparedUpdate(window, pendingUpdate.version);
+      }
+      return;
+    }
+
     const result = await autoUpdater.checkForUpdates();
     const updateInfo = result?.updateInfo;
     if (!result?.isUpdateAvailable || !updateInfo) {
@@ -306,8 +440,8 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
       type: "info",
       title: "KindCut Update",
       message: `KindCut ${updateInfo.version} is available.`,
-      detail: "Download and install it now? KindCut will restart after the update is ready.",
-      buttons: ["Install and Restart", "Later"],
+      detail: "Download it now? KindCut will ask before restarting or installing.",
+      buttons: ["Download Update", "Later"],
       defaultId: 0,
       cancelId: 1,
     });
@@ -316,12 +450,12 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
     }
 
     await autoUpdater.downloadUpdate();
-    installingUpdate = true;
     for (const openWindow of BrowserWindow.getAllWindows()) {
-      closeAllowedWindows.add(openWindow);
       openWindow.setProgressBar(-1);
     }
-    autoUpdater.quitAndInstall(false, true);
+
+    await writePendingUpdate(updateInfo.version, "ready");
+    await promptForPreparedUpdate(window, updateInfo.version);
   } catch {
     for (const openWindow of BrowserWindow.getAllWindows()) {
       openWindow.setProgressBar(-1);
