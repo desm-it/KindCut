@@ -1627,6 +1627,13 @@ export function App() {
   }, [importedSvgs, screen, selectedSvgIds]);
 
   useEffect(() => {
+    return window.cricutCompanion?.projectState?.setProvider(() => ({
+      hasOpenProject: screen !== "welcome",
+      hasUnsavedChanges,
+    }));
+  }, [hasUnsavedChanges, screen]);
+
+  useEffect(() => {
     document.documentElement.lang = language;
     document.title = APP_NAME;
   }, [language]);

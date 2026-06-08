@@ -57,6 +57,11 @@ export type WorkspaceEditState = {
   canReorder: boolean;
 };
 
+export type ProjectState = {
+  hasOpenProject: boolean;
+  hasUnsavedChanges: boolean;
+};
+
 const emptyEditState: WorkspaceEditState = {
   isWorkspaceContextTarget: false,
   selectedObjectCount: 0,
@@ -68,11 +73,19 @@ const emptyEditState: WorkspaceEditState = {
 };
 
 let editStateProvider: (() => WorkspaceEditState) | null = null;
+let projectStateProvider: (() => ProjectState) | null = null;
 
 ipcRenderer.on("workspace-edit-state:request", (_event: IpcRendererEvent, requestId: string) => {
   ipcRenderer.send("workspace-edit-state:response", {
     requestId,
     state: editStateProvider?.() ?? emptyEditState,
+  });
+});
+
+ipcRenderer.on("project-state:request", (_event: IpcRendererEvent, requestId: string) => {
+  ipcRenderer.send("project-state:response", {
+    requestId,
+    state: projectStateProvider?.() ?? { hasOpenProject: false, hasUnsavedChanges: false },
   });
 });
 
@@ -102,6 +115,16 @@ const desktopApi = {
   project: {
     save: (input: ProjectSaveInput): Promise<ProjectFileResult> => ipcRenderer.invoke("project:save", input),
     open: (): Promise<ProjectFileResult> => ipcRenderer.invoke("project:open"),
+  },
+  projectState: {
+    setProvider: (provider: (() => ProjectState) | null): (() => void) => {
+      projectStateProvider = provider;
+      return () => {
+        if (projectStateProvider === provider) {
+          projectStateProvider = null;
+        }
+      };
+    },
   },
   appWindow: {
     closeConfirmed: (): Promise<void> => ipcRenderer.invoke("app:close-confirmed"),

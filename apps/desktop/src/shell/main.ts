@@ -20,7 +20,14 @@ const Jimp = require("jimp") as {
   MIME_PNG: string;
 };
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
-import type { IpcMainEvent, MenuItemConstructorOptions, OpenDialogOptions, SaveDialogOptions } from "electron";
+import type {
+  IpcMainEvent,
+  MenuItemConstructorOptions,
+  MessageBoxOptions,
+  MessageBoxReturnValue,
+  OpenDialogOptions,
+  SaveDialogOptions,
+} from "electron";
 import { autoUpdater } from "electron-updater";
 import {
   SlicebugCutSession,
@@ -36,8 +43,8 @@ import { createMainWindowOptions, resolveRendererEntry } from "./window-config";
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 let activeCutSession: SlicebugCutSession | null = null;
 const closeAllowedWindows = new WeakSet<BrowserWindow>();
-const DEFAULT_UPDATE_CHECK_DELAY_MS = 30_000;
-const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+let updateCheckInProgress = false;
+let installingUpdate = false;
 
 type RendererAction =
   | "new-project"
@@ -83,8 +90,14 @@ type WorkspaceEditState = {
   canReorder: boolean;
 };
 
+type ProjectState = {
+  hasOpenProject: boolean;
+  hasUnsavedChanges: boolean;
+};
+
 const PROJECT_FILE_FILTER = { name: "KindCut Projects", extensions: ["kindcut"] };
 const EDIT_STATE_REQUEST_TIMEOUT_MS = 250;
+const PROJECT_STATE_REQUEST_TIMEOUT_MS = 500;
 const ABOUT_COPY =
   "KindCut helps you design, preview, save, and prepare Cricut projects locally. " +
   "Cutter handoff is powered by the bundled SliceBug helper and always requires explicit confirmation.";
@@ -181,7 +194,15 @@ function configureAboutPanel(): void {
   });
 }
 
-function configureSilentUpdates(): void {
+function getPreferredWindow(): BrowserWindow | null {
+  return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+}
+
+function showMessage(window: BrowserWindow | null, options: MessageBoxOptions): Promise<MessageBoxReturnValue> {
+  return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
+}
+
+function configureUpdates(mainWindow: BrowserWindow): void {
   const allowDevUpdateCheck = process.env.KINDCUT_ENABLE_DEV_AUTO_UPDATE === "1";
   if (
     process.env.KINDCUT_DISABLE_AUTO_UPDATE === "1" ||
@@ -199,20 +220,128 @@ function configureSilentUpdates(): void {
     autoUpdater.forceDevUpdateConfig = true;
   }
 
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.autoRunAppAfterInstall = true;
   autoUpdater.logger = null;
 
   const ignoreUpdateError = () => undefined;
   autoUpdater.on("error", ignoreUpdateError);
+  autoUpdater.on("download-progress", (progress) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.setProgressBar(progress.percent / 100);
+    }
+  });
+  autoUpdater.on("update-downloaded", () => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.setProgressBar(-1);
+    }
+  });
 
-  const checkForUpdatesSilently = () => {
-    void autoUpdater.checkForUpdates().catch(ignoreUpdateError);
-  };
+  void checkForUpdates({ interactive: false, sourceWindow: mainWindow });
+}
 
-  const updateCheckDelayMs = Number(process.env.KINDCUT_UPDATE_CHECK_DELAY_MS || DEFAULT_UPDATE_CHECK_DELAY_MS);
-  setTimeout(checkForUpdatesSilently, Number.isFinite(updateCheckDelayMs) ? updateCheckDelayMs : DEFAULT_UPDATE_CHECK_DELAY_MS);
-  setInterval(checkForUpdatesSilently, UPDATE_CHECK_INTERVAL_MS).unref();
+async function checkForUpdates({ interactive, sourceWindow }: { interactive: boolean; sourceWindow?: BrowserWindow | null }): Promise<void> {
+  if (updateCheckInProgress || installingUpdate) {
+    if (interactive) {
+      await showMessage(sourceWindow ?? getPreferredWindow(), {
+        type: "info",
+        title: "KindCut Update",
+        message: "KindCut is already checking for an update.",
+        buttons: ["OK"],
+      });
+    }
+    return;
+  }
+
+  updateCheckInProgress = true;
+  const window = sourceWindow ?? getPreferredWindow();
+
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    const updateInfo = result?.updateInfo;
+    if (!result?.isUpdateAvailable || !updateInfo) {
+      if (interactive) {
+        await showMessage(window, {
+          type: "info",
+          title: "KindCut Update",
+          message: "KindCut is up to date.",
+          detail: `You are running KindCut ${app.getVersion()}.`,
+          buttons: ["OK"],
+        });
+      }
+      return;
+    }
+
+    const projectState = window ? await requestProjectState(window) : null;
+    if (!projectState) {
+      if (interactive) {
+        await showMessage(window, {
+          type: "info",
+          title: "KindCut Update",
+          message: `KindCut ${updateInfo.version} is available.`,
+          detail: "KindCut could not confirm that no project is open. Return to the welcome screen, then check again to install the update.",
+          buttons: ["OK"],
+        });
+      }
+      return;
+    }
+
+    if (projectState.hasOpenProject || projectState.hasUnsavedChanges) {
+      if (interactive) {
+        await showMessage(window, {
+          type: "info",
+          title: "KindCut Update",
+          message: `KindCut ${updateInfo.version} is available.`,
+          detail: projectState.hasUnsavedChanges
+            ? "Save or close your current project, return to the welcome screen, then check again to install the update."
+            : "Close your current project and return to the welcome screen, then check again to install the update.",
+          buttons: ["OK"],
+        });
+      }
+      return;
+    }
+
+    const choice = await showMessage(window, {
+      type: "info",
+      title: "KindCut Update",
+      message: `KindCut ${updateInfo.version} is available.`,
+      detail: "Download and install it now? KindCut will restart after the update is ready.",
+      buttons: ["Install and Restart", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (choice.response !== 0) {
+      return;
+    }
+
+    await autoUpdater.downloadUpdate();
+    installingUpdate = true;
+    for (const openWindow of BrowserWindow.getAllWindows()) {
+      closeAllowedWindows.add(openWindow);
+      openWindow.setProgressBar(-1);
+    }
+    autoUpdater.quitAndInstall(false, true);
+  } catch {
+    for (const openWindow of BrowserWindow.getAllWindows()) {
+      openWindow.setProgressBar(-1);
+    }
+    if (interactive) {
+      await showMessage(window, {
+        type: "warning",
+        title: "KindCut Update",
+        message: "KindCut could not check for updates right now.",
+        detail: "Please try again later.",
+        buttons: ["OK"],
+      });
+    }
+  } finally {
+    updateCheckInProgress = false;
+  }
+}
+
+function checkForUpdatesFromMenu(): void {
+  void checkForUpdates({ interactive: true, sourceWindow: getPreferredWindow() });
 }
 
 function createProjectMenu(): MenuItemConstructorOptions {
@@ -254,7 +383,12 @@ function createAppMenu(): ReturnType<typeof Menu.buildFromTemplate> {
       ? [
           {
             label: app.name,
-            submenu: [{ role: "about" }, { type: "separator" }, { role: "quit" }],
+            submenu: [
+              { role: "about" },
+              { label: "Check for Updates...", click: checkForUpdatesFromMenu },
+              { type: "separator" },
+              { role: "quit" },
+            ],
           } satisfies MenuItemConstructorOptions,
         ]
       : []),
@@ -286,7 +420,11 @@ function createAppMenu(): ReturnType<typeof Menu.buildFromTemplate> {
       : [
           {
             role: "help",
-            submenu: [{ label: "About KindCut", click: showAboutDialog }],
+            submenu: [
+              { label: "Check for Updates...", click: checkForUpdatesFromMenu },
+              { type: "separator" },
+              { label: "About KindCut", click: showAboutDialog },
+            ],
           } satisfies MenuItemConstructorOptions,
         ]),
   ];
@@ -320,6 +458,32 @@ function requestWorkspaceEditState(window: BrowserWindow): Promise<WorkspaceEdit
   });
 }
 
+function requestProjectState(window: BrowserWindow): Promise<ProjectState | null> {
+  const requestId = `project-state-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      ipcMain.removeListener("project-state:response", handleResponse);
+      resolve(null);
+    }, PROJECT_STATE_REQUEST_TIMEOUT_MS);
+
+    function handleResponse(
+      event: IpcMainEvent,
+      payload: { requestId?: string; state?: ProjectState },
+    ) {
+      if (event.sender !== window.webContents || payload.requestId !== requestId) {
+        return;
+      }
+      clearTimeout(timeout);
+      ipcMain.removeListener("project-state:response", handleResponse);
+      resolve(payload.state ?? null);
+    }
+
+    ipcMain.on("project-state:response", handleResponse);
+    window.webContents.send("project-state:request", requestId);
+  });
+}
+
 async function showContextMenu(window: BrowserWindow): Promise<void> {
   const editState = await requestWorkspaceEditState(window);
   if (!editState?.isWorkspaceContextTarget) {
@@ -346,6 +510,8 @@ async function showContextMenu(window: BrowserWindow): Promise<void> {
     { label: "Flip Vertical", enabled: hasSelection, click: () => sendRendererAction("edit-flip-y") },
     { type: "separator" },
     { label: "Select All", accelerator: "CmdOrCtrl+A", enabled: hasObjects, click: () => sendRendererAction("edit-select-all") },
+    { type: "separator" },
+    { label: "Check for Updates...", click: checkForUpdatesFromMenu },
   ]);
   contextMenu.popup({ window });
 }
@@ -381,7 +547,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   });
 
   mainWindow.on("close", (event) => {
-    if (closeAllowedWindows.has(mainWindow)) {
+    if (installingUpdate || closeAllowedWindows.has(mainWindow)) {
       return;
     }
     event.preventDefault();
@@ -625,8 +791,8 @@ ipcMain.handle("ai:trace-png-to-svg", async (_event, pngBase64: string): Promise
 });
 
 app.whenReady().then(async () => {
-  await createMainWindow();
-  configureSilentUpdates();
+  const mainWindow = await createMainWindow();
+  configureUpdates(mainWindow);
 
   if (process.env.CRICUT_COMPANION_SMOKE_SLICEBUG === "1") {
     console.log(JSON.stringify({ slicebug: await getSlicebugStatus() }));
