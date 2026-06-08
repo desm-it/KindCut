@@ -62,17 +62,6 @@ KindCut is configured to check the public `desm-it/KindCut` GitHub Releases
 feed silently in packaged builds. If GitHub is unreachable, metadata is missing,
 or there is no newer version, KindCut does not notify the user.
 
-For local smoke testing against a generic feed, start the optional sibling
-`KindCutUpdateServer/` project on localhost and override the feed URL
-explicitly:
-
-```bash
-KINDCUT_UPDATE_URL=http://127.0.0.1:8080/ \
-KINDCUT_ENABLE_DEV_AUTO_UPDATE=1 \
-KINDCUT_UPDATE_CHECK_DELAY_MS=1000 \
-npm run desktop:shell
-```
-
 ## Release Flow
 
 1. Commit the release-ready source.
