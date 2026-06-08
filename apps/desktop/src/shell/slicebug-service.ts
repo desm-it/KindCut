@@ -218,6 +218,27 @@ function firstExistingFile(candidates: string[]): string | null {
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
+function normalizeError(error: unknown): string {
+  return error instanceof Error ? error.stack || error.message : String(error);
+}
+
+function logSlicebugIssue(context: string, details: Record<string, unknown>): void {
+  console.error(`[SliceBug] ${context}`, details);
+}
+
+function logSlicebugResultIssue(context: string, result: RawSlicebugResult): void {
+  if (!result.error && result.stderr.trim().length === 0) {
+    return;
+  }
+
+  logSlicebugIssue(context, {
+    executable: result.executable,
+    error: result.error,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  });
+}
+
 export function buildSlicebugSubprocessEnv(options: SlicebugCandidateOptions = {}): NodeJS.ProcessEnv {
   const bundledUsvg = firstExistingFile(findBundledUsvgCandidates(options));
   if (!bundledUsvg) {
@@ -433,18 +454,30 @@ export function summarizePlanResult(result: RawSlicebugPlanResult): SlicebugPlan
   const stderr = result.stderr;
 
   if (!result.error && result.planJson) {
-    const plan = parsePlanSummary(result.planJson);
-    if (plan) {
-      return {
-        ok: true,
+    try {
+      const plan = parsePlanSummary(result.planJson);
+      if (plan) {
+        return {
+          ok: true,
+          executable: result.executable,
+          inputSvgPath: result.inputSvgPath,
+          outputPlanPath: result.outputPlanPath,
+          stdout,
+          stderr,
+          message: `Generated SliceBug plan with ${plan.pathCount} paths for ${plan.material.width}×${plan.material.height} in material on a ${plan.mat.width}×${plan.mat.height} in mat.`,
+          plan,
+        };
+      }
+    } catch (error) {
+      logSlicebugIssue("Failed to parse plan output", {
         executable: result.executable,
         inputSvgPath: result.inputSvgPath,
         outputPlanPath: result.outputPlanPath,
+        error: normalizeError(error),
         stdout,
         stderr,
-        message: `Generated SliceBug plan with ${plan.pathCount} paths for ${plan.material.width}×${plan.material.height} in material on a ${plan.mat.width}×${plan.mat.height} in mat.`,
-        plan,
-      };
+        planJson: result.planJson,
+      });
     }
   }
 
@@ -492,15 +525,19 @@ async function runVersion(executable: string): Promise<RawSlicebugResult> {
       windowsHide: true,
       env: buildSlicebugSubprocessEnv(),
     });
-    return { executable, stdout, stderr };
+    const result = { executable, stdout, stderr };
+    logSlicebugResultIssue("Version check returned stderr", result);
+    return result;
   } catch (error) {
     const maybeError = error as Error & { stdout?: string; stderr?: string; code?: unknown };
-    return {
+    const result = {
       executable,
       stdout: maybeError.stdout ?? "",
       stderr: maybeError.stderr ?? "",
       error: maybeError.message,
     };
+    logSlicebugResultIssue("Version check failed", result);
+    return result;
   }
 }
 
@@ -513,15 +550,19 @@ async function runBootstrap(executable: string, input: SlicebugBootstrapInput = 
       windowsHide: true,
       env: buildSlicebugSubprocessEnv(),
     });
-    return { executable, stdout, stderr };
+    const result = { executable, stdout, stderr };
+    logSlicebugResultIssue("Bootstrap returned stderr", result);
+    return result;
   } catch (error) {
     const maybeError = error as Error & { stdout?: string; stderr?: string; code?: unknown };
-    return {
+    const result = {
       executable,
       stdout: maybeError.stdout ?? "",
       stderr: maybeError.stderr ?? "",
       error: maybeError.message,
     };
+    logSlicebugResultIssue("Bootstrap failed", result);
+    return result;
   }
 }
 
@@ -598,7 +639,7 @@ async function runSamplePlan(
       env: buildSlicebugSubprocessEnv(),
     });
     const planJson = await fs.promises.readFile(request.outputPlanPath, "utf8");
-    return {
+    const result = {
       executable,
       stdout,
       stderr,
@@ -606,9 +647,11 @@ async function runSamplePlan(
       outputPlanPath: request.outputPlanPath,
       planJson,
     };
+    logSlicebugResultIssue("Sample plan returned stderr", result);
+    return result;
   } catch (error) {
     const maybeError = error as Error & { stdout?: string; stderr?: string };
-    return {
+    const result = {
       executable,
       stdout: maybeError.stdout ?? "",
       stderr: maybeError.stderr ?? "",
@@ -616,6 +659,8 @@ async function runSamplePlan(
       inputSvgPath: request.inputSvgPath,
       outputPlanPath: request.outputPlanPath,
     };
+    logSlicebugResultIssue("Sample plan failed", result);
+    return result;
   }
 }
 
@@ -631,7 +676,7 @@ async function runSvgPlan(executable: string, input: SvgPlanInput): Promise<RawS
       env: buildSlicebugSubprocessEnv(),
     });
     const planJson = await fs.promises.readFile(request.outputPlanPath, "utf8");
-    return {
+    const result = {
       executable,
       stdout,
       stderr,
@@ -639,9 +684,11 @@ async function runSvgPlan(executable: string, input: SvgPlanInput): Promise<RawS
       outputPlanPath: request.outputPlanPath,
       planJson,
     };
+    logSlicebugResultIssue("SVG plan returned stderr", result);
+    return result;
   } catch (error) {
     const maybeError = error as Error & { stdout?: string; stderr?: string };
-    return {
+    const result = {
       executable,
       stdout: maybeError.stdout ?? "",
       stderr: maybeError.stderr ?? "",
@@ -649,6 +696,8 @@ async function runSvgPlan(executable: string, input: SvgPlanInput): Promise<RawS
       inputSvgPath: request.inputSvgPath,
       outputPlanPath: request.outputPlanPath,
     };
+    logSlicebugResultIssue("SVG plan failed", result);
+    return result;
   }
 }
 
@@ -739,7 +788,23 @@ export class SlicebugCutSession {
       return this.getSnapshot();
     }
 
-    this.process = this.spawnProcess(this.command, this.args, buildSlicebugSubprocessEnv());
+    try {
+      this.process = this.spawnProcess(this.command, this.args, buildSlicebugSubprocessEnv());
+    } catch (error) {
+      logSlicebugIssue("Cut session failed to start", {
+        command: this.command,
+        args: this.args,
+        planPath: this.snapshot.planPath,
+        error: normalizeError(error),
+      });
+      this.snapshot = {
+        ...this.snapshot,
+        status: "error",
+        transcript: appendText(this.snapshot.transcript, normalizeError(error)),
+        action: makeCutAction("error", "Something needs attention", "SliceBug could not start the cut session.", false),
+      };
+      return this.getSnapshot();
+    }
     this.snapshot = {
       ...this.snapshot,
       status: "running",
@@ -747,8 +812,23 @@ export class SlicebugCutSession {
     };
 
     this.process.stdout.on("data", (chunk) => this.appendTranscript(chunk));
-    this.process.stderr.on("data", (chunk) => this.appendTranscript(chunk));
+    this.process.stderr.on("data", (chunk) => {
+      const stderr = chunk.toString();
+      logSlicebugIssue("Cut session stderr", {
+        command: this.command,
+        args: this.args,
+        planPath: this.snapshot.planPath,
+        stderr,
+      });
+      this.appendTranscript(stderr);
+    });
     this.process.on("error", (error) => {
+      logSlicebugIssue("Cut session process error", {
+        command: this.command,
+        args: this.args,
+        planPath: this.snapshot.planPath,
+        error: normalizeError(error),
+      });
       this.snapshot = {
         ...this.snapshot,
         status: "error",
@@ -757,6 +837,15 @@ export class SlicebugCutSession {
       };
     });
     this.process.on("exit", (code) => {
+      if (code !== 0 && this.snapshot.status !== "stopped") {
+        logSlicebugIssue("Cut session exited with an error", {
+          command: this.command,
+          args: this.args,
+          planPath: this.snapshot.planPath,
+          exitCode: code,
+          transcript: this.snapshot.transcript,
+        });
+      }
       if (this.snapshot.status === "stopped" || this.snapshot.status === "finished" || this.snapshot.status === "error") {
         return;
       }

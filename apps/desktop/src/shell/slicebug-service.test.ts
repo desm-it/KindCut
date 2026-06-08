@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
@@ -343,6 +343,33 @@ describe("slicebug desktop service", () => {
     });
   });
 
+  it("logs malformed SliceBug plan output to the console", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const result = summarizePlanResult({
+        executable: "slicebug",
+        stdout: "wrote plan",
+        stderr: "",
+        inputSvgPath: "/tmp/input.svg",
+        outputPlanPath: "/tmp/output.json",
+        planJson: "{bad json",
+      });
+
+      expect(result).toMatchObject({ ok: false, message: "wrote plan" });
+      expect(consoleError).toHaveBeenCalledWith(
+        "[SliceBug] Failed to parse plan output",
+        expect.objectContaining({
+          executable: "slicebug",
+          inputSvgPath: "/tmp/input.svg",
+          outputPlanPath: "/tmp/output.json",
+          planJson: "{bad json",
+        }),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("blocks cut sessions in smoke mode before spawning a process", () => {
     let spawned = false;
     const session = new SlicebugCutSession({
@@ -410,6 +437,36 @@ describe("slicebug desktop service", () => {
     session.start();
     expect(session.stop()).toMatchObject({ status: "stopped" });
     expect(fake.killed).toBe(true);
+  });
+
+  it("logs cut session stderr and non-zero exits", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const fake = new FakeCutProcess();
+      const session = new SlicebugCutSession({
+        id: "test-cut",
+        executable: "slicebug",
+        planPath: "/tmp/card.json",
+        smokeMode: false,
+        spawnProcess: () => fake,
+      });
+
+      session.start();
+      fake.stderr.emit("data", Buffer.from("Failed to connect to cutter\n"));
+      fake.emit("exit", 1);
+
+      expect(session.getSnapshot()).toMatchObject({ status: "error" });
+      expect(consoleError).toHaveBeenCalledWith(
+        "[SliceBug] Cut session stderr",
+        expect.objectContaining({ stderr: "Failed to connect to cutter\n", planPath: "/tmp/card.json" }),
+      );
+      expect(consoleError).toHaveBeenCalledWith(
+        "[SliceBug] Cut session exited with an error",
+        expect.objectContaining({ exitCode: 1, planPath: "/tmp/card.json" }),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });
 
