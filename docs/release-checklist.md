@@ -60,6 +60,9 @@ For CI release setup, see `docs/github-release-ci.md`.
 
 ## Distribution Notes
 
-- macOS builds are unsigned until Developer ID signing and notarization are configured.
+- macOS CI builds are ad-hoc signed for smoke testing until Developer ID
+  signing and notarization are configured. Browser-downloaded public builds
+  still require Apple Developer ID signing and notarization to open without a
+  Gatekeeper override.
 - Windows builds need an `.ico`, code signing, and a real Windows smoke test before sharing broadly.
 - Keep release artifacts out of git; commit source, config, docs, and icon assets only.

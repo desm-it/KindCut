@@ -81,7 +81,8 @@ the macOS DMG/zip and Windows installer to the release.
 
 ## Signing Status
 
-The current workflow builds unsigned artifacts. Before broad distribution, add:
+The current workflow ad-hoc signs macOS artifacts for smoke testing. Before
+broad distribution, add:
 
 - Apple Developer ID certificate, provisioning/notarization credentials, and
   `electron-builder` mac signing configuration.

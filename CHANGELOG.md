@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.1 - 2026-06-08
+
+### Fixed
+
+- Ad-hoc sign macOS smoke builds as complete app bundles instead of leaving them unsigned.
+
+### Notes
+
+- macOS builds still need Apple Developer ID signing and notarization before broad public distribution.
+
 ## 1.1.0 - 2026-06-08
 
 ### Added
