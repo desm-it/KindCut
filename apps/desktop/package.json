@@ -14,9 +14,9 @@
     "verify:slicebug": "node scripts/verify-slicebug-runtime.cjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.shell.json --noEmit",
     "test": "vitest run --passWithNoTests",
-    "package:dir": "npm run build:slicebug && npm run verify:slicebug && npm run build && electron-builder --dir",
-    "package:mac": "node scripts/assert-package-host.cjs mac && npm run build:slicebug && npm run verify:slicebug && npm run build && electron-builder --mac",
-    "package:win": "node scripts/assert-package-host.cjs win && npm run build:slicebug && npm run verify:slicebug && npm run build && electron-builder --win"
+    "package:dir": "npm run build:slicebug && npm run verify:slicebug && npm run build && electron-builder --dir --publish never",
+    "package:mac": "node scripts/assert-package-host.cjs mac && npm run build:slicebug && npm run verify:slicebug && npm run build && electron-builder --mac --publish never",
+    "package:win": "node scripts/assert-package-host.cjs win && npm run build:slicebug && npm run verify:slicebug && npm run build && electron-builder --win --publish never"
   },
   "dependencies": {
     "@cricut-companion/ai-designer": "*",
