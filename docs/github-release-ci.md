@@ -43,9 +43,9 @@ bundle a fresh SliceBug runtime from `desm-it/slicebug` `main`.
   old `cx-Freeze` pin does not pick up a newer incompatible parser API.
 
 The release workflow runs when a GitHub Release is published. It builds native
-macOS and Windows artifacts, then uploads them to that release. It also runs for
-version tags such as `v1.0.0` or `1.0.0`; tag builds create a draft GitHub
-release and attach the generated artifacts.
+macOS and Windows artifacts, then uploads them to that release. It does not run
+on tag pushes, because `gh release create` creates a tag and publishes a release,
+which would otherwise trigger duplicate builds for the same version.
 
 The workflow can also be started manually from GitHub Actions. Pass
 `release_tag` to attach builds to an existing release, or leave it blank to make
@@ -59,8 +59,10 @@ latest.yml
 ```
 
 KindCut is configured to check the public `desm-it/KindCut` GitHub Releases
-feed silently in packaged builds. If GitHub is unreachable, metadata is missing,
-or there is no newer version, KindCut does not notify the user.
+feed in packaged builds. If a newer version is found while no project is open,
+KindCut asks before downloading and installing. If GitHub is unreachable,
+metadata is missing, or there is no newer version, the automatic startup check
+stays quiet.
 
 ## Release Flow
 
@@ -72,8 +74,7 @@ or there is no newer version, KindCut does not notify the user.
 5. Publish a GitHub Release for the exact tag when ready:
 
 ```bash
-git tag 1.0.0
-git push origin 1.0.0
+gh release create 1.0.0 --target main --title "KindCut 1.0.0" --notes-file RELEASE_NOTES.md
 ```
 
 Publishing the GitHub Release triggers the native release workflow and attaches
