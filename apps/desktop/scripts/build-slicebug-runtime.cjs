@@ -80,6 +80,15 @@ function run(command, args, options = {}) {
   }
 }
 
+function runQuiet(command, args, options = {}) {
+  return spawnSync(command, args, {
+    cwd: options.cwd || slicebugRoot,
+    encoding: "utf8",
+    shell: false,
+    env: process.env,
+  });
+}
+
 function download(url) {
   return new Promise((resolve, reject) => {
     https.get(url, (response) => {
@@ -114,6 +123,39 @@ function venvExecutablePath(name) {
   return process.platform === "win32"
     ? path.join(venvDir, "Scripts", executableName(name))
     : path.join(venvDir, "bin", name);
+}
+
+function rewriteMacPythonInstallName(helperPath) {
+  if (process.platform !== "darwin") {
+    return;
+  }
+
+  const bundledPythonPath = path.join(outputDir, "lib", "Python");
+  if (!fs.existsSync(bundledPythonPath)) {
+    throw new Error(`Expected bundled Python library at ${bundledPythonPath}`);
+  }
+
+  const linkedLibraries = runQuiet("otool", ["-L", helperPath]);
+  if (linkedLibraries.status !== 0) {
+    throw new Error(`Could not inspect SliceBug helper libraries: ${linkedLibraries.stderr || linkedLibraries.stdout}`);
+  }
+
+  const pythonFramework = linkedLibraries.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/)[0])
+    .find((dependency) => /Python\.framework\/Versions\/[^/]+\/Python$/.test(dependency));
+
+  if (!pythonFramework) {
+    console.log("SliceBug helper does not reference a Python framework install name.");
+    return;
+  }
+
+  const bundledInstallName = "@executable_path/lib/Python";
+  console.log(`Rewriting SliceBug Python install name: ${pythonFramework} -> ${bundledInstallName}`);
+  run("install_name_tool", ["-change", pythonFramework, bundledInstallName, helperPath], { cwd: desktopRoot });
+  run("install_name_tool", ["-id", bundledInstallName, bundledPythonPath], { cwd: desktopRoot });
+  run("codesign", ["--force", "--sign", "-", bundledPythonPath], { cwd: desktopRoot });
+  run("codesign", ["--force", "--sign", "-", helperPath], { cwd: desktopRoot });
 }
 
 async function bundleUsvg() {
@@ -217,6 +259,8 @@ if (!fs.existsSync(helperPath)) {
   console.error(`Expected frozen SliceBug helper at ${helperPath}, but it was not created.`);
   process.exit(1);
 }
+
+rewriteMacPythonInstallName(helperPath);
 
 console.log(`Bundled SliceBug runtime ready: ${helperPath}`);
 

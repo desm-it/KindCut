@@ -43,10 +43,81 @@ function assertMagic(filePath, label) {
   }
 }
 
+function assertMacBundledPythonInstallName(filePath) {
+  if (platform !== "darwin") {
+    return;
+  }
+
+  const libraries = spawnSync("otool", ["-L", filePath], { encoding: "utf8" });
+  if (libraries.status !== 0) {
+    fail(`Could not inspect ${filePath} with otool: ${(libraries.stderr || libraries.stdout || "").trim()}`);
+  }
+
+  const output = libraries.stdout || "";
+  if (output.includes("/Library/Frameworks/Python.framework/")) {
+    fail("SliceBug helper links to a system Python framework instead of the bundled Python library.");
+  }
+  if (!output.includes("@executable_path/lib/Python")) {
+    fail("SliceBug helper does not link to @executable_path/lib/Python.");
+  }
+}
+
+function walkFiles(root) {
+  const files = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const entryPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...walkFiles(entryPath));
+    } else if (entry.isFile()) {
+      files.push(entryPath);
+    }
+  }
+  return files;
+}
+
+function assertWindowsRuntimeLayout() {
+  if (platform !== "win32") {
+    return;
+  }
+
+  const pythonDll = path.join(resourceRoot, "python310.dll");
+  assertFile(pythonDll, "bundled Windows Python DLL");
+  assertFile(path.join(resourceRoot, "lib", "library.zip"), "bundled Python library archive");
+
+  const invalidFiles = walkFiles(resourceRoot).filter((filePath) => {
+    const fileName = path.basename(filePath).toLowerCase();
+    return (
+      filePath.endsWith(".dylib") ||
+      filePath.endsWith(".so") ||
+      fileName === "python" ||
+      fileName === "slicebug"
+    );
+  });
+
+  if (invalidFiles.length > 0) {
+    fail(`Windows SliceBug bundle contains non-Windows runtime files:\n${invalidFiles.join("\n")}`);
+  }
+}
+
+function assertSlicebugStarts() {
+  const result = spawnSync(slicebugPath, ["--help"], { encoding: "utf8", windowsHide: true });
+  if (result.status !== 0) {
+    fail(`Bundled SliceBug helper did not start: ${(result.stderr || result.stdout || "").trim()}`);
+  }
+
+  const output = `${result.stdout || ""}${result.stderr || ""}`;
+  if (!/usage:\s*slicebug/i.test(output)) {
+    fail(`Bundled SliceBug helper produced unexpected help output: ${output.trim() || "<empty>"}`);
+  }
+}
+
 assertFile(slicebugPath, "SliceBug helper");
 assertFile(usvgPath, "usvg helper");
 assertMagic(slicebugPath, "SliceBug helper");
 assertMagic(usvgPath, "usvg helper");
+assertMacBundledPythonInstallName(slicebugPath);
+assertWindowsRuntimeLayout();
+assertSlicebugStarts();
 
 const version = spawnSync(usvgPath, ["--version"], { encoding: "utf8", windowsHide: true });
 if (version.status !== 0) {
