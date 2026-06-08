@@ -1,10 +1,10 @@
-# KindCut 1.0 Release Checklist
+# KindCut Release Checklist
 
 Use this checklist before tagging or sharing a KindCut release build.
 
 ## Version and Git
 
-- Confirm all workspace `package.json` versions are `1.0.0`.
+- Confirm all workspace `package.json` versions match the release version.
 - Confirm `package-lock.json` was refreshed after version changes.
 - Confirm the working tree only contains intentional release changes.
 - Commit locally before packaging final artifacts.
