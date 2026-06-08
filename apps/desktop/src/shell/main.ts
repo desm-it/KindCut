@@ -36,7 +36,7 @@ import { createMainWindowOptions, resolveRendererEntry } from "./window-config";
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 let activeCutSession: SlicebugCutSession | null = null;
 const closeAllowedWindows = new WeakSet<BrowserWindow>();
-const UPDATE_CHECK_DELAY_MS = 30_000;
+const DEFAULT_UPDATE_CHECK_DELAY_MS = 30_000;
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 type RendererAction =
@@ -182,8 +182,21 @@ function configureAboutPanel(): void {
 }
 
 function configureSilentUpdates(): void {
-  if (!app.isPackaged || isDevelopment || process.env.KINDCUT_DISABLE_AUTO_UPDATE === "1") {
+  const allowDevUpdateCheck = process.env.KINDCUT_ENABLE_DEV_AUTO_UPDATE === "1";
+  if (
+    process.env.KINDCUT_DISABLE_AUTO_UPDATE === "1" ||
+    (!app.isPackaged && !allowDevUpdateCheck) ||
+    (isDevelopment && !allowDevUpdateCheck)
+  ) {
     return;
+  }
+
+  const updateFeedUrl = process.env.KINDCUT_UPDATE_URL?.trim();
+  if (updateFeedUrl) {
+    autoUpdater.setFeedURL({ provider: "generic", url: updateFeedUrl });
+  }
+  if (allowDevUpdateCheck) {
+    autoUpdater.forceDevUpdateConfig = true;
   }
 
   autoUpdater.autoDownload = true;
@@ -197,7 +210,8 @@ function configureSilentUpdates(): void {
     void autoUpdater.checkForUpdates().catch(ignoreUpdateError);
   };
 
-  setTimeout(checkForUpdatesSilently, UPDATE_CHECK_DELAY_MS);
+  const updateCheckDelayMs = Number(process.env.KINDCUT_UPDATE_CHECK_DELAY_MS || DEFAULT_UPDATE_CHECK_DELAY_MS);
+  setTimeout(checkForUpdatesSilently, Number.isFinite(updateCheckDelayMs) ? updateCheckDelayMs : DEFAULT_UPDATE_CHECK_DELAY_MS);
   setInterval(checkForUpdatesSilently, UPDATE_CHECK_INTERVAL_MS).unref();
 }
 

@@ -63,6 +63,16 @@ packaged builds. The sibling `KindCutUpdateServer/` project serves those files
 and installers from a Proxmox-hosted VM or container. If the update feed is
 unreachable or has no newer version, KindCut does not notify the user.
 
+For local smoke testing, start the update server on localhost and override the
+feed URL explicitly:
+
+```bash
+KINDCUT_UPDATE_URL=http://127.0.0.1:8080/ \
+KINDCUT_ENABLE_DEV_AUTO_UPDATE=1 \
+KINDCUT_UPDATE_CHECK_DELAY_MS=1000 \
+npm run desktop:shell
+```
+
 ## Release Flow
 
 1. Commit the release-ready source.
