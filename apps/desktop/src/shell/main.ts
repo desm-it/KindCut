@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -101,6 +102,7 @@ type PendingUpdateState = {
   status: "ready" | "installing";
   createdAt: string;
   updatedAt: string;
+  downloadedFile?: string;
 };
 
 const PROJECT_FILE_FILTER = { name: "KindCut Projects", extensions: ["kindcut"] };
@@ -224,7 +226,8 @@ function isPendingUpdateState(value: unknown): value is PendingUpdateState {
     typeof record.version === "string" &&
     (record.status === "ready" || record.status === "installing") &&
     typeof record.createdAt === "string" &&
-    typeof record.updatedAt === "string"
+    typeof record.updatedAt === "string" &&
+    (record.downloadedFile === undefined || typeof record.downloadedFile === "string")
   );
 }
 
@@ -238,7 +241,11 @@ async function readPendingUpdate(): Promise<PendingUpdateState | null> {
   }
 }
 
-async function writePendingUpdate(version: string, status: PendingUpdateState["status"]): Promise<void> {
+async function writePendingUpdate(
+  version: string,
+  status: PendingUpdateState["status"],
+  downloadedFile?: string | null,
+): Promise<void> {
   const existing = await readPendingUpdate();
   const now = new Date().toISOString();
   const next: PendingUpdateState = {
@@ -246,6 +253,7 @@ async function writePendingUpdate(version: string, status: PendingUpdateState["s
     status,
     createdAt: existing?.version === version ? existing.createdAt : now,
     updatedAt: now,
+    downloadedFile: downloadedFile ?? (existing?.version === version ? existing.downloadedFile : undefined),
   };
   await fs.mkdir(path.dirname(pendingUpdatePath()), { recursive: true });
   await fs.writeFile(pendingUpdatePath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
@@ -253,6 +261,110 @@ async function writePendingUpdate(version: string, status: PendingUpdateState["s
 
 async function clearPendingUpdate(): Promise<void> {
   await fs.rm(pendingUpdatePath(), { force: true });
+}
+
+function parseVersionParts(version: string): number[] {
+  return version.split(/[.-]/).slice(0, 3).map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function isVersionAtLeast(current: string, target: string): boolean {
+  const currentParts = parseVersionParts(current);
+  const targetParts = parseVersionParts(target);
+  for (let index = 0; index < Math.max(currentParts.length, targetParts.length); index += 1) {
+    const currentPart = currentParts[index] ?? 0;
+    const targetPart = targetParts[index] ?? 0;
+    if (currentPart > targetPart) return true;
+    if (currentPart < targetPart) return false;
+  }
+  return true;
+}
+
+async function fileExists(filePath: string | null | undefined): Promise<boolean> {
+  if (!filePath) {
+    return false;
+  }
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getMacAppBundlePath(): string {
+  return path.resolve(path.dirname(process.execPath), "..", "..");
+}
+
+function buildMacUpdateInstallScript(): string {
+  return [
+    "#!/bin/bash",
+    "set -euo pipefail",
+    "",
+    'APP_PATH="$1"',
+    'ZIP_PATH="$2"',
+    'APP_PID="$3"',
+    'LOG_PATH="$4"',
+    'APP_NAME="$(basename "$APP_PATH")"',
+    'BACKUP_PATH="${APP_PATH}.kindcut-update-backup"',
+    'TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kindcut-update.XXXXXX")"',
+    "",
+    'exec >> "$LOG_PATH" 2>&1',
+    'echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Installing KindCut update"',
+    'echo "App: $APP_PATH"',
+    'echo "Zip: $ZIP_PATH"',
+    "",
+    "cleanup() {",
+    '  rm -rf "$TMP_DIR"',
+    "}",
+    "trap cleanup EXIT",
+    "",
+    "for _ in $(seq 1 120); do",
+    '  if ! kill -0 "$APP_PID" 2>/dev/null; then',
+    "    break",
+    "  fi",
+    "  sleep 0.5",
+    "done",
+    "",
+    'ditto -x -k "$ZIP_PATH" "$TMP_DIR"',
+    'NEW_APP="$(find "$TMP_DIR" -maxdepth 3 -name "$APP_NAME" -type d -print -quit)"',
+    'if [ -z "$NEW_APP" ]; then',
+    '  echo "Could not find $APP_NAME inside update zip"',
+    "  exit 1",
+    "fi",
+    "",
+    'rm -rf "$BACKUP_PATH"',
+    'mv "$APP_PATH" "$BACKUP_PATH"',
+    'if ! ditto "$NEW_APP" "$APP_PATH"; then',
+    '  echo "Copy failed; restoring previous app"',
+    '  rm -rf "$APP_PATH"',
+    '  mv "$BACKUP_PATH" "$APP_PATH"',
+    '  open "$APP_PATH"',
+    "  exit 1",
+    "fi",
+    "",
+    'rm -rf "$BACKUP_PATH"',
+    'xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true',
+    'open "$APP_PATH"',
+    'echo "Install complete"',
+    "",
+  ].join("\n");
+}
+
+async function runMacUpdateInstaller(downloadedFile: string): Promise<void> {
+  const appBundlePath = getMacAppBundlePath();
+  const logPath = path.join(app.getPath("userData"), "updater-install.log");
+  const scriptPath = path.join(app.getPath("temp"), `kindcut-update-${Date.now()}.sh`);
+  await fs.writeFile(scriptPath, buildMacUpdateInstallScript(), { encoding: "utf8", mode: 0o700 });
+  const child = spawn("/bin/bash", [scriptPath, appBundlePath, downloadedFile, String(process.pid), logPath], {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.unref();
+  app.quit();
+}
+
+function pickDownloadedUpdateFile(downloadedFiles: string[]): string | null {
+  return downloadedFiles.find((file) => file.endsWith(".zip") || file.endsWith(".dmg") || file.endsWith(".exe")) ?? downloadedFiles[0] ?? null;
 }
 
 function configureUpdates(mainWindow: BrowserWindow): void {
@@ -276,12 +388,17 @@ function configureUpdates(mainWindow: BrowserWindow): void {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.autoRunAppAfterInstall = true;
-  autoUpdater.logger = null;
+  autoUpdater.logger = console;
 
   if (!updateEventsConfigured) {
     updateEventsConfigured = true;
-    const ignoreUpdateError = () => undefined;
-    autoUpdater.on("error", ignoreUpdateError);
+    autoUpdater.on("error", (error) => {
+      console.error("[KindCut updater] Update error", error);
+      installingUpdate = false;
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.setProgressBar(-1);
+      }
+    });
     autoUpdater.on("download-progress", (progress) => {
       for (const window of BrowserWindow.getAllWindows()) {
         window.setProgressBar(progress.percent / 100);
@@ -299,6 +416,11 @@ function configureUpdates(mainWindow: BrowserWindow): void {
 
 async function startUpdateFlow(mainWindow: BrowserWindow): Promise<void> {
   const pendingUpdate = await readPendingUpdate();
+  if (pendingUpdate && isVersionAtLeast(app.getVersion(), pendingUpdate.version)) {
+    await clearPendingUpdate();
+    await checkForUpdates({ interactive: false, sourceWindow: mainWindow });
+    return;
+  }
   if (pendingUpdate?.status === "ready") {
     await installPendingUpdateOnStartup(mainWindow, pendingUpdate);
     return;
@@ -315,42 +437,56 @@ async function installPendingUpdateOnStartup(window: BrowserWindow, pendingUpdat
   window.setProgressBar(2);
 
   try {
-    const result = await autoUpdater.checkForUpdates();
-    const updateInfo = result?.updateInfo;
-    if (!result?.isUpdateAvailable || !updateInfo || updateInfo.version !== pendingUpdate.version) {
-      await clearPendingUpdate();
-      installingUpdate = false;
-      window.setProgressBar(-1);
-      return;
-    }
-
-    await writePendingUpdate(pendingUpdate.version, "installing");
-    await autoUpdater.downloadUpdate();
-    for (const openWindow of BrowserWindow.getAllWindows()) {
-      closeAllowedWindows.add(openWindow);
-      openWindow.setProgressBar(-1);
-    }
-    autoUpdater.quitAndInstall(false, true);
-  } catch {
+    await installPreparedUpdate(pendingUpdate.version, pendingUpdate.downloadedFile);
+  } catch (error) {
+    console.error("[KindCut updater] Failed to install pending update", error);
     installingUpdate = false;
+    await writePendingUpdate(pendingUpdate.version, "ready", pendingUpdate.downloadedFile);
     for (const openWindow of BrowserWindow.getAllWindows()) {
       openWindow.setProgressBar(-1);
     }
   }
 }
 
-async function restartForPendingUpdate(version: string): Promise<void> {
-  await writePendingUpdate(version, "ready");
+async function downloadUpdateFileForVersion(version: string, existingFile?: string | null): Promise<string | null> {
+  if (await fileExists(existingFile)) {
+    return existingFile ?? null;
+  }
+
+  const result = await autoUpdater.checkForUpdates();
+  const updateInfo = result?.updateInfo;
+  if (!result?.isUpdateAvailable || !updateInfo || updateInfo.version !== version) {
+    await clearPendingUpdate();
+    return null;
+  }
+
+  const downloadedFiles = await autoUpdater.downloadUpdate();
+  return pickDownloadedUpdateFile(downloadedFiles);
+}
+
+async function installPreparedUpdate(version: string, downloadedFile?: string | null): Promise<void> {
+  const updateFile = await downloadUpdateFileForVersion(version, downloadedFile);
+  if (!updateFile) {
+    installingUpdate = false;
+    return;
+  }
+
   installingUpdate = true;
+  await writePendingUpdate(version, "installing", updateFile);
   for (const window of BrowserWindow.getAllWindows()) {
     closeAllowedWindows.add(window);
     window.setProgressBar(-1);
   }
-  app.relaunch();
-  app.quit();
+
+  if (process.platform === "darwin") {
+    await runMacUpdateInstaller(updateFile);
+    return;
+  }
+
+  autoUpdater.quitAndInstall(false, true);
 }
 
-async function promptForPreparedUpdate(window: BrowserWindow | null, version: string): Promise<void> {
+async function promptForPreparedUpdate(window: BrowserWindow | null, version: string, downloadedFile?: string | null): Promise<void> {
   const restartChoice = await showMessage(window, {
     type: "info",
     title: "KindCut Update",
@@ -361,9 +497,9 @@ async function promptForPreparedUpdate(window: BrowserWindow | null, version: st
     cancelId: 1,
   });
   if (restartChoice.response === 0) {
-    await restartForPendingUpdate(version);
+    await installPreparedUpdate(version, downloadedFile);
   } else {
-    await writePendingUpdate(version, "ready");
+    await writePendingUpdate(version, "ready", downloadedFile);
   }
 }
 
@@ -387,7 +523,7 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
     const pendingUpdate = await readPendingUpdate();
     if (pendingUpdate && !installingUpdate) {
       if (interactive) {
-        await promptForPreparedUpdate(window, pendingUpdate.version);
+        await promptForPreparedUpdate(window, pendingUpdate.version, pendingUpdate.downloadedFile);
       }
       return;
     }
@@ -449,13 +585,14 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
       return;
     }
 
-    await autoUpdater.downloadUpdate();
+    const downloadedFiles = await autoUpdater.downloadUpdate();
+    const downloadedFile = pickDownloadedUpdateFile(downloadedFiles);
     for (const openWindow of BrowserWindow.getAllWindows()) {
       openWindow.setProgressBar(-1);
     }
 
-    await writePendingUpdate(updateInfo.version, "ready");
-    await promptForPreparedUpdate(window, updateInfo.version);
+    await writePendingUpdate(updateInfo.version, "ready", downloadedFile);
+    await promptForPreparedUpdate(window, updateInfo.version, downloadedFile);
   } catch {
     for (const openWindow of BrowserWindow.getAllWindows()) {
       openWindow.setProgressBar(-1);
