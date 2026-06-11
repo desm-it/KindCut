@@ -33,6 +33,7 @@ import { autoUpdater } from "electron-updater";
 import {
   SlicebugCutSession,
   bootstrapSlicebug,
+  checkForBlockingCutterProcesses,
   generateSampleSlicebugPlan,
   generateSvgSlicebugPlan,
   getSlicebugSetupStatus,
@@ -867,6 +868,27 @@ ipcMain.handle("slicebug:generate-sample-plan", async (_event, choices?: { mater
 );
 ipcMain.handle("slicebug:create-plan", async (_event, input: SvgPlanInput) => generateSvgSlicebugPlan(input));
 ipcMain.handle("slicebug:start-cut-session", async (_event, planPath: string): Promise<CutSessionSnapshot> => {
+  const blocker = await checkForBlockingCutterProcesses();
+  if (!blocker.ok) {
+    activeCutSession = null;
+    return {
+      id: `cut-blocked-${Date.now()}`,
+      status: "blocked",
+      action: {
+        kind: "error",
+        title: "Close Design Space",
+        message: blocker.message,
+        requiresContinue: false,
+        canStop: false,
+        tone: "error",
+      },
+      transcript: blocker.message,
+      command: "",
+      args: [],
+      planPath,
+    };
+  }
+
   const status = await getSlicebugStatus();
   const executable = status.executable ?? "slicebug";
   activeCutSession = new SlicebugCutSession({

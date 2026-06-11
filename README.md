@@ -30,6 +30,10 @@ KindCut is built for a simple flow: describe or import an idea, place it on a re
 - **Bundled helper runtime** so release builds include the bridge needed for machine handoff.
 - **No surprise hardware actions**. KindCut prepares and previews; the final action stays explicit.
 
+## Development Note
+
+KindCut is maintained by an experienced developer, but this codebase is intentionally 100% vibe coded / AI generated. Treat the source with the same practical curiosity that shaped it: review changes carefully, keep hardware actions explicit, and expect the project to improve through hands-on testing.
+
 ## Screenshots
 
 ![KindCut card workspace](docs/assets/readme-feature.png)

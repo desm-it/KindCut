@@ -6,19 +6,25 @@ import path from "node:path";
 import {
   SlicebugCutSession,
   buildBootstrapInvocation,
+  buildBootstrapCandidateInputs,
   buildSamplePlanRequest,
   buildSlicebugSubprocessEnv,
   buildSvgPlanRequest,
   buildSlicebugInvocation,
+  buildListMaterialsInvocation,
   bundledSlicebugExecutablePath,
   bundledUsvgExecutablePath,
   defaultDesignSpacePaths,
+  defaultDesignSpacePathCandidates,
+  defaultDesignSpaceProfilePathCandidates,
   desktopResourceSlicebugExecutablePath,
   desktopResourceUsvgExecutablePath,
+  findDesignSpaceMachineProfileSerials,
   findBundledUsvgCandidates,
   findSlicebugExecutableCandidates,
   getSlicebugSetupStatus,
   isBundledUsvgBootstrapFallback,
+  parseWindowsTasklistImageNames,
   summarizePlanResult,
   summarizeSlicebugResult,
   vendoredSlicebugFrozenExecutablePath,
@@ -96,6 +102,10 @@ describe("slicebug desktop service", () => {
     expect(buildSlicebugInvocation()).toEqual({ args: ["--version"] });
   });
 
+  it("builds only the safe non-cutting material validation invocation", () => {
+    expect(buildListMaterialsInvocation()).toEqual({ args: ["list-materials"] });
+  });
+
   it("builds an explicit first-run bootstrap invocation", () => {
     expect(
       buildBootstrapInvocation({
@@ -124,6 +134,74 @@ describe("slicebug desktop service", () => {
     });
   });
 
+  it("tries alternate Windows Design Space install and profile paths during bootstrap", () => {
+    const home = "C:\\Users\\Test";
+
+    expect(defaultDesignSpacePathCandidates("win32", home)).toEqual([
+      path.join(home, "AppData", "Local", "Programs", "Cricut Design Space"),
+      path.join(home, "AppData", "Local", "Program", "Cricut Design Space"),
+      path.join(home, "AppData", "Local", "Cricut Design Space"),
+    ]);
+    expect(defaultDesignSpaceProfilePathCandidates("win32", home)).toEqual([
+      path.join(home, ".cricut-design-space"),
+      path.join(home, "AppData", "Roaming", "Cricut Design Space"),
+      path.join(home, "AppData", "Local", "Cricut Design Space"),
+      path.join(home, "AppData", "Local", "Programs", "Cricut Design Space"),
+      path.join(home, "AppData", "Local", "Program", "Cricut Design Space"),
+    ]);
+
+    expect(buildBootstrapCandidateInputs({}, "win32", home)).toHaveLength(15);
+  });
+
+  it("respects explicit bootstrap paths while filling in only missing defaults", () => {
+    const home = "C:\\Users\\Test";
+    const explicitProfile = "D:\\Profiles\\DesignSpace";
+
+    expect(
+      buildBootstrapCandidateInputs(
+        {
+          designSpaceProfilePath: explicitProfile,
+        },
+        "win32",
+        home,
+      ),
+    ).toEqual([
+      {
+        designSpacePath: path.join(home, "AppData", "Local", "Programs", "Cricut Design Space"),
+        designSpaceProfilePath: explicitProfile,
+      },
+      {
+        designSpacePath: path.join(home, "AppData", "Local", "Program", "Cricut Design Space"),
+        designSpaceProfilePath: explicitProfile,
+      },
+      {
+        designSpacePath: path.join(home, "AppData", "Local", "Cricut Design Space"),
+        designSpaceProfilePath: explicitProfile,
+      },
+    ]);
+  });
+
+  it("parses Windows tasklist CSV image names", () => {
+    expect(
+      parseWindowsTasklistImageNames(
+        [
+          '"Cricut Design Space.exe","1234","Console","1","100,000 K"',
+          '"CricutDevice.exe","2345","Console","1","10,000 K"',
+          '"explorer.exe","3456","Console","1","50,000 K"',
+        ].join("\r\n"),
+      ),
+    ).toEqual(["Cricut Design Space.exe", "CricutDevice.exe", "explorer.exe"]);
+  });
+
+  it("finds Design Space machine profile serials without running SliceBug", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "kindcut-design-space-profile-"));
+    const materialRoot = path.join(root, "LocalData", "user-1", "MaterialSettings", "JOY123");
+    fs.mkdirSync(materialRoot, { recursive: true });
+    fs.writeFileSync(path.join(materialRoot, "MaterialSettings"), "{}");
+
+    expect(findDesignSpaceMachineProfileSerials(root)).toEqual(["JOY123"]);
+  });
+
   it("detects whether SliceBug has been bootstrapped without touching hardware", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "kindcut-slicebug-setup-"));
     const config = path.join(home, ".slicebug");
@@ -133,23 +211,82 @@ describe("slicebug desktop service", () => {
     expect(getSlicebugSetupStatus(home, "darwin", null)).toMatchObject({
       hasKeys: false,
       hasProfiles: false,
+      hasMachineProfile: false,
+      machineProfileCount: 0,
+      profileNames: [],
       hasDevicePlugin: false,
       hasUsvg: false,
       bootstrapped: false,
     });
 
     fs.writeFileSync(path.join(config, "keys.json"), "{}");
-    fs.writeFileSync(path.join(config, "profiles.json"), "{}");
+    fs.writeFileSync(
+      path.join(config, "profiles.json"),
+      JSON.stringify({ version: 1, profiles: { default: { serial: "JOY123" } } }),
+    );
+    fs.mkdirSync(path.join(config, "profiles", "JOY123"), { recursive: true });
+    fs.writeFileSync(path.join(config, "profiles", "JOY123", "material_settings.json"), "{}");
     fs.writeFileSync(path.join(config, "plugins", "device-common", "CricutDevice"), "");
     fs.writeFileSync(path.join(config, "plugins", "usvg", "usvg"), "");
 
     expect(getSlicebugSetupStatus(home, "darwin", null)).toMatchObject({
       hasKeys: true,
       hasProfiles: true,
+      hasMachineProfile: true,
+      machineProfileCount: 1,
+      profileNames: ["default"],
+      missingMaterialSettingsPaths: [],
       hasDevicePlugin: true,
       hasUsvg: true,
       bootstrapped: true,
     });
+  });
+
+  it("does not treat an empty profiles file as setup-ready", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "kindcut-slicebug-empty-profiles-"));
+    const config = path.join(home, ".slicebug");
+    fs.mkdirSync(path.join(config, "plugins", "device-common"), { recursive: true });
+    fs.mkdirSync(path.join(config, "plugins", "usvg"), { recursive: true });
+    fs.writeFileSync(path.join(config, "keys.json"), "{}");
+    fs.writeFileSync(path.join(config, "profiles.json"), JSON.stringify({ version: 1, profiles: {} }));
+    fs.writeFileSync(path.join(config, "plugins", "device-common", "CricutDevice.exe"), "");
+    fs.writeFileSync(path.join(config, "plugins", "usvg", "usvg.exe"), "");
+
+    expect(getSlicebugSetupStatus(home, "win32", null)).toMatchObject({
+      hasKeys: true,
+      hasProfiles: true,
+      hasMachineProfile: false,
+      machineProfileCount: 0,
+      profileNames: [],
+      hasDevicePlugin: true,
+      hasUsvg: true,
+      bootstrapped: false,
+    });
+  });
+
+  it("does not treat a profile without material settings as setup-ready", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "kindcut-slicebug-missing-materials-"));
+    const config = path.join(home, ".slicebug");
+    fs.mkdirSync(path.join(config, "plugins", "device-common"), { recursive: true });
+    fs.mkdirSync(path.join(config, "plugins", "usvg"), { recursive: true });
+    fs.writeFileSync(path.join(config, "keys.json"), "{}");
+    fs.writeFileSync(
+      path.join(config, "profiles.json"),
+      JSON.stringify({ version: 1, profiles: { default: { serial: "JOY123" } } }),
+    );
+    fs.writeFileSync(path.join(config, "plugins", "device-common", "CricutDevice.exe"), "");
+    fs.writeFileSync(path.join(config, "plugins", "usvg", "usvg.exe"), "");
+
+    const setup = getSlicebugSetupStatus(home, "win32", null);
+    expect(setup).toMatchObject({
+      hasMachineProfile: true,
+      machineProfileCount: 1,
+      profileNames: ["default"],
+      bootstrapped: false,
+    });
+    expect(setup.missingMaterialSettingsPaths).toEqual([
+      path.join(config, "profiles", "JOY123", "material_settings.json"),
+    ]);
   });
 
   it("accepts bundled usvg as setup-ready when Design Space keys and plugins exist", () => {
@@ -159,13 +296,20 @@ describe("slicebug desktop service", () => {
     fs.mkdirSync(path.join(config, "plugins", "device-common"), { recursive: true });
     fs.mkdirSync(path.dirname(bundled), { recursive: true });
     fs.writeFileSync(path.join(config, "keys.json"), "{}");
-    fs.writeFileSync(path.join(config, "profiles.json"), "{}");
+    fs.writeFileSync(
+      path.join(config, "profiles.json"),
+      JSON.stringify({ version: 1, profiles: { default: { serial: "JOY123" } } }),
+    );
+    fs.mkdirSync(path.join(config, "profiles", "JOY123"), { recursive: true });
+    fs.writeFileSync(path.join(config, "profiles", "JOY123", "material_settings.json"), "{}");
     fs.writeFileSync(path.join(config, "plugins", "device-common", "CricutDevice"), "");
     fs.writeFileSync(bundled, "");
 
     expect(getSlicebugSetupStatus(home, "darwin", bundled)).toMatchObject({
       hasKeys: true,
       hasProfiles: true,
+      hasMachineProfile: true,
+      missingMaterialSettingsPaths: [],
       hasDevicePlugin: true,
       hasUsvg: true,
       usvgPath: bundled,
@@ -343,6 +487,24 @@ describe("slicebug desktop service", () => {
     });
   });
 
+  it("turns missing machine profile plan failures into setup guidance", () => {
+    expect(
+      summarizePlanResult({
+        executable: "slicebug.exe",
+        stdout: "",
+        stderr: "Error: A machine profile is required to run this command, but it was not found.\nTry running `slicebug bootstrap`.",
+        error: "Command failed: slicebug.exe plan",
+        inputSvgPath: "C:\\Temp\\text.svg",
+        outputPlanPath: "C:\\Temp\\text.json",
+      }),
+    ).toMatchObject({
+      ok: false,
+      executable: "slicebug.exe",
+      message: expect.stringContaining("does not have a machine profile yet"),
+      plan: null,
+    });
+  });
+
   it("logs malformed SliceBug plan output to the console", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
@@ -467,6 +629,28 @@ describe("slicebug desktop service", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+
+  it("turns Windows cutter connection failures into friendly cut guidance", () => {
+    const fake = new FakeCutProcess();
+    const session = new SlicebugCutSession({
+      id: "test-cut",
+      executable: "slicebug",
+      planPath: "/tmp/card.json",
+      smokeMode: false,
+      spawnProcess: () => fake,
+    });
+
+    session.start();
+    fake.stderr.emit("data", Buffer.from("EOFError: Plugin stdout closed while reading message\n"));
+    fake.emit("exit", 1);
+
+    expect(session.getSnapshot()).toMatchObject({
+      status: "error",
+      action: {
+        message: expect.stringContaining("Close Design Space"),
+      },
+    });
   });
 });
 

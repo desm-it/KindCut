@@ -106,6 +106,11 @@ type SlicebugSetupStatus = {
   bootstrapped: boolean;
   hasKeys: boolean;
   hasProfiles: boolean;
+  hasMachineProfile: boolean;
+  machineProfileCount: number;
+  profileNames: string[];
+  profileMaterialSettingsPaths: string[];
+  missingMaterialSettingsPaths: string[];
   hasDevicePlugin: boolean;
   hasUsvg: boolean;
 };
@@ -242,6 +247,13 @@ export function App() {
           slicebugStatus.executable ? `Executable: ${slicebugStatus.executable}` : null,
           `Keys: ${slicebugSetupStatus.hasKeys ? "yes" : "no"}`,
           `Profiles: ${slicebugSetupStatus.hasProfiles ? "yes" : "no"}`,
+          `Machine profile: ${
+            slicebugSetupStatus.hasMachineProfile ? `yes (${slicebugSetupStatus.machineProfileCount})` : "no"
+          }`,
+          slicebugSetupStatus.profileNames.length > 0 ? `Profile names: ${slicebugSetupStatus.profileNames.join(", ")}` : null,
+          slicebugSetupStatus.missingMaterialSettingsPaths.length > 0
+            ? `Missing material settings: ${slicebugSetupStatus.missingMaterialSettingsPaths.length}`
+            : null,
           `Device plugin: ${slicebugSetupStatus.hasDevicePlugin ? "yes" : "no"}`,
           `usvg: ${slicebugSetupStatus.hasUsvg ? "yes" : "no"}`,
         ].filter((detail): detail is string => Boolean(detail)),

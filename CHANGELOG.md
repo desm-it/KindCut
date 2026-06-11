@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.8 - 2026-06-11
+
+### Added
+
+- Hardened Windows SliceBug bootstrap by trying alternate Design Space install and profile folders.
+- Added post-bootstrap `list-materials` validation, which checks keys and machine profiles without touching hardware.
+- Added console debug logging around SliceBug commands, cut-session output, and continue prompts.
+- Added a README development note clarifying that KindCut is a 100% vibe coded / AI generated codebase.
+
+### Fixed
+
+- Detect empty or incomplete SliceBug machine profiles before generating plans.
+- Block cuts when Design Space or its cutter helper appears to be holding the Windows connection.
+- Show friendlier setup, Bluetooth, wrong-cutter, multiple-cutter, and helper-connection errors.
+- Clear stale bootstrapped device-plugin files before re-importing from Design Space.
+
 ## 1.1.1 - 2026-06-08
 
 ### Fixed
