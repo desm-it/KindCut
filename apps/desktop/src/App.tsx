@@ -88,12 +88,14 @@ import {
   saveAiSettings,
 } from "./ai-svg-generate";
 import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult } from "./app-types";
+import type { UpdateState } from "./shell/preload";
 import { DesignWorkspace } from "./components/workspace/DesignWorkspace";
 import { WelcomeScreen } from "./components/screens/WelcomeScreen";
 import { SettingsModal } from "./components/modals/SettingsModal";
 import { AiGenerateModal } from "./components/modals/AiGenerateModal";
 import { CutPreviewModal } from "./components/modals/CutPreviewModal";
 import { UnsavedChangesModal } from "./components/modals/UnsavedChangesModal";
+import { UpdateModal } from "./components/modals/UpdateModal";
 
 type SlicebugStatus = {
   ok: boolean;
@@ -221,6 +223,8 @@ export function App() {
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiGenerateOpen, setAiGenerateOpen] = useState(false);
+  const [updateState, setUpdateState] = useState<UpdateState | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
   const { t } = useMemo(() => createTranslator(language), [language]);
   const importedSvg = useMemo(
     () => importedSvgs.find((item) => item.id === selectedSvgId) ?? importedSvgs[0] ?? null,
@@ -1594,6 +1598,46 @@ export function App() {
     void loadImageLibrary();
   }, []);
 
+  useEffect(() => {
+    let disposed = false;
+    void window.cricutCompanion?.updater?.getState().then((state) => {
+      if (!disposed) {
+        setUpdateState(state);
+      }
+    });
+    const unsubscribe = window.cricutCompanion?.updater?.onState((state) => {
+      setUpdateState(state);
+    });
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  async function runUpdaterAction(action: () => Promise<UpdateState> | undefined): Promise<void> {
+    setUpdateBusy(true);
+    try {
+      const state = await action();
+      if (state) {
+        setUpdateState(state);
+      }
+    } finally {
+      setUpdateBusy(false);
+    }
+  }
+
+  function handleDownloadUpdate(background: boolean): void {
+    void runUpdaterAction(() => window.cricutCompanion?.updater?.download({ background }));
+  }
+
+  function handleRestartUpdate(): void {
+    void runUpdaterAction(() => window.cricutCompanion?.updater?.install());
+  }
+
+  function handleDismissUpdate(): void {
+    void runUpdaterAction(() => window.cricutCompanion?.updater?.dismiss());
+  }
+
   // Load the curated Google Fonts catalog once (card-making fonts, by category).
   useEffect(() => {
     const id = "kindcut-google-fonts";
@@ -1680,21 +1724,33 @@ export function App() {
 
   if (screen === "welcome") {
     return (
-      <WelcomeScreen
-        language={language}
-        statusCopy={statusCopy}
-        statusDetailsLabel={t("details.advanced")}
-        samplePlanLoading={samplePlanLoading}
-        slicebugLoading={slicebugLoading}
-        slicebugBootstrapLoading={slicebugBootstrapLoading}
-        showBootstrapSetup={Boolean(slicebugStatus?.ok && slicebugSetupStatus && !slicebugSetupStatus.bootstrapped)}
-        onLanguageChange={handleLanguageChange}
-        onNewProject={handleNewProject}
-        onOpenProject={handleOpenProject}
-        onExampleProject={() => void handleExampleProject()}
-        onCheckSetup={() => void refreshSlicebugStatus()}
-        onBootstrapSetup={() => void runSlicebugBootstrap()}
-      />
+      <>
+        <WelcomeScreen
+          language={language}
+          statusCopy={statusCopy}
+          statusDetailsLabel={t("details.advanced")}
+          samplePlanLoading={samplePlanLoading}
+          slicebugLoading={slicebugLoading}
+          slicebugBootstrapLoading={slicebugBootstrapLoading}
+          showBootstrapSetup={Boolean(slicebugStatus?.ok && slicebugSetupStatus && !slicebugSetupStatus.bootstrapped)}
+          onLanguageChange={handleLanguageChange}
+          onNewProject={handleNewProject}
+          onOpenProject={handleOpenProject}
+          onExampleProject={() => void handleExampleProject()}
+          onCheckSetup={() => void refreshSlicebugStatus()}
+          onBootstrapSetup={() => void runSlicebugBootstrap()}
+        />
+        {updateState ? (
+          <UpdateModal
+            state={updateState}
+            busy={updateBusy}
+            onDownloadNow={() => handleDownloadUpdate(false)}
+            onDownloadBackground={() => handleDownloadUpdate(true)}
+            onRestart={handleRestartUpdate}
+            onLater={handleDismissUpdate}
+          />
+        ) : null}
+      </>
     );
   }
 
@@ -1822,6 +1878,16 @@ export function App() {
         onSave={handleUnsavedSave}
         onDiscard={handleUnsavedDiscard}
         onCancel={handleUnsavedCancel}
+      />
+    ) : null}
+    {updateState ? (
+      <UpdateModal
+        state={updateState}
+        busy={updateBusy}
+        onDownloadNow={() => handleDownloadUpdate(false)}
+        onDownloadBackground={() => handleDownloadUpdate(true)}
+        onRestart={handleRestartUpdate}
+        onLater={handleDismissUpdate}
       />
     ) : null}
     {savedToast > 0 ? (

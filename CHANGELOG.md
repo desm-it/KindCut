@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.12 - 2026-06-12
+
+### Added
+
+- Add a cross-platform in-app update modal with checking, available, downloading, ready, installing, and error states.
+- Show update download progress inside KindCut with percent, transferred bytes, total bytes, and speed when available.
+- Add explicit update choices for downloading now, downloading in the background, restarting to update, and trying later.
+- Log updater events, errors, cache hints, pending update state, and downloaded files for Windows debugging.
+
+### Fixed
+
+- Bundle SliceBug 0.3.3 so the copied CricutDevice helper starts from its own plugin directory and writes stderr diagnostics.
+- Clear stale pending update state when the installed app version has already caught up.
+- Keep automatic update-check failures silent while showing manual check failures in the modal.
+
 ## 1.1.11 - 2026-06-12
 
 ### Fixed

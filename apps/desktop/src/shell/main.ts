@@ -112,6 +112,33 @@ type PendingUpdateState = {
   downloadedFile?: string;
 };
 
+type UpdateProgressState = {
+  percent: number;
+  transferred?: number;
+  total?: number;
+  bytesPerSecond?: number;
+};
+
+type UpdateRendererState = {
+  status:
+    | "idle"
+    | "checking"
+    | "available"
+    | "downloading"
+    | "ready"
+    | "installing"
+    | "not-available"
+    | "failed";
+  visible: boolean;
+  manual: boolean;
+  version?: string;
+  currentVersion: string;
+  message?: string;
+  detail?: string;
+  progress?: UpdateProgressState;
+  downloadedFile?: string;
+};
+
 const PROJECT_FILE_FILTER = { name: "KindCut Projects", extensions: ["kindcut"] };
 const EDIT_STATE_REQUEST_TIMEOUT_MS = 250;
 const PROJECT_STATE_REQUEST_TIMEOUT_MS = 500;
@@ -119,6 +146,14 @@ const PENDING_UPDATE_FILE_NAME = "pending-update.json";
 const ABOUT_COPY =
   "KindCut helps you design, preview, save, and prepare Cricut projects locally. " +
   "Cutter handoff is powered by the bundled SliceBug helper and always requires explicit confirmation.";
+let updateRendererState: UpdateRendererState = {
+  status: "idle",
+  visible: false,
+  manual: false,
+  currentVersion: app.getVersion(),
+};
+let availableUpdateVersion: string | null = null;
+let availableDownloadedFile: string | null = null;
 
 function ensureKindCutExtension(filePath: string): string {
   return filePath.toLowerCase().endsWith(".kindcut") ? filePath : `${filePath}.kindcut`;
@@ -374,6 +409,41 @@ function pickDownloadedUpdateFile(downloadedFiles: string[]): string | null {
   return downloadedFiles.find((file) => file.endsWith(".zip") || file.endsWith(".dmg") || file.endsWith(".exe")) ?? downloadedFiles[0] ?? null;
 }
 
+function publishUpdateState(next: Partial<UpdateRendererState>): UpdateRendererState {
+  updateRendererState = {
+    ...updateRendererState,
+    ...next,
+    currentVersion: app.getVersion(),
+  };
+  logDiagnostics("info", "[KindCut updater] State changed", updateRendererState);
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send("updater:state", updateRendererState);
+  }
+  return updateRendererState;
+}
+
+function logUpdaterEvent(message: string, details: Record<string, unknown> = {}): void {
+  logDiagnostics("info", `[KindCut updater] ${message}`, {
+    ...details,
+    version: app.getVersion(),
+    platform: process.platform,
+    updateCacheDir: path.join(app.getPath("userData"), "pending"),
+    pendingUpdatePath: pendingUpdatePath(),
+  });
+}
+
+function clearWindowProgress(): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.setProgressBar(-1);
+  }
+}
+
+function setWindowProgress(progress: number): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.setProgressBar(progress);
+  }
+}
+
 function configureUpdates(mainWindow: BrowserWindow): void {
   const allowDevUpdateCheck = process.env.KINDCUT_ENABLE_DEV_AUTO_UPDATE === "1";
   if (
@@ -400,21 +470,49 @@ function configureUpdates(mainWindow: BrowserWindow): void {
   if (!updateEventsConfigured) {
     updateEventsConfigured = true;
     autoUpdater.on("error", (error) => {
-      console.error("[KindCut updater] Update error", error);
+      logDiagnostics("error", "[KindCut updater] Update error", {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      });
       installingUpdate = false;
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.setProgressBar(-1);
-      }
+      clearWindowProgress();
+      publishUpdateState({
+        status: "failed",
+        visible: updateRendererState.manual,
+        message: "KindCut could not update right now.",
+        detail: error.message,
+      });
+    });
+    autoUpdater.on("checking-for-update", () => {
+      logUpdaterEvent("Checking for update");
+    });
+    autoUpdater.on("update-available", (info) => {
+      logUpdaterEvent("Update available", { updateInfo: info });
+    });
+    autoUpdater.on("update-not-available", (info) => {
+      logUpdaterEvent("Update not available", { updateInfo: info });
     });
     autoUpdater.on("download-progress", (progress) => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.setProgressBar(progress.percent / 100);
-      }
+      const percent = Math.max(0, Math.min(100, progress.percent || 0));
+      setWindowProgress(percent / 100);
+      publishUpdateState({
+        status: "downloading",
+        visible: updateRendererState.visible,
+        progress: {
+          percent,
+          transferred: progress.transferred,
+          total: progress.total,
+          bytesPerSecond: progress.bytesPerSecond,
+        },
+      });
     });
-    autoUpdater.on("update-downloaded", () => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.setProgressBar(-1);
-      }
+    autoUpdater.on("update-downloaded", (event) => {
+      logUpdaterEvent("Update downloaded", {
+        updateInfo: event,
+        downloadedFile: availableDownloadedFile,
+      });
+      clearWindowProgress();
     });
   }
 
@@ -424,6 +522,7 @@ function configureUpdates(mainWindow: BrowserWindow): void {
 async function startUpdateFlow(mainWindow: BrowserWindow): Promise<void> {
   const pendingUpdate = await readPendingUpdate();
   if (pendingUpdate && isVersionAtLeast(app.getVersion(), pendingUpdate.version)) {
+    logUpdaterEvent("Clearing stale pending update because installed version caught up", { pendingUpdate });
     await clearPendingUpdate();
     await checkForUpdates({ interactive: false, sourceWindow: mainWindow });
     return;
@@ -433,6 +532,15 @@ async function startUpdateFlow(mainWindow: BrowserWindow): Promise<void> {
     return;
   }
   if (pendingUpdate?.status === "installing") {
+    publishUpdateState({
+      status: "installing",
+      visible: true,
+      manual: false,
+      version: pendingUpdate.version,
+      downloadedFile: pendingUpdate.downloadedFile,
+      message: `KindCut ${pendingUpdate.version} is installing.`,
+      detail: "If this keeps showing, use Check for Updates from the menu to retry.",
+    });
     return;
   }
 
@@ -441,17 +549,36 @@ async function startUpdateFlow(mainWindow: BrowserWindow): Promise<void> {
 
 async function installPendingUpdateOnStartup(window: BrowserWindow, pendingUpdate: PendingUpdateState): Promise<void> {
   installingUpdate = true;
-  window.setProgressBar(2);
+  setWindowProgress(2);
+  publishUpdateState({
+    status: "installing",
+    visible: true,
+    manual: false,
+    version: pendingUpdate.version,
+    downloadedFile: pendingUpdate.downloadedFile,
+    message: `KindCut ${pendingUpdate.version} is installing.`,
+    detail: "The app will restart to complete the update.",
+  });
 
   try {
     await installPreparedUpdate(pendingUpdate.version, pendingUpdate.downloadedFile);
   } catch (error) {
-    console.error("[KindCut updater] Failed to install pending update", error);
+    logDiagnostics("error", "[KindCut updater] Failed to install pending update", {
+      error: error instanceof Error ? error.message : String(error),
+      pendingUpdate,
+    });
     installingUpdate = false;
     await writePendingUpdate(pendingUpdate.version, "ready", pendingUpdate.downloadedFile);
-    for (const openWindow of BrowserWindow.getAllWindows()) {
-      openWindow.setProgressBar(-1);
-    }
+    clearWindowProgress();
+    publishUpdateState({
+      status: "ready",
+      visible: true,
+      manual: true,
+      version: pendingUpdate.version,
+      downloadedFile: pendingUpdate.downloadedFile,
+      message: `KindCut ${pendingUpdate.version} is ready.`,
+      detail: "Restart KindCut to try installing the update again.",
+    });
   }
 }
 
@@ -463,12 +590,19 @@ async function downloadUpdateFileForVersion(version: string, existingFile?: stri
   const result = await autoUpdater.checkForUpdates();
   const updateInfo = result?.updateInfo;
   if (!result?.isUpdateAvailable || !updateInfo || updateInfo.version !== version) {
+    logUpdaterEvent("Requested update version is no longer available", {
+      requestedVersion: version,
+      updateInfo,
+    });
     await clearPendingUpdate();
     return null;
   }
 
   const downloadedFiles = await autoUpdater.downloadUpdate();
-  return pickDownloadedUpdateFile(downloadedFiles);
+  const downloadedFile = pickDownloadedUpdateFile(downloadedFiles);
+  availableDownloadedFile = downloadedFile;
+  logUpdaterEvent("Downloaded update for version", { version, downloadedFile, downloadedFiles });
+  return downloadedFile;
 }
 
 async function installPreparedUpdate(version: string, downloadedFile?: string | null): Promise<void> {
@@ -482,8 +616,22 @@ async function installPreparedUpdate(version: string, downloadedFile?: string | 
   await writePendingUpdate(version, "installing", updateFile);
   for (const window of BrowserWindow.getAllWindows()) {
     closeAllowedWindows.add(window);
-    window.setProgressBar(-1);
   }
+  clearWindowProgress();
+  publishUpdateState({
+    status: "installing",
+    visible: true,
+    manual: true,
+    version,
+    downloadedFile: updateFile,
+    message: `KindCut ${version} is installing.`,
+    detail: "KindCut will close and restart to complete the update.",
+  });
+  logUpdaterEvent("Installing prepared update", {
+    version,
+    downloadedFile: updateFile,
+    processPlatform: process.platform,
+  });
 
   if (process.platform === "darwin") {
     await runMacUpdateInstaller(updateFile);
@@ -493,31 +641,14 @@ async function installPreparedUpdate(version: string, downloadedFile?: string | 
   autoUpdater.quitAndInstall(false, true);
 }
 
-async function promptForPreparedUpdate(window: BrowserWindow | null, version: string, downloadedFile?: string | null): Promise<void> {
-  const restartChoice = await showMessage(window, {
-    type: "info",
-    title: "KindCut Update",
-    message: `KindCut ${version} is ready.`,
-    detail: "KindCut will install this update the next time it starts.",
-    buttons: ["Restart Now", "Update on Next Start"],
-    defaultId: 0,
-    cancelId: 1,
-  });
-  if (restartChoice.response === 0) {
-    await installPreparedUpdate(version, downloadedFile);
-  } else {
-    await writePendingUpdate(version, "ready", downloadedFile);
-  }
-}
-
 async function checkForUpdates({ interactive, sourceWindow }: { interactive: boolean; sourceWindow?: BrowserWindow | null }): Promise<void> {
   if (updateCheckInProgress || (installingUpdate && !interactive)) {
     if (interactive) {
-      await showMessage(sourceWindow ?? getPreferredWindow(), {
-        type: "info",
-        title: "KindCut Update",
+      publishUpdateState({
+        status: updateCheckInProgress ? "checking" : "installing",
+        visible: true,
+        manual: true,
         message: updateCheckInProgress ? "KindCut is already checking for an update." : "KindCut is already preparing an update.",
-        buttons: ["OK"],
       });
     }
     return;
@@ -525,94 +656,95 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
 
   updateCheckInProgress = true;
   const window = sourceWindow ?? getPreferredWindow();
+  publishUpdateState({
+    status: "checking",
+    visible: interactive,
+    manual: interactive,
+    message: "Checking for updates...",
+    progress: undefined,
+  });
 
   try {
     const pendingUpdate = await readPendingUpdate();
     if (pendingUpdate && !installingUpdate) {
-      if (interactive) {
-        await promptForPreparedUpdate(window, pendingUpdate.version, pendingUpdate.downloadedFile);
-      }
+      availableUpdateVersion = pendingUpdate.version;
+      availableDownloadedFile = pendingUpdate.downloadedFile ?? null;
+      publishUpdateState({
+        status: "ready",
+        visible: true,
+        manual: interactive,
+        version: pendingUpdate.version,
+        downloadedFile: pendingUpdate.downloadedFile,
+        message: `KindCut ${pendingUpdate.version} is ready.`,
+        detail: "Restart KindCut to complete the update.",
+      });
       return;
     }
 
     const result = await autoUpdater.checkForUpdates();
     const updateInfo = result?.updateInfo;
     if (!result?.isUpdateAvailable || !updateInfo) {
-      if (interactive) {
-        await showMessage(window, {
-          type: "info",
-          title: "KindCut Update",
-          message: "KindCut is up to date.",
-          detail: `You are running KindCut ${app.getVersion()}.`,
-          buttons: ["OK"],
-        });
-      }
+      publishUpdateState({
+        status: "not-available",
+        visible: interactive,
+        manual: interactive,
+        message: "KindCut is up to date.",
+        detail: `You are running KindCut ${app.getVersion()}.`,
+      });
       return;
     }
 
     const projectState = window ? await requestProjectState(window) : null;
     if (!projectState) {
-      if (interactive) {
-        await showMessage(window, {
-          type: "info",
-          title: "KindCut Update",
-          message: `KindCut ${updateInfo.version} is available.`,
-          detail: "KindCut could not confirm that no project is open. Return to the welcome screen, then check again to install the update.",
-          buttons: ["OK"],
-        });
-      }
+      publishUpdateState({
+        status: "available",
+        visible: interactive,
+        manual: interactive,
+        version: updateInfo.version,
+        message: `KindCut ${updateInfo.version} is available.`,
+        detail: "KindCut could not confirm whether a project is open. Return to the welcome screen before installing.",
+      });
       return;
     }
 
     if (projectState.hasOpenProject || projectState.hasUnsavedChanges) {
-      if (interactive) {
-        await showMessage(window, {
-          type: "info",
-          title: "KindCut Update",
-          message: `KindCut ${updateInfo.version} is available.`,
-          detail: projectState.hasUnsavedChanges
-            ? "Save or close your current project, return to the welcome screen, then check again to install the update."
-            : "Close your current project and return to the welcome screen, then check again to install the update.",
-          buttons: ["OK"],
-        });
-      }
-      return;
-    }
-
-    const choice = await showMessage(window, {
-      type: "info",
-      title: "KindCut Update",
-      message: `KindCut ${updateInfo.version} is available.`,
-      detail: "Download it now? KindCut will ask before restarting or installing.",
-      buttons: ["Download Update", "Later"],
-      defaultId: 0,
-      cancelId: 1,
-    });
-    if (choice.response !== 0) {
-      return;
-    }
-
-    const downloadedFiles = await autoUpdater.downloadUpdate();
-    const downloadedFile = pickDownloadedUpdateFile(downloadedFiles);
-    for (const openWindow of BrowserWindow.getAllWindows()) {
-      openWindow.setProgressBar(-1);
-    }
-
-    await writePendingUpdate(updateInfo.version, "ready", downloadedFile);
-    await promptForPreparedUpdate(window, updateInfo.version, downloadedFile);
-  } catch {
-    for (const openWindow of BrowserWindow.getAllWindows()) {
-      openWindow.setProgressBar(-1);
-    }
-    if (interactive) {
-      await showMessage(window, {
-        type: "warning",
-        title: "KindCut Update",
-        message: "KindCut could not check for updates right now.",
-        detail: "Please try again later.",
-        buttons: ["OK"],
+      publishUpdateState({
+        status: "available",
+        visible: interactive,
+        manual: interactive,
+        version: updateInfo.version,
+        message: `KindCut ${updateInfo.version} is available.`,
+        detail: projectState.hasUnsavedChanges
+          ? "Save or close your current project, then return to the welcome screen before installing."
+          : "Close your current project and return to the welcome screen before installing.",
       });
+      return;
     }
+
+    availableUpdateVersion = updateInfo.version;
+    availableDownloadedFile = null;
+    publishUpdateState({
+      status: "available",
+      visible: true,
+      manual: interactive,
+      version: updateInfo.version,
+      message: `KindCut ${updateInfo.version} is available.`,
+      detail: "Download it now or let it continue in the background.",
+    });
+  } catch (error) {
+    clearWindowProgress();
+    logDiagnostics("error", "[KindCut updater] Could not check for updates", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      interactive,
+    });
+    publishUpdateState({
+      status: "failed",
+      visible: interactive,
+      manual: interactive,
+      message: "KindCut could not check for updates right now.",
+      detail: error instanceof Error ? error.message : "Please try again later.",
+    });
   } finally {
     updateCheckInProgress = false;
   }
@@ -620,6 +752,91 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
 
 function checkForUpdatesFromMenu(): void {
   void checkForUpdates({ interactive: true, sourceWindow: getPreferredWindow() });
+}
+
+async function downloadAvailableUpdate({ background }: { background: boolean }): Promise<UpdateRendererState> {
+  const version = availableUpdateVersion ?? updateRendererState.version;
+  if (!version) {
+    return publishUpdateState({
+      status: "failed",
+      visible: true,
+      manual: true,
+      message: "No update is ready to download.",
+      detail: "Check for updates again.",
+    });
+  }
+
+  publishUpdateState({
+    status: "downloading",
+    visible: !background,
+    manual: true,
+    version,
+    message: `Downloading KindCut ${version}...`,
+    detail: background ? "The update will continue downloading in the background." : undefined,
+    progress: { percent: 0 },
+  });
+
+  try {
+    const downloadedFile = await downloadUpdateFileForVersion(version, availableDownloadedFile);
+    clearWindowProgress();
+    if (!downloadedFile) {
+      return publishUpdateState({
+        status: "failed",
+        visible: true,
+        manual: true,
+        version,
+        message: "KindCut could not download the update.",
+        detail: "Check for updates again.",
+      });
+    }
+    availableDownloadedFile = downloadedFile;
+    await writePendingUpdate(version, "ready", downloadedFile);
+    return publishUpdateState({
+      status: "ready",
+      visible: true,
+      manual: true,
+      version,
+      downloadedFile,
+      progress: { percent: 100 },
+      message: `KindCut ${version} is ready.`,
+      detail: "Restart KindCut to complete the update.",
+    });
+  } catch (error) {
+    clearWindowProgress();
+    logDiagnostics("error", "[KindCut updater] Could not download update", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      version,
+    });
+    return publishUpdateState({
+      status: "failed",
+      visible: true,
+      manual: true,
+      version,
+      message: "KindCut could not download the update.",
+      detail: error instanceof Error ? error.message : "Please try again later.",
+    });
+  }
+}
+
+async function installReadyUpdate(): Promise<UpdateRendererState> {
+  const pendingUpdate = await readPendingUpdate();
+  const version = pendingUpdate?.version ?? updateRendererState.version ?? availableUpdateVersion;
+  if (!version) {
+    return publishUpdateState({
+      status: "failed",
+      visible: true,
+      manual: true,
+      message: "No downloaded update is ready.",
+      detail: "Download the update first.",
+    });
+  }
+  await installPreparedUpdate(version, pendingUpdate?.downloadedFile ?? availableDownloadedFile);
+  return updateRendererState;
+}
+
+function dismissUpdateModal(): UpdateRendererState {
+  return publishUpdateState({ visible: false, manual: false });
 }
 
 async function openLogsFolder(): Promise<void> {
@@ -893,6 +1110,16 @@ ipcMain.handle("app:close-confirmed", (event) => {
   closeAllowedWindows.add(win);
   win.close();
 });
+ipcMain.handle("updater:get-state", () => updateRendererState);
+ipcMain.handle("updater:check", async (event) => {
+  await checkForUpdates({ interactive: true, sourceWindow: BrowserWindow.fromWebContents(event.sender) });
+  return updateRendererState;
+});
+ipcMain.handle("updater:download", async (_event, input?: { background?: boolean }) =>
+  downloadAvailableUpdate({ background: Boolean(input?.background) }),
+);
+ipcMain.handle("updater:install", async () => installReadyUpdate());
+ipcMain.handle("updater:dismiss", () => dismissUpdateModal());
 ipcMain.handle("slicebug:get-status", async () => getSlicebugStatus());
 ipcMain.handle("slicebug:get-setup-status", async () => getSlicebugSetupStatus());
 ipcMain.handle("slicebug:bootstrap", async (_event, input?: { designSpacePath?: string; designSpaceProfilePath?: string }) =>

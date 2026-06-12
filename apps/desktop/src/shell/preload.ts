@@ -62,6 +62,33 @@ export type ProjectState = {
   hasUnsavedChanges: boolean;
 };
 
+export type UpdateProgressState = {
+  percent: number;
+  transferred?: number;
+  total?: number;
+  bytesPerSecond?: number;
+};
+
+export type UpdateState = {
+  status:
+    | "idle"
+    | "checking"
+    | "available"
+    | "downloading"
+    | "ready"
+    | "installing"
+    | "not-available"
+    | "failed";
+  visible: boolean;
+  manual: boolean;
+  version?: string;
+  currentVersion: string;
+  message?: string;
+  detail?: string;
+  progress?: UpdateProgressState;
+  downloadedFile?: string;
+};
+
 const emptyEditState: WorkspaceEditState = {
   isWorkspaceContextTarget: false,
   selectedObjectCount: 0,
@@ -128,6 +155,18 @@ const desktopApi = {
   },
   appWindow: {
     closeConfirmed: (): Promise<void> => ipcRenderer.invoke("app:close-confirmed"),
+  },
+  updater: {
+    getState: (): Promise<UpdateState> => ipcRenderer.invoke("updater:get-state"),
+    check: (): Promise<UpdateState> => ipcRenderer.invoke("updater:check"),
+    download: (input?: { background?: boolean }): Promise<UpdateState> => ipcRenderer.invoke("updater:download", input),
+    install: (): Promise<UpdateState> => ipcRenderer.invoke("updater:install"),
+    dismiss: (): Promise<UpdateState> => ipcRenderer.invoke("updater:dismiss"),
+    onState: (callback: (state: UpdateState) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, state: UpdateState) => callback(state);
+      ipcRenderer.on("updater:state", listener);
+      return () => ipcRenderer.removeListener("updater:state", listener);
+    },
   },
   imageLibrary: {
     list: (): Promise<LibraryImageMeta[]> => ipcRenderer.invoke("library:list"),
