@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { logDiagnostics } from "./diagnostics-log";
+import { getDiagnosticsLogsDir, logDiagnostics } from "./diagnostics-log";
 
 const execFileAsync = promisify(execFile);
 const JOEL_LOCAL_SLICEBUG = "/Users/joeldesmit/Cricut/SlicebugMac/.venv/bin/slicebug";
@@ -164,6 +164,7 @@ export interface CutSessionOptions {
   planPath: string;
   smokeMode: boolean;
   spawnProcess?: (command: string, args: string[], env?: NodeJS.ProcessEnv) => SlicebugProcess;
+  recoverFromHandshakeError?: () => Promise<SlicebugBootstrapResult>;
 }
 
 function platformExecutableName(platform: NodeJS.Platform, baseName: string): string {
@@ -266,16 +267,27 @@ function logSlicebugResultIssue(context: string, result: RawSlicebugResult): voi
 
 export function buildSlicebugSubprocessEnv(options: SlicebugCandidateOptions = {}): NodeJS.ProcessEnv {
   const bundledUsvg = firstExistingFile(findBundledUsvgCandidates(options));
+  const debugLogPath = process.env.SLICEBUG_DEBUG_LOG ?? slicebugDebugLogPath();
+  const diagnosticsEnv = debugLogPath ? { SLICEBUG_DEBUG_LOG: debugLogPath } : {};
   if (!bundledUsvg) {
-    return process.env;
+    return {
+      ...process.env,
+      ...diagnosticsEnv,
+    };
   }
 
   const usvgDir = path.dirname(bundledUsvg);
   const currentPath = process.env.PATH ?? "";
   return {
     ...process.env,
+    ...diagnosticsEnv,
     PATH: currentPath ? `${usvgDir}${path.delimiter}${currentPath}` : usvgDir,
   };
+}
+
+function slicebugDebugLogPath(): string | null {
+  const logsDir = getDiagnosticsLogsDir();
+  return logsDir ? path.join(logsDir, "slicebug-debug.log") : null;
 }
 
 export function buildSlicebugInvocation(): SlicebugInvocation {
@@ -1188,7 +1200,9 @@ export class SlicebugCutSession {
   private readonly command: string;
   private readonly args: string[];
   private readonly spawnProcess: (command: string, args: string[], env?: NodeJS.ProcessEnv) => SlicebugProcess;
+  private readonly recoverFromHandshakeError: () => Promise<SlicebugBootstrapResult>;
   private readonly smokeMode: boolean;
+  private recoveryAttempted = false;
   private process: SlicebugProcess | null = null;
   private snapshot: CutSessionSnapshot;
 
@@ -1199,6 +1213,7 @@ export class SlicebugCutSession {
     this.spawnProcess =
       options.spawnProcess ??
       ((command, args, env) => spawn(command, args, { windowsHide: true, env }) as ChildProcessWithoutNullStreams);
+    this.recoverFromHandshakeError = options.recoverFromHandshakeError ?? (() => bootstrapSlicebug());
     this.snapshot = {
       id: options.id,
       status: "idle",
@@ -1315,6 +1330,10 @@ export class SlicebugCutSession {
           transcript: this.snapshot.transcript,
         });
       }
+      if (code !== 0 && this.shouldAttemptBootstrapRecovery()) {
+        void this.attemptBootstrapRecovery();
+        return;
+      }
       if (this.snapshot.status === "stopped" || this.snapshot.status === "finished" || this.snapshot.status === "error") {
         return;
       }
@@ -1397,6 +1416,87 @@ export class SlicebugCutSession {
       action,
     };
   }
+
+  private shouldAttemptBootstrapRecovery(): boolean {
+    return !this.recoveryAttempted && isRecoverableCricutDeviceStartError(this.snapshot.transcript);
+  }
+
+  private async attemptBootstrapRecovery(): Promise<void> {
+    this.recoveryAttempted = true;
+    const recoveryIntro = [
+      "",
+      "KindCut detected that the cutter helper rejected the cut startup.",
+      "KindCut is refreshing the helper setup automatically.",
+      "",
+    ].join("\n");
+    this.snapshot = {
+      ...this.snapshot,
+      status: "running",
+      transcript: appendText(this.snapshot.transcript, recoveryIntro),
+      action: makeCutAction(
+        "running",
+        "Refreshing helper setup",
+        "The cutter helper rejected the cut startup. KindCut is rerunning helper setup now, then you can try the cut again.",
+        false,
+      ),
+    };
+    logSlicebugIssue("Cut session hit CricutDevice start error; running bootstrap recovery", {
+      command: this.command,
+      args: this.args,
+      planPath: this.snapshot.planPath,
+      transcript: this.snapshot.transcript,
+    });
+
+    try {
+      const result = await this.recoverFromHandshakeError();
+      logSlicebugDebug("Bootstrap recovery completed after cut startup failure", {
+        executable: result.executable,
+        ok: result.ok,
+        message: result.message,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        error: result.error,
+      });
+
+      const recoveryResultText = [
+        result.ok ? "KindCut refreshed the helper setup." : "KindCut tried to refresh the helper setup, but it did not complete.",
+        result.message,
+        "",
+      ].join("\n");
+      this.snapshot = {
+        ...this.snapshot,
+        status: "error",
+        transcript: appendText(this.snapshot.transcript, recoveryResultText),
+        action: makeCutAction(
+          "error",
+          result.ok ? "Helper setup refreshed" : "Helper setup still needs attention",
+          result.ok
+            ? "KindCut refreshed the helper setup. Make sure Design Space is closed and Bluetooth is connected, then start the cut again."
+            : `KindCut tried to refresh the helper setup, but it did not complete: ${result.message}`,
+          false,
+        ),
+      };
+    } catch (error) {
+      const message = normalizeError(error);
+      logSlicebugIssue("Bootstrap recovery threw after cut startup failure", {
+        command: this.command,
+        args: this.args,
+        planPath: this.snapshot.planPath,
+        error: message,
+      });
+      this.snapshot = {
+        ...this.snapshot,
+        status: "error",
+        transcript: appendText(this.snapshot.transcript, `KindCut could not refresh the helper setup.\n${message}\n`),
+        action: makeCutAction(
+          "error",
+          "Helper setup still needs attention",
+          "KindCut tried to refresh the helper setup, but the repair attempt failed. Open the logs folder and try helper setup manually.",
+          false,
+        ),
+      };
+    }
+  }
 }
 
 function sanitizeSvgBaseName(fileName: string): string {
@@ -1410,6 +1510,10 @@ function sanitizeSvgBaseName(fileName: string): string {
 
 function appendText(current: string, next: string): string {
   return `${current}${next}`;
+}
+
+export function isRecoverableCricutDeviceStartError(text: string): boolean {
+  return /incorrect message status:\s*expected\s+2,\s*got\s+0/i.test(text);
 }
 
 function parseCutAction(text: string): CutActionState {

@@ -23,6 +23,7 @@ import {
   findBundledUsvgCandidates,
   findSlicebugExecutableCandidates,
   getSlicebugSetupStatus,
+  isRecoverableCricutDeviceStartError,
   isBundledUsvgBootstrapFallback,
   parseWindowsTasklistImageNames,
   summarizePlanResult,
@@ -96,6 +97,27 @@ describe("slicebug desktop service", () => {
       repoRoot: "/missing/repo",
     });
     expect(env.PATH?.split(path.delimiter)[0]).toBe(path.dirname(usvg));
+  });
+
+  it("passes SliceBug debug log location through subprocess env", () => {
+    const previous = process.env.SLICEBUG_DEBUG_LOG;
+    process.env.SLICEBUG_DEBUG_LOG = path.join("/tmp", "kindcut-logs", "slicebug-debug.log");
+    try {
+      const env = buildSlicebugSubprocessEnv({
+        platform: "darwin",
+        resourcesPath: "/missing/resources",
+        appRoot: "/missing/app",
+        repoRoot: "/missing/repo",
+      });
+
+      expect(env.SLICEBUG_DEBUG_LOG).toBe(path.join("/tmp", "kindcut-logs", "slicebug-debug.log"));
+    } finally {
+      if (previous === undefined) {
+        delete process.env.SLICEBUG_DEBUG_LOG;
+      } else {
+        process.env.SLICEBUG_DEBUG_LOG = previous;
+      }
+    }
   });
 
   it("builds only the safe non-cutting status invocation", () => {
@@ -650,6 +672,66 @@ describe("slicebug desktop service", () => {
       action: {
         message: expect.stringContaining("Close Design Space"),
       },
+    });
+  });
+
+  it("detects the CricutDevice start-status error that can be repaired by bootstrap", () => {
+    expect(
+      isRecoverableCricutDeviceStartError(
+        "slicebug.exceptions.ProtocolError: incorrect message status: expected 2, got 0",
+      ),
+    ).toBe(true);
+    expect(isRecoverableCricutDeviceStartError("EOFError: Plugin stdout closed while reading message")).toBe(false);
+  });
+
+  it("runs bootstrap recovery once when CricutDevice rejects cut startup", async () => {
+    const fake = new FakeCutProcess();
+    const recoverFromHandshakeError = vi.fn(async () => ({
+      ok: true,
+      executable: "slicebug",
+      stdout: "setup ok\n",
+      stderr: "",
+      message: "SliceBug setup completed.",
+    }));
+    const session = new SlicebugCutSession({
+      id: "test-cut",
+      executable: "slicebug",
+      planPath: "/tmp/card.json",
+      smokeMode: false,
+      spawnProcess: () => fake,
+      recoverFromHandshakeError,
+    });
+
+    session.start();
+    fake.stderr.emit(
+      "data",
+      Buffer.from(
+        [
+          "Traceback (most recent call last):",
+          "slicebug.exceptions.ProtocolError: incorrect message status: expected 2, got 0",
+          "",
+        ].join("\n"),
+      ),
+    );
+    fake.emit("exit", 1);
+
+    expect(session.getSnapshot()).toMatchObject({
+      status: "running",
+      action: {
+        title: "Refreshing helper setup",
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(recoverFromHandshakeError).toHaveBeenCalledTimes(1);
+    expect(session.getSnapshot()).toMatchObject({
+      status: "error",
+      action: {
+        title: "Helper setup refreshed",
+        message: expect.stringContaining("start the cut again"),
+      },
+      transcript: expect.stringContaining("KindCut refreshed the helper setup."),
     });
   });
 });

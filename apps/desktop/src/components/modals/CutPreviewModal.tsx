@@ -240,8 +240,8 @@ function CutStepDetail({ language, matPreset, cutSession, steps, current, reques
     hint = t("cut.stoppedHint");
   } else if (status === "error") {
     visual = <span className="cut-detail__glyph cut-detail__glyph--error">{ERROR_ICON}</span>;
-    name = t("cutAction.error.title");
-    hint = t("cutAction.error.message");
+    name = cutSession.action.title || t("cutAction.error.title");
+    hint = cutSession.action.message || t("cutAction.error.message");
   } else if (kind === "unload") {
     // Cut done, mat still in the machine — eject it with the software Unload button.
     visual = (

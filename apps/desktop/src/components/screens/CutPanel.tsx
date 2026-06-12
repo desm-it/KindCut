@@ -22,9 +22,9 @@ function getCutActionCopy(
     case "replace-tool":
       return { title: t("cutAction.replace-tool.title"), message: t("cutAction.replace-tool.message") };
     case "running":
-      return { title: t("cutAction.running.title"), message: t("cutAction.running.message") };
+      return { title: action.title || t("cutAction.running.title"), message: action.message || t("cutAction.running.message") };
     case "error":
-      return { title: t("cutAction.error.title"), message: t("cutAction.error.message") };
+      return { title: action.title || t("cutAction.error.title"), message: action.message || t("cutAction.error.message") };
     default:
       return { title: t("cutAction.idle.title"), message: t("cutAction.idle.message") };
   }
