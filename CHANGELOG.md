@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.11 - 2026-06-12
+
+### Fixed
+
+- Bundle SliceBug 0.3.2 with a Windows cutter handshake fix.
+- Handle CricutDevice `riPing` frames by replying with `riPingReply` instead of treating them as protocol errors.
+- Keep the extra SliceBug debug logging from 1.1.10 so Windows cut-session failures still write useful diagnostics.
+
 ## 1.1.10 - 2026-06-12
 
 ### Added

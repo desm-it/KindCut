@@ -1,6 +1,6 @@
 {
   "name": "cricut-companion-app",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "private": true,
   "description": "Local-first Cricut companion app for grandma-easy AI-assisted craft design and SliceBug-based cutting.",
   "type": "module",
