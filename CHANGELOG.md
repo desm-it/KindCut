@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.9 - 2026-06-12
+
+### Added
+
+- Added persistent production diagnostics logging for SliceBug helper setup, plan generation, and cut-session traffic.
+- Added an **Open Logs Folder** menu action so installed Windows and macOS builds can expose `kindcut.log`.
+- Added startup diagnostics with app version, platform, app paths, resources path, and log file path.
+
+### Fixed
+
+- Mirror SliceBug debug/error output to a local log file instead of relying only on hidden production console output.
+
 ## 1.1.8 - 2026-06-11
 
 ### Added

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { logDiagnostics } from "./diagnostics-log";
 
 const execFileAsync = promisify(execFile);
 const JOEL_LOCAL_SLICEBUG = "/Users/joeldesmit/Cricut/SlicebugMac/.venv/bin/slicebug";
@@ -243,11 +244,11 @@ function normalizeError(error: unknown): string {
 }
 
 function logSlicebugIssue(context: string, details: Record<string, unknown>): void {
-  console.error(`[SliceBug] ${context}`, details);
+  logDiagnostics("error", `[SliceBug] ${context}`, details);
 }
 
 function logSlicebugDebug(context: string, details: Record<string, unknown>): void {
-  console.log(`[SliceBug] ${context}`, details);
+  logDiagnostics("debug", `[SliceBug] ${context}`, details);
 }
 
 function logSlicebugResultIssue(context: string, result: RawSlicebugResult): void {

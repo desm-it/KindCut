@@ -31,6 +31,12 @@ import type {
 } from "electron";
 import { autoUpdater } from "electron-updater";
 import {
+  configureDiagnosticsLog,
+  getDiagnosticsLogFilePath,
+  getDiagnosticsLogsDir,
+  logDiagnostics,
+} from "./diagnostics-log";
+import {
   SlicebugCutSession,
   bootstrapSlicebug,
   checkForBlockingCutterProcesses,
@@ -616,6 +622,32 @@ function checkForUpdatesFromMenu(): void {
   void checkForUpdates({ interactive: true, sourceWindow: getPreferredWindow() });
 }
 
+async function openLogsFolder(): Promise<void> {
+  const logsDir = getDiagnosticsLogsDir();
+  if (!logsDir) {
+    await showMessage(getPreferredWindow(), {
+      type: "warning",
+      title: "KindCut Logs",
+      message: "The logs folder is not ready yet.",
+      buttons: ["OK"],
+    });
+    return;
+  }
+
+  await fs.mkdir(logsDir, { recursive: true });
+  logDiagnostics("info", "[KindCut diagnostics] Opening logs folder", { logsDir });
+  const result = await shell.openPath(logsDir);
+  if (result) {
+    await showMessage(getPreferredWindow(), {
+      type: "warning",
+      title: "KindCut Logs",
+      message: "KindCut could not open the logs folder.",
+      detail: result,
+      buttons: ["OK"],
+    });
+  }
+}
+
 function createProjectMenu(): MenuItemConstructorOptions {
   return {
     label: "Project",
@@ -658,6 +690,7 @@ function createAppMenu(): ReturnType<typeof Menu.buildFromTemplate> {
             submenu: [
               { role: "about" },
               { label: "Check for Updates...", click: checkForUpdatesFromMenu },
+              { label: "Open Logs Folder", click: () => void openLogsFolder() },
               { type: "separator" },
               { role: "quit" },
             ],
@@ -694,6 +727,7 @@ function createAppMenu(): ReturnType<typeof Menu.buildFromTemplate> {
             role: "help",
             submenu: [
               { label: "Check for Updates...", click: checkForUpdatesFromMenu },
+              { label: "Open Logs Folder", click: () => void openLogsFolder() },
               { type: "separator" },
               { label: "About KindCut", click: showAboutDialog },
             ],
@@ -784,6 +818,7 @@ async function showContextMenu(window: BrowserWindow): Promise<void> {
     { label: "Select All", accelerator: "CmdOrCtrl+A", enabled: hasObjects, click: () => sendRendererAction("edit-select-all") },
     { type: "separator" },
     { label: "Check for Updates...", click: checkForUpdatesFromMenu },
+    { label: "Open Logs Folder", click: () => void openLogsFolder() },
   ]);
   contextMenu.popup({ window });
 }
@@ -1084,6 +1119,19 @@ ipcMain.handle("ai:trace-png-to-svg", async (_event, pngBase64: string): Promise
 });
 
 app.whenReady().then(async () => {
+  configureDiagnosticsLog(path.join(app.getPath("userData"), "logs"));
+  logDiagnostics("info", "[KindCut diagnostics] App started", {
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    isPackaged: app.isPackaged,
+    execPath: process.execPath,
+    appPath: app.getAppPath(),
+    resourcesPath: process.resourcesPath,
+    userDataPath: app.getPath("userData"),
+    logFilePath: getDiagnosticsLogFilePath(),
+  });
+
   const mainWindow = await createMainWindow();
   configureUpdates(mainWindow);
 

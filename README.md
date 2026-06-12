@@ -69,6 +69,10 @@ If Windows SmartScreen warns about the app, choose **More info**, then **Run any
 
 After that, KindCut can prepare project handoff locally. It will not start a real machine action without an explicit preview and confirmation flow.
 
+## Diagnostics
+
+KindCut writes production diagnostics to a local log file. Use **Open Logs Folder** from the app menu or workspace context menu to find `kindcut.log`, especially when testing helper setup or cutter handoff on Windows.
+
 ## Update
 
 ### macOS
