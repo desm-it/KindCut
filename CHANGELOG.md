@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.10 - 2026-06-12
+
+### Added
+
+- Bundle SliceBug 0.3.1 for Windows debugging.
+- Write SliceBug protocol diagnostics to `slicebug-debug.log` beside `kindcut.log`.
+- Automatically rerun helper setup once when CricutDevice rejects cut startup with `expected 2, got 0`.
+
+### Fixed
+
+- Show the actual cut-session recovery message in the cut UI instead of replacing it with generic error copy.
+
 ## 1.1.9 - 2026-06-12
 
 ### Added
