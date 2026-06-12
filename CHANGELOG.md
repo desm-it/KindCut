@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.13 - 2026-06-12
+
+### Fixed
+
+- Bundle SliceBug 0.3.4 with a fuller CricutDevice ping reply for Windows startup handshakes.
+- Add a 60-second ping-only startup timeout so stuck Windows cutter connections fail with clear diagnostics instead of hanging.
+- Log ping count and elapsed startup time when CricutDevice stays in the heartbeat loop.
+
 ## 1.1.12 - 2026-06-12
 
 ### Added
