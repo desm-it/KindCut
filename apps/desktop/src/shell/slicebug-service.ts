@@ -131,6 +131,7 @@ export type CutSessionStatus = "idle" | "running" | "waiting" | "finished" | "er
 
 export interface CutActionState {
   kind: "idle" | "load-tools" | "load-mat" | "press-go" | "replace-tool" | "unload" | "finished" | "running" | "error";
+  code?: string;
   title: string;
   message: string;
   requiresContinue: boolean;
@@ -1217,7 +1218,7 @@ export class SlicebugCutSession {
     this.snapshot = {
       id: options.id,
       status: "idle",
-      action: makeCutAction("idle", "Ready when you are", "KindCut will only start after you press Start cut.", false),
+      action: makeCutAction("idle", "Ready when you are", "KindCut will only start after you press Start cut.", false, "idle.ready"),
       transcript: "",
       command: this.command,
       args: this.args,
@@ -1239,6 +1240,7 @@ export class SlicebugCutSession {
           "Cut blocked in test mode",
           "KindCut will not start a hardware cut while smoke mode is active.",
           false,
+          "error.smokeBlocked",
         ),
       };
       return this.getSnapshot();
@@ -1266,14 +1268,14 @@ export class SlicebugCutSession {
         ...this.snapshot,
         status: "error",
         transcript: appendText(this.snapshot.transcript, normalizeError(error)),
-        action: makeCutAction("error", "Something needs attention", "SliceBug could not start the cut session.", false),
+        action: makeCutAction("error", "Something needs attention", "SliceBug could not start the cut session.", false, "error.startFailed"),
       };
       return this.getSnapshot();
     }
     this.snapshot = {
       ...this.snapshot,
       status: "running",
-      action: makeCutAction("running", "Starting SliceBug", "KindCut is waiting for the first cutter prompt.", false),
+      action: makeCutAction("running", "Starting SliceBug", "KindCut is waiting for the first cutter prompt.", false, "running.starting"),
     };
 
     this.process.stdout.on("data", (chunk) => {
@@ -1317,6 +1319,7 @@ export class SlicebugCutSession {
           "Something needs attention",
           friendlyCutErrorMessage(error.message) ?? "SliceBug could not keep the cut session running.",
           false,
+          friendlyCutErrorCode(error.message) ?? "error.processFailed",
         ),
       };
     });
@@ -1342,12 +1345,13 @@ export class SlicebugCutSession {
         status: code === 0 ? "finished" : "error",
         action:
           code === 0
-            ? makeCutAction("finished", "All done!", "Your project is ready. Gently peel it off the mat.", false)
+            ? makeCutAction("finished", "All done!", "Your project is ready. Gently peel it off the mat.", false, "finished.done")
             : makeCutAction(
                 "error",
                 "Something needs attention",
                 friendlyCutErrorMessage(this.snapshot.transcript) ?? "SliceBug stopped before the cut finished.",
                 false,
+                friendlyCutErrorCode(this.snapshot.transcript) ?? "error.cutStopped",
               ),
       };
     });
@@ -1367,7 +1371,7 @@ export class SlicebugCutSession {
       this.snapshot = {
         ...this.snapshot,
         status: "running",
-        action: makeCutAction("running", "Continuing", "KindCut sent the continue step to SliceBug.", false),
+        action: makeCutAction("running", "Continuing", "KindCut sent the continue step to SliceBug.", false, "running.continuing"),
       };
     }
     return this.getSnapshot();
@@ -1401,7 +1405,7 @@ export class SlicebugCutSession {
     this.snapshot = {
       ...this.snapshot,
       status: "stopped",
-      action: makeCutAction("error", "Cut cancelled", "KindCut closed SliceBug and cancelled the cut.", false),
+      action: makeCutAction("error", "Cut cancelled", "KindCut closed SliceBug and cancelled the cut.", false, "error.cancelled"),
     };
     return this.getSnapshot();
   }
@@ -1438,6 +1442,7 @@ export class SlicebugCutSession {
         "Refreshing helper setup",
         "The cutter helper rejected the cut startup. KindCut is rerunning helper setup now, then you can try the cut again.",
         false,
+        "running.refreshingHelper",
       ),
     };
     logSlicebugIssue("Cut session hit CricutDevice start error; running bootstrap recovery", {
@@ -1474,6 +1479,7 @@ export class SlicebugCutSession {
             ? "KindCut refreshed the helper setup. Make sure Design Space is closed and Bluetooth is connected, then start the cut again."
             : `KindCut tried to refresh the helper setup, but it did not complete: ${result.message}`,
           false,
+          result.ok ? "error.helperRefreshed" : "error.helperRefreshIncomplete",
         ),
       };
     } catch (error) {
@@ -1493,6 +1499,7 @@ export class SlicebugCutSession {
           "Helper setup still needs attention",
           "KindCut tried to refresh the helper setup, but the repair attempt failed. Open the logs folder and try helper setup manually.",
           false,
+          "error.helperRefreshFailed",
         ),
       };
     }
@@ -1520,37 +1527,37 @@ function parseCutAction(text: string): CutActionState {
   const normalized = text.toLowerCase();
   const friendlyError = friendlyCutErrorMessage(text);
   if (friendlyError !== null) {
-    return makeCutAction("error", "Something needs attention", friendlyError, false);
+    return makeCutAction("error", "Something needs attention", friendlyError, false, friendlyCutErrorCode(text) ?? "error.helperProblem");
   }
   if (/\b(error|failed|failure|traceback|exception)\b/.test(normalized)) {
-    return makeCutAction("error", "Something needs attention", "The cutter reported a problem. Stop here and try again.", false);
+    return makeCutAction("error", "Something needs attention", "The cutter reported a problem. Stop here and try again.", false, "error.cutterProblem");
   }
   // The unload prompt is a wait-for-the-operator step, not the end. (The cut is only truly
   // done when the process exits, after the software Unload — handled in the exit listener.)
   if (/\bunload\b/.test(normalized)) {
-    return makeCutAction("unload", "Unload the mat", "Press Unload to release the mat from the machine.", true);
+    return makeCutAction("unload", "Unload the mat", "Press Unload to release the mat from the machine.", true, "cut.unload");
   }
   if (/\b(replace|change|swap).*\b(tool|blade|pen|marker)\b/.test(normalized)) {
-    return makeCutAction("replace-tool", "Load the next tool", "Put in the requested tool, then press Continue here.", true);
+    return makeCutAction("replace-tool", "Load the next tool", "Put in the requested tool, then press Continue here.", true, "cut.replaceTool");
   }
   if (/\b(press|push).*\b(go|start|button)\b/.test(normalized)) {
-    return makeCutAction("press-go", "Load the tool", "Put the requested tool in the clamp, then press Continue.", true);
+    return makeCutAction("press-go", "Load the tool", "Put the requested tool in the clamp, then press Continue.", true, "cut.pressGo");
   }
   if (/\b(load|insert|place).*\b(mat|card)\b|\bmat\b.*\b(load|insert|ready)\b/.test(normalized)) {
-    return makeCutAction("load-mat", "Load the mat", "Place the material on the mat and load it into the Cricut, then press Continue.", true);
+    return makeCutAction("load-mat", "Load the mat", "Place the material on the mat and load it into the Cricut, then press Continue.", true, "cut.loadMat");
   }
   if (/\b(load|insert|install).*\b(tool|pen|blade|marker|clamp)\b|\bclamp\b/.test(normalized)) {
-    return makeCutAction("load-tools", "Load the tool", "Put the requested pen or blade in the clamp, then press Continue.", true);
+    return makeCutAction("load-tools", "Load the tool", "Put the requested pen or blade in the clamp, then press Continue.", true, "cut.loadTools");
   }
   // "Cutting finished." is treated as ongoing (not terminal) so polling continues until the
   // unload prompt and the process exit arrive.
   if (/\b(cutting|running|progress|path\s+\d+|finished|complete|completed|finishing)\b/.test(normalized)) {
-    return makeCutAction("running", "Working", "The Cricut is working. Keep hands clear and wait for the next prompt.", false);
+    return makeCutAction("running", "Working", "The Cricut is working. Keep hands clear and wait for the next prompt.", false, "running.working");
   }
   if (/\b(enter|continue|ready)\b/.test(normalized)) {
-    return makeCutAction("load-mat", "Ready for the next step", "Check the Cricut, then press Continue here when you are ready.", true);
+    return makeCutAction("load-mat", "Ready for the next step", "Check the Cricut, then press Continue here when you are ready.", true, "cut.readyNext");
   }
-  return makeCutAction("idle", "Waiting for the cutter", "KindCut is listening for the next cutter step.", false);
+  return makeCutAction("idle", "Waiting for the cutter", "KindCut is listening for the next cutter step.", false, "idle.waiting");
 }
 
 function friendlyCutErrorMessage(text: string): string | null {
@@ -1581,14 +1588,40 @@ function friendlyCutErrorMessage(text: string): string | null {
   return null;
 }
 
+function friendlyCutErrorCode(text: string): string | null {
+  if (/no cricut devices connected|no device connected|nodeviceconnected/i.test(text)) {
+    return "error.noDevice";
+  }
+
+  if (/plugin stdout closed|stdout closed|eoferror|could not keep the cut session|failed to connect|connection.*(failed|closed|lost)/i.test(text)) {
+    return "error.connectionLost";
+  }
+
+  if (/serial of connected device.*does not match profile|connect the correct device|switch to a different profile/i.test(text)) {
+    return "error.deviceMismatch";
+  }
+
+  if (/multiple devices/i.test(text)) {
+    return "error.multipleDevices";
+  }
+
+  if (/\b(error|failed|failure|traceback|exception)\b/i.test(text)) {
+    return "error.helperProblem";
+  }
+
+  return null;
+}
+
 function makeCutAction(
   kind: CutActionState["kind"],
   title: string,
   message: string,
   requiresContinue: boolean,
+  code?: string,
 ): CutActionState {
   return {
     kind,
+    code,
     title,
     message,
     requiresContinue,

@@ -14,10 +14,7 @@ const potrace = require("potrace") as {
 };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const Jimp = require("jimp") as {
-  read: (buffer: Buffer) => Promise<{
-    grayscale: () => { contrast: (v: number) => { threshold: (opts: { max: number; replace?: number; autoGreyscale?: boolean }) => { getBufferAsync: (mime: string) => Promise<Buffer> } } };
-    MIME_PNG: string;
-  }>;
+  read: (buffer: Buffer) => Promise<JimpImage>;
   MIME_PNG: string;
 };
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
@@ -47,6 +44,8 @@ import {
 } from "./slicebug-service";
 import type { CutSessionSnapshot, SvgPlanInput } from "./slicebug-service";
 import { createMainWindowOptions, resolveRendererEntry } from "./window-config";
+import { isVersionAtLeast, shouldSuppressSkippedUpdate } from "./update-version";
+import type { SkippedUpdateState } from "./update-version";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 let activeCutSession: SlicebugCutSession | null = null;
@@ -139,10 +138,33 @@ type UpdateRendererState = {
   downloadedFile?: string;
 };
 
+type JimpImage = {
+  bitmap: {
+    data: Buffer;
+    width: number;
+    height: number;
+  };
+  getBufferAsync: (mime: string) => Promise<Buffer>;
+};
+
+type RasterTraceOptions = {
+  threshold?: number;
+  detail?: number;
+  invert?: boolean;
+};
+
+type RasterTraceBackendOptions = {
+  threshold: number;
+  turdSize: number;
+  optTolerance: number;
+  invert: boolean;
+};
+
 const PROJECT_FILE_FILTER = { name: "KindCut Projects", extensions: ["kindcut"] };
 const EDIT_STATE_REQUEST_TIMEOUT_MS = 250;
 const PROJECT_STATE_REQUEST_TIMEOUT_MS = 500;
 const PENDING_UPDATE_FILE_NAME = "pending-update.json";
+const SKIPPED_UPDATE_FILE_NAME = "skipped-update.json";
 const ABOUT_COPY =
   "KindCut helps you design, preview, save, and prepare Cricut projects locally. " +
   "Cutter handoff is powered by the bundled SliceBug helper and always requires explicit confirmation.";
@@ -259,6 +281,10 @@ function pendingUpdatePath(): string {
   return path.join(app.getPath("userData"), PENDING_UPDATE_FILE_NAME);
 }
 
+function skippedUpdatePath(): string {
+  return path.join(app.getPath("userData"), SKIPPED_UPDATE_FILE_NAME);
+}
+
 function isPendingUpdateState(value: unknown): value is PendingUpdateState {
   if (!value || typeof value !== "object") {
     return false;
@@ -273,11 +299,29 @@ function isPendingUpdateState(value: unknown): value is PendingUpdateState {
   );
 }
 
+function isSkippedUpdateState(value: unknown): value is SkippedUpdateState {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return typeof record.version === "string" && typeof record.skippedAt === "string";
+}
+
 async function readPendingUpdate(): Promise<PendingUpdateState | null> {
   try {
     const content = await fs.readFile(pendingUpdatePath(), "utf8");
     const parsed = JSON.parse(content) as unknown;
     return isPendingUpdateState(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readSkippedUpdate(): Promise<SkippedUpdateState | null> {
+  try {
+    const content = await fs.readFile(skippedUpdatePath(), "utf8");
+    const parsed = JSON.parse(content) as unknown;
+    return isSkippedUpdateState(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -301,24 +345,39 @@ async function writePendingUpdate(
   await fs.writeFile(pendingUpdatePath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
 }
 
+async function writeSkippedUpdate(version: string): Promise<void> {
+  const next: SkippedUpdateState = {
+    version,
+    skippedAt: new Date().toISOString(),
+  };
+  await fs.mkdir(path.dirname(skippedUpdatePath()), { recursive: true });
+  await fs.writeFile(skippedUpdatePath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+}
+
 async function clearPendingUpdate(): Promise<void> {
   await fs.rm(pendingUpdatePath(), { force: true });
 }
 
-function parseVersionParts(version: string): number[] {
-  return version.split(/[.-]/).slice(0, 3).map((part) => Number.parseInt(part, 10) || 0);
+async function clearSkippedUpdate(): Promise<void> {
+  await fs.rm(skippedUpdatePath(), { force: true });
 }
 
-function isVersionAtLeast(current: string, target: string): boolean {
-  const currentParts = parseVersionParts(current);
-  const targetParts = parseVersionParts(target);
-  for (let index = 0; index < Math.max(currentParts.length, targetParts.length); index += 1) {
-    const currentPart = currentParts[index] ?? 0;
-    const targetPart = targetParts[index] ?? 0;
-    if (currentPart > targetPart) return true;
-    if (currentPart < targetPart) return false;
+async function clearStaleSkippedUpdate(): Promise<SkippedUpdateState | null> {
+  const skippedUpdate = await readSkippedUpdate();
+  if (!skippedUpdate) {
+    return null;
   }
-  return true;
+  if (isVersionAtLeast(app.getVersion(), skippedUpdate.version)) {
+    logUpdaterEvent("Clearing stale skipped update because installed version caught up", { skippedUpdate });
+    await clearSkippedUpdate();
+    return null;
+  }
+  return skippedUpdate;
+}
+
+async function shouldSuppressAutomaticUpdate(version: string, interactive: boolean): Promise<boolean> {
+  const skippedUpdate = await clearStaleSkippedUpdate();
+  return shouldSuppressSkippedUpdate({ availableVersion: version, interactive, skippedUpdate });
 }
 
 async function fileExists(filePath: string | null | undefined): Promise<boolean> {
@@ -429,6 +488,7 @@ function logUpdaterEvent(message: string, details: Record<string, unknown> = {})
     platform: process.platform,
     updateCacheDir: path.join(app.getPath("userData"), "pending"),
     pendingUpdatePath: pendingUpdatePath(),
+    skippedUpdatePath: skippedUpdatePath(),
   });
 }
 
@@ -665,6 +725,8 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
   });
 
   try {
+    await clearStaleSkippedUpdate();
+
     const pendingUpdate = await readPendingUpdate();
     if (pendingUpdate && !installingUpdate) {
       availableUpdateVersion = pendingUpdate.version;
@@ -690,6 +752,23 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
         manual: interactive,
         message: "KindCut is up to date.",
         detail: `You are running KindCut ${app.getVersion()}.`,
+      });
+      return;
+    }
+
+    availableUpdateVersion = updateInfo.version;
+    availableDownloadedFile = null;
+
+    if (await shouldSuppressAutomaticUpdate(updateInfo.version, interactive)) {
+      logUpdaterEvent("Suppressing skipped update for automatic check", { version: updateInfo.version });
+      publishUpdateState({
+        status: "idle",
+        visible: false,
+        manual: false,
+        version: updateInfo.version,
+        message: undefined,
+        detail: undefined,
+        progress: undefined,
       });
       return;
     }
@@ -721,8 +800,6 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
       return;
     }
 
-    availableUpdateVersion = updateInfo.version;
-    availableDownloadedFile = null;
     publishUpdateState({
       status: "available",
       visible: true,
@@ -837,6 +914,34 @@ async function installReadyUpdate(): Promise<UpdateRendererState> {
 
 function dismissUpdateModal(): UpdateRendererState {
   return publishUpdateState({ visible: false, manual: false });
+}
+
+async function skipAvailableUpdate(): Promise<UpdateRendererState> {
+  const version = updateRendererState.version ?? availableUpdateVersion;
+  if (!version) {
+    return publishUpdateState({
+      status: "failed",
+      visible: true,
+      manual: true,
+      message: "No update is ready to skip.",
+      detail: "Check for updates again.",
+    });
+  }
+
+  await writeSkippedUpdate(version);
+  availableUpdateVersion = null;
+  availableDownloadedFile = null;
+  logUpdaterEvent("Skipped update version", { version });
+  return publishUpdateState({
+    status: "idle",
+    visible: false,
+    manual: false,
+    version,
+    message: undefined,
+    detail: undefined,
+    progress: undefined,
+    downloadedFile: undefined,
+  });
 }
 
 async function openLogsFolder(): Promise<void> {
@@ -1120,6 +1225,7 @@ ipcMain.handle("updater:download", async (_event, input?: { background?: boolean
 );
 ipcMain.handle("updater:install", async () => installReadyUpdate());
 ipcMain.handle("updater:dismiss", () => dismissUpdateModal());
+ipcMain.handle("updater:skip", async () => skipAvailableUpdate());
 ipcMain.handle("slicebug:get-status", async () => getSlicebugStatus());
 ipcMain.handle("slicebug:get-setup-status", async () => getSlicebugSetupStatus());
 ipcMain.handle("slicebug:bootstrap", async (_event, input?: { designSpacePath?: string; designSpaceProfilePath?: string }) =>
@@ -1138,6 +1244,7 @@ ipcMain.handle("slicebug:start-cut-session", async (_event, planPath: string): P
       status: "blocked",
       action: {
         kind: "error",
+        code: "error.blockingProcesses",
         title: "Close Design Space",
         message: blocker.message,
         requiresContinue: false,
@@ -1185,6 +1292,38 @@ function sanitizeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9\-_\s]/g, "").trim().replace(/\s+/g, "-").slice(0, 60) || `image-${Date.now()}`;
 }
 
+function displayNameFromLibraryFileName(file: string): string {
+  const baseName = file.toLowerCase().endsWith(".ai.svg") ? file.slice(0, -7) : file.slice(0, -4);
+  return baseName.replace(/-/g, " ");
+}
+
+async function findAvailableLibraryPath(
+  requestedName: string,
+  ext: ".svg" | ".ai.svg",
+  currentPath?: string,
+): Promise<{ displayName: string; filePath: string }> {
+  await ensureLibraryDir();
+  const trimmed = requestedName.trim() || "image";
+  let suffix = 1;
+
+  while (true) {
+    const displayName = suffix === 1 ? trimmed : `${trimmed} ${suffix}`;
+    const safeName = sanitizeFileName(displayName);
+    const filePath = path.join(getLibraryDir(), `${safeName}${ext}`);
+    const normalPath = path.join(getLibraryDir(), `${safeName}.svg`);
+    const aiPath = path.join(getLibraryDir(), `${safeName}.ai.svg`);
+    const candidatePaths = [normalPath, aiPath].filter((candidate) => !currentPath || path.resolve(candidate) !== path.resolve(currentPath));
+    if (candidatePaths.length < 2 && currentPath && path.resolve(filePath) === path.resolve(currentPath)) {
+      return { displayName, filePath };
+    }
+    const hasDisplayNameCollision = (await Promise.all(candidatePaths.map((candidate) => fileExists(candidate)))).some(Boolean);
+    if (!hasDisplayNameCollision) {
+      return { displayName, filePath };
+    }
+    suffix += 1;
+  }
+}
+
 ipcMain.handle("library:list", async (): Promise<LibraryImageMeta[]> => {
   await ensureLibraryDir();
   const dir = getLibraryDir();
@@ -1195,7 +1334,7 @@ ipcMain.handle("library:list", async (): Promise<LibraryImageMeta[]> => {
       const filePath = path.join(dir, file);
       const svg = await fs.readFile(filePath, "utf8");
       const isAi = file.toLowerCase().endsWith(".ai.svg");
-      const displayName = isAi ? file.slice(0, -7) : file.slice(0, -4);
+      const displayName = displayNameFromLibraryFileName(file);
       return { name: displayName, path: filePath, isAi, svg };
     }),
   );
@@ -1205,23 +1344,28 @@ ipcMain.handle("library:list", async (): Promise<LibraryImageMeta[]> => {
 ipcMain.handle("library:save", async (_event, input: { name: string; svg: string; isAi: boolean }): Promise<string> => {
   await ensureLibraryDir();
   const ext = input.isAi ? ".ai.svg" : ".svg";
-  const safe = sanitizeFileName(input.name);
-  let fileName = `${safe}${ext}`;
-  let filePath = path.join(getLibraryDir(), fileName);
-  // Avoid collision
-  let counter = 1;
-  while (true) {
-    try {
-      await fs.access(filePath);
-      fileName = `${safe}-${counter}${ext}`;
-      filePath = path.join(getLibraryDir(), fileName);
-      counter++;
-    } catch {
-      break;
-    }
-  }
+  const { filePath } = await findAvailableLibraryPath(input.name, ext);
   await fs.writeFile(filePath, input.svg, "utf8");
   return filePath;
+});
+
+ipcMain.handle("library:rename", async (_event, input: { filePath: string; name: string }): Promise<LibraryImageMeta> => {
+  await ensureLibraryDir();
+  const currentPath = path.resolve(input.filePath);
+  const libraryDir = path.resolve(getLibraryDir());
+  if (!currentPath.startsWith(`${libraryDir}${path.sep}`)) {
+    throw new Error("That image is outside the KindCut image library.");
+  }
+
+  const currentFileName = path.basename(currentPath);
+  const isAi = currentFileName.toLowerCase().endsWith(".ai.svg");
+  const ext = isAi ? ".ai.svg" : ".svg";
+  const { displayName, filePath } = await findAvailableLibraryPath(input.name, ext, currentPath);
+  if (path.resolve(filePath) !== currentPath) {
+    await fs.rename(currentPath, filePath);
+  }
+  const svg = await fs.readFile(filePath, "utf8");
+  return { name: displayName, path: filePath, isAi, svg };
 });
 
 ipcMain.handle("library:delete", async (_event, filePath: string): Promise<void> => {
@@ -1262,24 +1406,62 @@ function buildGptImagePrompt(subject: string, complexity: number): string {
   return `${subject}. ${onlySubject} A detailed rubber stamp design on pure white background. One single solid black connected shape with rich recognisable detail of the ${subject}. All features are defined by notches, bumps and curves in the outer boundary — making it immediately recognisable. No holes or cut-outs inside the shape. No floating islands. One highly detailed connected black piece on white. Think linocut print: lots of visible detail, fully one piece.`;
 }
 
-async function preprocessToBlackWhite(pngBuffer: Buffer): Promise<Buffer> {
-  // Convert DALL-E colour image to high-contrast B&W so Potrace gets clean edges.
-  const image = await Jimp.read(pngBuffer);
-  // grayscale → max contrast → threshold at 50%
-  const processed = image
-    .grayscale()
-    .contrast(1)           // push to maximum contrast
-    .threshold({ max: 128, autoGreyscale: false }); // pixels > 128 → white, ≤ 128 → black
-  return processed.getBufferAsync(Jimp.MIME_PNG);
+function clampTraceNumber(value: number, min: number, max: number): number {
+  const finiteValue = Number.isFinite(value) ? value : min;
+  return Math.min(max, Math.max(min, finiteValue));
 }
 
-function traceWithPotrace(buffer: Buffer): Promise<string> {
+function mapRasterTraceOptions(options?: RasterTraceOptions | null): RasterTraceBackendOptions {
+  const threshold = Math.round(clampTraceNumber(options?.threshold ?? 128, 0, 255));
+  const detail = Math.round(clampTraceNumber(options?.detail ?? 45, 0, 100));
+  const detailRatio = detail / 100;
+  return {
+    threshold,
+    turdSize: Math.round(260 - detailRatio * 245),
+    optTolerance: Number((0.36 - detailRatio * 0.28).toFixed(2)),
+    invert: Boolean(options?.invert),
+  };
+}
+
+async function preprocessToBlackWhite(pngBuffer: Buffer, options?: RasterTraceOptions): Promise<Buffer> {
+  // Convert colour images to true black/white so the threshold slider stays predictable.
+  const traceOptions = mapRasterTraceOptions(options);
+  const image = await Jimp.read(pngBuffer);
+
+  const { data, width, height } = image.bitmap;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (width * y + x) * 4;
+      const alpha = data[index + 3] ?? 255;
+      let value = 255;
+      if (alpha >= 16) {
+        const red = data[index] ?? 255;
+        const green = data[index + 1] ?? 255;
+        const blue = data[index + 2] ?? 255;
+        value = Math.round(0.299 * red + 0.587 * green + 0.114 * blue);
+        if (traceOptions.invert) {
+          value = 255 - value;
+        }
+        value = value <= traceOptions.threshold ? 0 : 255;
+      }
+      data[index] = value;
+      data[index + 1] = value;
+      data[index + 2] = value;
+      data[index + 3] = 255;
+    }
+  }
+
+  return image.getBufferAsync(Jimp.MIME_PNG);
+}
+
+function traceWithPotrace(buffer: Buffer, options?: RasterTraceOptions): Promise<string> {
+  const traceOptions = mapRasterTraceOptions(options);
   return new Promise((resolve, reject) => {
     potrace.trace(buffer, {
       threshold: 128,    // image is already B&W from Jimp, simple 50% threshold
-      turdSize: 150,     // remove JPEG/PNG noise blobs
+      turdSize: traceOptions.turdSize,     // remove JPEG/PNG noise blobs
       optCurve: true,
-      optTolerance: 0.2,
+      optTolerance: traceOptions.optTolerance,
       color: "#000000",
       background: "transparent",
     }, (err, svg) => {
@@ -1289,7 +1471,13 @@ function traceWithPotrace(buffer: Buffer): Promise<string> {
   });
 }
 
-// Split into two handlers so the renderer can show step-by-step progress
+async function traceRasterBase64ToSvg(base64: string, options?: RasterTraceOptions): Promise<string> {
+  const rawBuffer = Buffer.from(base64, "base64");
+  const bwBuffer = await preprocessToBlackWhite(rawBuffer, options);
+  return traceWithPotrace(bwBuffer, options);
+}
+
+// Split into separate handlers so the renderer can show step-by-step progress
 
 ipcMain.handle("ai:dalle-generate-png", async (
   _event,
@@ -1340,9 +1528,23 @@ ipcMain.handle("ai:dalle-generate-png", async (
 });
 
 ipcMain.handle("ai:trace-png-to-svg", async (_event, pngBase64: string): Promise<string> => {
-  const rawBuffer = Buffer.from(pngBase64, "base64");
-  const bwBuffer = await preprocessToBlackWhite(rawBuffer);
-  return traceWithPotrace(bwBuffer);
+  return traceRasterBase64ToSvg(pngBase64);
+});
+
+ipcMain.handle("image:trace-raster-to-svg", async (_event, input: {
+  base64: string;
+  fileName?: string;
+  mimeType?: string;
+  traceOptions?: RasterTraceOptions;
+}): Promise<string> => {
+  const traceOptions = mapRasterTraceOptions(input.traceOptions);
+  logDiagnostics("info", "[KindCut image import] Tracing local raster image", {
+    fileName: input.fileName,
+    mimeType: input.mimeType,
+    byteLength: Buffer.byteLength(input.base64, "base64"),
+    traceOptions,
+  });
+  return traceRasterBase64ToSvg(input.base64, input.traceOptions);
 });
 
 app.whenReady().then(async () => {

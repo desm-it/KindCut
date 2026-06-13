@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0 - 2026-06-13
+
+### Added
+
+- Add **Skip this update** so automatic update prompts can be suppressed for one specific release while manual checks still work.
+- Add local PNG/JPG import with a Potrace preview modal, progress feedback, and import into the local image library.
+- Add trace settings for local raster imports: threshold, detail, invert, reset, and debounced live preview updates.
+- Add image library renaming by double-clicking the image name, including filename renames and automatic duplicate numbering.
+
+### Fixed
+
+- Keep the previous vector preview visible while local image retracing is running.
+- Make the raster threshold slider use a real pixel luminance cutoff so the full slider range changes the trace.
+- Translate newly added cut-window status and error messages into Dutch.
+
 ## 1.1.14 - 2026-06-13
 
 ### Fixed

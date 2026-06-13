@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LANGUAGE, createTranslator, loadLanguagePreference, saveLanguagePreference, translateValidationMessage } from "./i18n";
+import {
+  DEFAULT_LANGUAGE,
+  createTranslator,
+  getTranslatedCutActionCopy,
+  loadLanguagePreference,
+  saveLanguagePreference,
+  translateValidationMessage,
+} from "./i18n";
 
 function memoryStorage(initial: Record<string, string> = {}): Storage {
   const values = new Map(Object.entries(initial));
@@ -51,5 +58,38 @@ describe("i18n", () => {
     expect(translateValidationMessage("Project recipe is internally consistent.", "en")).toBe(
       "Project recipe is internally consistent.",
     );
+  });
+
+  it("translates coded cut-session actions instead of showing shell fallback copy", () => {
+    expect(
+      getTranslatedCutActionCopy(
+        {
+          kind: "error",
+          code: "error.connectionLost",
+          title: "Something needs attention",
+          message: "The cutter helper lost its connection.",
+        },
+        "nl",
+      ),
+    ).toEqual({
+      title: "Iets heeft aandacht nodig",
+      message:
+        "Het snijhulpje is de verbinding kwijt. Sluit Design Space, controleer bluetooth op deze laptop en probeer het opnieuw.",
+    });
+
+    expect(
+      getTranslatedCutActionCopy(
+        {
+          kind: "running",
+          code: "running.refreshingHelper",
+          title: "Refreshing helper setup",
+          message: "The cutter helper rejected the cut startup.",
+        },
+        "nl",
+      ),
+    ).toEqual({
+      title: "Hulpje opnieuw instellen",
+      message: "Het snijhulpje weigerde de start. KindCut stelt het hulpje nu opnieuw in.",
+    });
   });
 });

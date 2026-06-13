@@ -94,7 +94,7 @@ const translations = {
       "Kies een afbeeldingsbestand van deze computer. KindCut toont een rustige preview en een duidelijke controle voordat iets voor een snijmachine wordt voorbereid.",
     "import.empty": "Nog geen afbeelding gekozen. Begin met een bestand dat je al hebt; KindCut toont het dan hier.",
     "import.chooseSvgFile": "Kies eerst een afbeelding, daarna kan KindCut het voorbereiden.",
-    "import.invalidSvg": "Kies een bestand dat eindigt op .svg zodat KindCut het kan tonen.",
+    "import.invalidSvg": "Kies een SVG-, PNG- of JPG-bestand zodat KindCut het kan tonen.",
     "import.openInShellPlan": "Open dit scherm in de Electron-desktopapp om een Cricut-overdracht voor te bereiden.",
     "import.openError": "KindCut kon dat bestand nog niet openen.",
     "import.planError": "KindCut kon die afbeelding nog niet voorbereiden.",
@@ -225,6 +225,37 @@ const translations = {
     "cutAction.error.message": "Er ging iets mis. Stop hier en probeer het opnieuw.",
     "cutAction.idle.title": "Wachten op SliceBug",
     "cutAction.idle.message": "KindCut luistert naar de volgende snijstap.",
+    "cutAction.idle.ready.title": "Klaar wanneer jij dat bent",
+    "cutAction.idle.ready.message": "KindCut start pas nadat je op Start snijden drukt.",
+    "cutAction.idle.waiting.title": "Wachten op de snijmachine",
+    "cutAction.idle.waiting.message": "KindCut luistert naar de volgende stap van de snijmachine.",
+    "cutAction.running.starting.title": "SliceBug starten",
+    "cutAction.running.starting.message": "KindCut wacht op de eerste vraag van de snijmachine.",
+    "cutAction.running.continuing.title": "Doorgaan",
+    "cutAction.running.continuing.message": "KindCut heeft de volgende stap naar SliceBug gestuurd.",
+    "cutAction.running.refreshingHelper.title": "Hulpje opnieuw instellen",
+    "cutAction.running.refreshingHelper.message": "Het snijhulpje weigerde de start. KindCut stelt het hulpje nu opnieuw in.",
+    "cutAction.error.smokeBlocked.title": "Snijden geblokkeerd in testmodus",
+    "cutAction.error.smokeBlocked.message": "KindCut start geen echte snijactie terwijl testmodus actief is.",
+    "cutAction.error.startFailed.message": "SliceBug kon de snijsessie niet starten.",
+    "cutAction.error.processFailed.message": "SliceBug kon de snijsessie niet actief houden.",
+    "cutAction.error.cutStopped.message": "SliceBug stopte voordat het snijden klaar was.",
+    "cutAction.error.cancelled.title": "Snijden geannuleerd",
+    "cutAction.error.cancelled.message": "KindCut heeft SliceBug gesloten en het snijden geannuleerd.",
+    "cutAction.error.blockingProcesses.title": "Sluit Design Space",
+    "cutAction.error.blockingProcesses.message": "Design Space of het snijhulpje draait nog en kan de bluetoothverbinding vasthouden. Sluit Design Space en probeer opnieuw.",
+    "cutAction.error.noDevice.message": "KindCut kan de snijmachine niet vinden. Controleer of hij aan staat, via bluetooth met deze Windows-laptop is gekoppeld, en niet met een andere computer verbonden is.",
+    "cutAction.error.connectionLost.message": "Het snijhulpje is de verbinding kwijt. Sluit Design Space, controleer bluetooth op deze laptop en probeer het opnieuw.",
+    "cutAction.error.deviceMismatch.message": "De verbonden snijmachine past niet bij het opgeslagen Design Space-profiel. Verbind de juiste machine of stel het hulpje opnieuw in.",
+    "cutAction.error.multipleDevices.message": "Er lijken meerdere snijmachines verbonden. Laat alleen de machine verbonden die je wilt gebruiken en probeer opnieuw.",
+    "cutAction.error.helperProblem.message": "Het snijhulpje meldde een probleem. Controleer of Design Space gesloten is, bluetooth verbonden is en de machine wakker is. Probeer daarna opnieuw.",
+    "cutAction.error.cutterProblem.message": "De snijmachine meldde een probleem. Stop hier en probeer het opnieuw.",
+    "cutAction.error.helperRefreshed.title": "Hulpje opnieuw ingesteld",
+    "cutAction.error.helperRefreshed.message": "KindCut heeft het hulpje opnieuw ingesteld. Sluit Design Space, controleer bluetooth en start het snijden opnieuw.",
+    "cutAction.error.helperRefreshIncomplete.title": "Hulpje heeft nog aandacht nodig",
+    "cutAction.error.helperRefreshIncomplete.message": "KindCut probeerde het hulpje opnieuw in te stellen, maar dat lukte nog niet helemaal. Open de logs en stel het hulpje handmatig opnieuw in.",
+    "cutAction.error.helperRefreshFailed.title": "Hulpje heeft nog aandacht nodig",
+    "cutAction.error.helperRefreshFailed.message": "KindCut probeerde het hulpje te repareren, maar de poging mislukte. Open de logs en stel het hulpje handmatig opnieuw in.",
   },
   en: {
     "app.name": APP_NAME,
@@ -313,7 +344,7 @@ const translations = {
       "Pick an image file from this computer. KindCut will show a gentle preview and a plain-English check before anything is prepared for a cutter.",
     "import.empty": "No image chosen yet. Start with a file you already have, then KindCut will show it here.",
     "import.chooseSvgFile": "Choose an image first, then KindCut can prepare it.",
-    "import.invalidSvg": "Choose a file that ends in .svg so KindCut can preview it.",
+    "import.invalidSvg": "Choose an SVG, PNG, or JPG file so KindCut can preview it.",
     "import.openInShellPlan": "Open this screen in the Electron desktop shell to prepare a Cricut handoff.",
     "import.openError": "KindCut could not open that file yet.",
     "import.planError": "KindCut could not prepare that image yet.",
@@ -444,6 +475,37 @@ const translations = {
     "cutAction.error.message": "Something went wrong. Stop here and try again.",
     "cutAction.idle.title": "Waiting for SliceBug",
     "cutAction.idle.message": "KindCut is listening for the next cutter step.",
+    "cutAction.idle.ready.title": "Ready when you are",
+    "cutAction.idle.ready.message": "KindCut will only start after you press Start cut.",
+    "cutAction.idle.waiting.title": "Waiting for the cutter",
+    "cutAction.idle.waiting.message": "KindCut is listening for the next cutter step.",
+    "cutAction.running.starting.title": "Starting SliceBug",
+    "cutAction.running.starting.message": "KindCut is waiting for the first cutter prompt.",
+    "cutAction.running.continuing.title": "Continuing",
+    "cutAction.running.continuing.message": "KindCut sent the continue step to SliceBug.",
+    "cutAction.running.refreshingHelper.title": "Refreshing helper setup",
+    "cutAction.running.refreshingHelper.message": "The cutter helper rejected the cut startup. KindCut is rerunning helper setup now.",
+    "cutAction.error.smokeBlocked.title": "Cut blocked in test mode",
+    "cutAction.error.smokeBlocked.message": "KindCut will not start a hardware cut while smoke mode is active.",
+    "cutAction.error.startFailed.message": "SliceBug could not start the cut session.",
+    "cutAction.error.processFailed.message": "SliceBug could not keep the cut session running.",
+    "cutAction.error.cutStopped.message": "SliceBug stopped before the cut finished.",
+    "cutAction.error.cancelled.title": "Cut cancelled",
+    "cutAction.error.cancelled.message": "KindCut closed SliceBug and cancelled the cut.",
+    "cutAction.error.blockingProcesses.title": "Close Design Space",
+    "cutAction.error.blockingProcesses.message": "Design Space or its cutter helper is still running and may be holding the Bluetooth connection. Close Design Space and try again.",
+    "cutAction.error.noDevice.message": "KindCut could not find the cutter. Make sure it is powered on, paired over Bluetooth with this Windows laptop, and not connected to another computer.",
+    "cutAction.error.connectionLost.message": "The cutter helper lost its connection. Close Design Space, confirm Bluetooth is connected to this laptop, then try again.",
+    "cutAction.error.deviceMismatch.message": "The connected cutter does not match the saved Design Space profile. Connect the configured cutter, or run helper setup again.",
+    "cutAction.error.multipleDevices.message": "More than one cutter appears to be connected. Leave only the cutter you want to use connected, then try again.",
+    "cutAction.error.helperProblem.message": "The cutter helper reported a problem. Check that Design Space is closed, Bluetooth is connected, and the cutter is awake, then try again.",
+    "cutAction.error.cutterProblem.message": "The cutter reported a problem. Stop here and try again.",
+    "cutAction.error.helperRefreshed.title": "Helper setup refreshed",
+    "cutAction.error.helperRefreshed.message": "KindCut refreshed the helper setup. Make sure Design Space is closed and Bluetooth is connected, then start the cut again.",
+    "cutAction.error.helperRefreshIncomplete.title": "Helper setup still needs attention",
+    "cutAction.error.helperRefreshIncomplete.message": "KindCut tried to refresh the helper setup, but it did not complete. Open the logs and try helper setup manually.",
+    "cutAction.error.helperRefreshFailed.title": "Helper setup still needs attention",
+    "cutAction.error.helperRefreshFailed.message": "KindCut tried to refresh the helper setup, but the repair attempt failed. Open the logs folder and try helper setup manually.",
   },
 } as const;
 
@@ -453,6 +515,109 @@ export type Translator = {
   language: Language;
   t: (key: TranslationKey, values?: Record<string, string | number>) => string;
 };
+
+export type TranslatableCutAction = {
+  kind: string;
+  code?: string;
+  title?: string;
+  message?: string;
+};
+
+export function getTranslatedCutActionCopy(
+  action: TranslatableCutAction,
+  language: Language,
+): { title: string; message: string } {
+  const { t } = createTranslator(language);
+
+  switch (action.code) {
+    case "idle.ready":
+      return { title: t("cutAction.idle.ready.title"), message: t("cutAction.idle.ready.message") };
+    case "idle.waiting":
+      return { title: t("cutAction.idle.waiting.title"), message: t("cutAction.idle.waiting.message") };
+    case "running.starting":
+      return { title: t("cutAction.running.starting.title"), message: t("cutAction.running.starting.message") };
+    case "running.continuing":
+      return { title: t("cutAction.running.continuing.title"), message: t("cutAction.running.continuing.message") };
+    case "running.refreshingHelper":
+      return {
+        title: t("cutAction.running.refreshingHelper.title"),
+        message: t("cutAction.running.refreshingHelper.message"),
+      };
+    case "running.working":
+      return { title: t("cutAction.running.title"), message: t("cutAction.running.message") };
+    case "finished.done":
+      return { title: t("cutAction.finished.title"), message: t("cutAction.finished.message") };
+    case "cut.loadMat":
+      return { title: t("cutAction.load-mat.title"), message: t("cutAction.load-mat.message") };
+    case "cut.loadTools":
+    case "cut.pressGo":
+      return { title: t("cutAction.load-tools.title"), message: t("cutAction.load-tools.message") };
+    case "cut.replaceTool":
+      return { title: t("cutAction.replace-tool.title"), message: t("cutAction.replace-tool.message") };
+    case "cut.unload":
+      return { title: t("cut.unloadTitle"), message: t("cut.unloadHint") };
+    case "cut.readyNext":
+      return { title: t("cutAction.press-go.title"), message: t("cutAction.press-go.message") };
+    case "error.smokeBlocked":
+      return { title: t("cutAction.error.smokeBlocked.title"), message: t("cutAction.error.smokeBlocked.message") };
+    case "error.cancelled":
+      return { title: t("cutAction.error.cancelled.title"), message: t("cutAction.error.cancelled.message") };
+    case "error.blockingProcesses":
+      return {
+        title: t("cutAction.error.blockingProcesses.title"),
+        message: t("cutAction.error.blockingProcesses.message"),
+      };
+    case "error.helperRefreshed":
+      return { title: t("cutAction.error.helperRefreshed.title"), message: t("cutAction.error.helperRefreshed.message") };
+    case "error.helperRefreshIncomplete":
+      return {
+        title: t("cutAction.error.helperRefreshIncomplete.title"),
+        message: t("cutAction.error.helperRefreshIncomplete.message"),
+      };
+    case "error.helperRefreshFailed":
+      return {
+        title: t("cutAction.error.helperRefreshFailed.title"),
+        message: t("cutAction.error.helperRefreshFailed.message"),
+      };
+    case "error.startFailed":
+      return { title: t("cutAction.error.title"), message: t("cutAction.error.startFailed.message") };
+    case "error.processFailed":
+      return { title: t("cutAction.error.title"), message: t("cutAction.error.processFailed.message") };
+    case "error.cutStopped":
+      return { title: t("cutAction.error.title"), message: t("cutAction.error.cutStopped.message") };
+    case "error.noDevice":
+      return { title: t("cutAction.error.title"), message: t("cutAction.error.noDevice.message") };
+    case "error.connectionLost":
+      return { title: t("cutAction.error.title"), message: t("cutAction.error.connectionLost.message") };
+    case "error.deviceMismatch":
+      return { title: t("cutAction.error.title"), message: t("cutAction.error.deviceMismatch.message") };
+    case "error.multipleDevices":
+      return { title: t("cutAction.error.title"), message: t("cutAction.error.multipleDevices.message") };
+    case "error.helperProblem":
+      return { title: t("cutAction.error.title"), message: t("cutAction.error.helperProblem.message") };
+    case "error.cutterProblem":
+      return { title: t("cutAction.error.title"), message: t("cutAction.error.cutterProblem.message") };
+  }
+
+  switch (action.kind) {
+    case "finished":
+      return { title: t("cutAction.finished.title"), message: t("cutAction.finished.message") };
+    case "load-mat":
+      return { title: t("cutAction.load-mat.title"), message: t("cutAction.load-mat.message") };
+    case "load-tools":
+      return { title: t("cutAction.load-tools.title"), message: t("cutAction.load-tools.message") };
+    case "press-go":
+      return { title: t("cutAction.press-go.title"), message: t("cutAction.press-go.message") };
+    case "replace-tool":
+      return { title: t("cutAction.replace-tool.title"), message: t("cutAction.replace-tool.message") };
+    case "running":
+      return { title: action.title || t("cutAction.running.title"), message: action.message || t("cutAction.running.message") };
+    case "error":
+      return { title: action.title || t("cutAction.error.title"), message: action.message || t("cutAction.error.message") };
+    default:
+      return { title: t("cutAction.idle.title"), message: t("cutAction.idle.message") };
+  }
+}
 
 export function isLanguage(value: string | null): value is Language {
   return LANGUAGES.includes(value as Language);

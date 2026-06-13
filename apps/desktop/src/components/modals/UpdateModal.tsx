@@ -7,6 +7,7 @@ type UpdateModalProps = {
   onDownloadNow: () => void;
   onDownloadBackground: () => void;
   onRestart: () => void;
+  onSkip: () => void;
   onLater: () => void;
 };
 
@@ -34,6 +35,7 @@ export function UpdateModal({
   onDownloadNow,
   onDownloadBackground,
   onRestart,
+  onSkip,
   onLater,
 }: UpdateModalProps) {
   if (!state.visible) {
@@ -86,6 +88,9 @@ export function UpdateModal({
         <div className="cut-modal__footer update-modal__footer">
           {canDownload ? (
             <>
+              <button type="button" className="cut-modal__btn cut-modal__btn--secondary" disabled={busy} onClick={onSkip}>
+                Skip this update
+              </button>
               <button type="button" className="cut-modal__btn cut-modal__btn--secondary" disabled={busy} onClick={onDownloadBackground}>
                 Download in background
               </button>

@@ -11,6 +11,7 @@ export function ImageLibraryPanel({
   onAskAi,
   onFileImport,
   onUseImage,
+  onRenameImage,
   onDeleteImage,
 }: {
   language: Language;
@@ -20,12 +21,17 @@ export function ImageLibraryPanel({
   onAskAi: () => void;
   onFileImport: (event: ChangeEvent<HTMLInputElement>) => void;
   onUseImage: (img: LibraryImage) => void;
+  onRenameImage: (path: string, name: string) => Promise<void>;
   onDeleteImage: (path: string) => void;
 }) {
   const nl = language === "nl";
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "ai" | "uploaded">("all");
   const [confirmDeletePath, setConfirmDeletePath] = useState<string | null>(null);
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   const filtered = images.filter((img) => {
     if (filter === "ai" && !img.isAi) return false;
@@ -52,6 +58,33 @@ export function ImageLibraryPanel({
     }
   }
 
+  function beginRename(img: LibraryImage) {
+    setConfirmDeletePath(null);
+    setRenameError(null);
+    setRenamingPath(img.path);
+    setRenameValue(img.name);
+  }
+
+  async function commitRename(img: LibraryImage) {
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === img.name) {
+      setRenamingPath(null);
+      setRenameError(null);
+      return;
+    }
+
+    setRenameBusy(true);
+    setRenameError(null);
+    try {
+      await onRenameImage(img.path, trimmed);
+      setRenamingPath(null);
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRenameBusy(false);
+    }
+  }
+
   return (
     <aside className="image-library no-drag" aria-label={nl ? "Afbeeldingsbibliotheek" : "Image library"}>
       <div className="image-library__actions">
@@ -66,7 +99,7 @@ export function ImageLibraryPanel({
         <label className="image-library__action-btn">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M2 10.5 5.5 7l2.5 2.5 2-2 4 4"/><circle cx="10.5" cy="5.5" r="1.2" fill="currentColor" stroke="none"/></svg>
           {nl ? "Van PC" : "Open from PC"}
-          <input type="file" accept=".svg,image/svg+xml" multiple onChange={onFileImport} />
+          <input type="file" accept=".svg,image/svg+xml,.png,image/png,.jpg,.jpeg,image/jpeg" multiple onChange={onFileImport} />
         </label>
       </div>
 
@@ -101,8 +134,10 @@ export function ImageLibraryPanel({
         </div>
       ) : (
         <div className="image-library__grid">
-          {filtered.map((img) => (
-            <div key={img.path} className="image-tile" onClick={() => { if (confirmDeletePath !== img.path) onUseImage(img); }}>
+          {filtered.map((img) => {
+            const isRenaming = renamingPath === img.path;
+            return (
+            <div key={img.path} className="image-tile" onClick={() => { if (confirmDeletePath !== img.path && !isRenaming) onUseImage(img); }}>
               <img
                 className="image-tile__preview"
                 src={svgPreviewSrc(img.svg)}
@@ -125,19 +160,74 @@ export function ImageLibraryPanel({
                     {nl ? "Nee" : "No"}
                   </button>
                 </div>
+              ) : isRenaming ? (
+                <form
+                  className="image-tile__rename"
+                  onClick={(e) => e.stopPropagation()}
+                  onSubmit={(e) => { e.preventDefault(); void commitRename(img); }}
+                >
+                  <textarea
+                    className="image-tile__rename-input"
+                    value={renameValue}
+                    disabled={renameBusy}
+                    autoFocus
+                    rows={2}
+                    onChange={(e) => setRenameValue(e.target.value.replace(/\s+/g, " "))}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void commitRename(img);
+                      }
+                      if (e.key === "Escape") {
+                        setRenamingPath(null);
+                        setRenameError(null);
+                      }
+                    }}
+                  />
+                  {renameError ? <span className="image-tile__rename-error">{renameError}</span> : null}
+                  <div className="image-tile__rename-actions">
+                    <button
+                      type="submit"
+                      className="image-tile__rename-btn image-tile__rename-btn--save"
+                      disabled={renameBusy}
+                      title={nl ? "Opslaan" : "Save"}
+                      aria-label={nl ? "Opslaan" : "Save"}
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8.5l3 3L13 4.5"/></svg>
+                    </button>
+                    <button
+                      type="button"
+                      className="image-tile__rename-btn image-tile__rename-btn--cancel"
+                      disabled={renameBusy}
+                      title={nl ? "Annuleren" : "Cancel"}
+                      aria-label={nl ? "Annuleren" : "Cancel"}
+                      onClick={() => { setRenamingPath(null); setRenameError(null); }}
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+                    </button>
+                  </div>
+                </form>
               ) : (
                 <button
                   type="button"
-                  className="image-tile__delete"
+                  className="image-tile__tool image-tile__tool--delete"
                   title={nl ? "Verwijderen" : "Delete"}
                   onClick={(e) => { e.stopPropagation(); setConfirmDeletePath(img.path); }}
                 >
                   <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M2 3.5h10M5.5 3.5V2.5h3v1M4 3.5l.7 8h4.6l.7-8"/></svg>
                 </button>
               )}
-              <span className="image-tile__name">{img.name}</span>
+              <span
+                className="image-tile__name"
+                title={nl ? "Dubbelklik om te hernoemen" : "Double-click to rename"}
+                onClick={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => { e.stopPropagation(); beginRename(img); }}
+              >
+                {img.name}
+              </span>
             </div>
-          ))}
+          );})}
         </div>
       )}
     </aside>

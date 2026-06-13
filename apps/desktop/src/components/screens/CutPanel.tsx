@@ -1,4 +1,12 @@
-import { type Language, createTranslator, getMaterialBeginnerCopy, getMatBeginnerCopy, getMaterialName, getMatName } from "../../i18n";
+import {
+  type Language,
+  createTranslator,
+  getMaterialBeginnerCopy,
+  getMatBeginnerCopy,
+  getMaterialName,
+  getMatName,
+  getTranslatedCutActionCopy,
+} from "../../i18n";
 import { MAT_PRESETS, MATERIAL_OPTIONS } from "@cricut-companion/slicebug-bridge";
 import { getFriendlyPlanResultCopy, formatToolName } from "../../onboarding-copy";
 import type { CutSessionSnapshot, SlicebugPlanResult } from "../../app-types";
@@ -8,26 +16,7 @@ function getCutActionCopy(
   action: CutSessionSnapshot["action"],
   language: Language,
 ): { title: string; message: string } {
-  const { t } = createTranslator(language);
-
-  switch (action.kind) {
-    case "finished":
-      return { title: t("cutAction.finished.title"), message: t("cutAction.finished.message") };
-    case "load-mat":
-      return { title: t("cutAction.load-mat.title"), message: t("cutAction.load-mat.message") };
-    case "load-tools":
-      return { title: t("cutAction.load-tools.title"), message: t("cutAction.load-tools.message") };
-    case "press-go":
-      return { title: t("cutAction.press-go.title"), message: t("cutAction.press-go.message") };
-    case "replace-tool":
-      return { title: t("cutAction.replace-tool.title"), message: t("cutAction.replace-tool.message") };
-    case "running":
-      return { title: action.title || t("cutAction.running.title"), message: action.message || t("cutAction.running.message") };
-    case "error":
-      return { title: action.title || t("cutAction.error.title"), message: action.message || t("cutAction.error.message") };
-    default:
-      return { title: t("cutAction.idle.title"), message: t("cutAction.idle.message") };
-  }
+  return getTranslatedCutActionCopy(action, language);
 }
 
 export function MaterialMatChooser({

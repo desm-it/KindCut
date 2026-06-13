@@ -357,6 +357,7 @@ export function DesignWorkspace({
   imageLibrary,
   imageLibraryLoading,
   onLoadImageLibrary,
+  onRenameLibraryImage,
   onDeleteLibraryImage,
   onAddLibraryImageToWorkspace,
 }: {
@@ -428,6 +429,7 @@ export function DesignWorkspace({
   imageLibrary: LibraryImage[];
   imageLibraryLoading: boolean;
   onLoadImageLibrary: () => void;
+  onRenameLibraryImage: (path: string, name: string) => Promise<void>;
   onDeleteLibraryImage: (path: string) => void;
   onAddLibraryImageToWorkspace: (img: LibraryImage) => void;
   onAddText: () => void;
@@ -1436,6 +1438,7 @@ export function DesignWorkspace({
             onAskAi={() => { onOpenAiGenerate(); }}
             onFileImport={onSvgFileChange}
             onUseImage={(img) => { onAddLibraryImageToWorkspace(img); setImageDrawerOpen(false); }}
+            onRenameImage={onRenameLibraryImage}
             onDeleteImage={onDeleteLibraryImage}
           />
         ) : null}

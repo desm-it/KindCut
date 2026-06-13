@@ -21,6 +21,7 @@ export type CutSessionSnapshot = {
   status: "idle" | "running" | "waiting" | "finished" | "error" | "stopped" | "blocked";
   action: {
     kind: string;
+    code?: string;
     title: string;
     message: string;
     requiresContinue: boolean;

@@ -117,6 +117,11 @@ ipcRenderer.on("project-state:request", (_event: IpcRendererEvent, requestId: st
 });
 
 export type LibraryImageMeta = { name: string; path: string; isAi: boolean; svg: string };
+type RasterTraceOptions = {
+  threshold: number;
+  detail: number;
+  invert: boolean;
+};
 
 const desktopApi = {
   platform: process.platform,
@@ -162,6 +167,7 @@ const desktopApi = {
     download: (input?: { background?: boolean }): Promise<UpdateState> => ipcRenderer.invoke("updater:download", input),
     install: (): Promise<UpdateState> => ipcRenderer.invoke("updater:install"),
     dismiss: (): Promise<UpdateState> => ipcRenderer.invoke("updater:dismiss"),
+    skip: (): Promise<UpdateState> => ipcRenderer.invoke("updater:skip"),
     onState: (callback: (state: UpdateState) => void): (() => void) => {
       const listener = (_event: IpcRendererEvent, state: UpdateState) => callback(state);
       ipcRenderer.on("updater:state", listener);
@@ -172,7 +178,18 @@ const desktopApi = {
     list: (): Promise<LibraryImageMeta[]> => ipcRenderer.invoke("library:list"),
     save: (input: { name: string; svg: string; isAi: boolean }): Promise<string> =>
       ipcRenderer.invoke("library:save", input),
+    rename: (input: { filePath: string; name: string }): Promise<LibraryImageMeta> =>
+      ipcRenderer.invoke("library:rename", input),
     delete: (filePath: string): Promise<void> => ipcRenderer.invoke("library:delete", filePath),
+  },
+  image: {
+    traceRasterToSvg: (input: {
+      base64: string;
+      fileName?: string;
+      mimeType?: string;
+      traceOptions?: RasterTraceOptions;
+    }): Promise<string> =>
+      ipcRenderer.invoke("image:trace-raster-to-svg", input),
   },
   system: {
     getFonts: (): Promise<string[]> => ipcRenderer.invoke("system:fonts"),

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { Language, TranslationKey } from "../../i18n";
-import { getMatName, getMaterialName, createTranslator } from "../../i18n";
+import { getMatName, getMaterialName, createTranslator, getTranslatedCutActionCopy } from "../../i18n";
 import { getMatDimensionsInches } from "../../workspace-utils";
 import { MATERIAL_OPTIONS } from "@cricut-companion/slicebug-bridge";
 import type { CutSessionSnapshot, SlicebugPlanResult } from "../../app-types";
@@ -239,9 +239,10 @@ function CutStepDetail({ language, matPreset, cutSession, steps, current, reques
     name = t("cut.stoppedTitle");
     hint = t("cut.stoppedHint");
   } else if (status === "error") {
+    const actionCopy = getTranslatedCutActionCopy(cutSession.action, language);
     visual = <span className="cut-detail__glyph cut-detail__glyph--error">{ERROR_ICON}</span>;
-    name = cutSession.action.title || t("cutAction.error.title");
-    hint = cutSession.action.message || t("cutAction.error.message");
+    name = actionCopy.title;
+    hint = actionCopy.message;
   } else if (kind === "unload") {
     // Cut done, mat still in the machine — eject it with the software Unload button.
     visual = (
@@ -275,9 +276,10 @@ function CutStepDetail({ language, matPreset, cutSession, steps, current, reques
     name = tool ? `${t("cut.load")} ${prettyToolName(tool.tool)}` : t("cutAction.load-tools.title");
     hint = t("cutAction.load-tools.message");
   } else {
+    const actionCopy = getTranslatedCutActionCopy(cutSession.action, language);
     visual = <span className="cut-detail__glyph cut-detail__glyph--play">{PLAY_ICON}</span>;
-    name = cutSession.action.title;
-    hint = cutSession.action.message ?? "";
+    name = actionCopy.title;
+    hint = actionCopy.message;
   }
 
   return (

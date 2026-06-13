@@ -22,6 +22,14 @@ import {
 import { formatFileSize } from "./svg-import";
 import { DEBUG } from "./dev-flags";
 import {
+  RASTER_IMPORT_EXT_RE,
+  type RasterTraceOptions,
+  dataUrlToBase64,
+  isRasterImportFile,
+  rasterMimeType,
+  stripImageExtension,
+} from "./local-raster-import";
+import {
   type WorkspaceObject,
   type WorkspacePathData,
   type WorkspaceSvgItem,
@@ -93,6 +101,8 @@ import { DesignWorkspace } from "./components/workspace/DesignWorkspace";
 import { WelcomeScreen } from "./components/screens/WelcomeScreen";
 import { SettingsModal } from "./components/modals/SettingsModal";
 import { AiGenerateModal } from "./components/modals/AiGenerateModal";
+import { LocalImageTraceModal } from "./components/modals/LocalImageTraceModal";
+import type { LocalRasterImport } from "./components/modals/LocalImageTraceModal";
 import { CutPreviewModal } from "./components/modals/CutPreviewModal";
 import { UnsavedChangesModal } from "./components/modals/UnsavedChangesModal";
 import { UpdateModal } from "./components/modals/UpdateModal";
@@ -177,6 +187,35 @@ const planCommand = buildPlanCommand({
 
 const MATERIAL_INSERT_ID = 535;
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("KindCut could not read that image file."));
+      }
+    });
+    reader.addEventListener("error", () => reject(reader.error ?? new Error("KindCut could not read that image file.")));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function readRasterImport(file: File): Promise<LocalRasterImport> {
+  const dataUrl = await readFileAsDataUrl(file);
+  const base64 = dataUrlToBase64(dataUrl);
+  if (!base64) {
+    throw new Error("KindCut could not read that image file.");
+  }
+  return {
+    fileName: file.name,
+    fileSize: formatFileSize(file.size),
+    mimeType: rasterMimeType(file),
+    base64,
+  };
+}
+
 export function App() {
   const [screen, setScreen] = useState<AppScreen>("welcome");
   const [language, setLanguage] = useState<Language>(() => loadLanguagePreference());
@@ -223,6 +262,8 @@ export function App() {
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiGenerateOpen, setAiGenerateOpen] = useState(false);
+  const [activeRasterImport, setActiveRasterImport] = useState<LocalRasterImport | null>(null);
+  const [rasterImportQueue, setRasterImportQueue] = useState<LocalRasterImport[]>([]);
   const [updateState, setUpdateState] = useState<UpdateState | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const { t } = useMemo(() => createTranslator(language), [language]);
@@ -382,6 +423,18 @@ export function App() {
   async function deleteFromLibrary(filePath: string): Promise<void> {
     await window.cricutCompanion?.imageLibrary?.delete(filePath);
     setImageLibrary((prev) => prev.filter((img) => img.path !== filePath));
+  }
+
+  async function renameLibraryImage(filePath: string, name: string): Promise<void> {
+    if (!window.cricutCompanion?.imageLibrary?.rename) {
+      throw new Error(language === "nl" ? "Hernoemen kan alleen in de desktopapp." : "Renaming is only available in the desktop app.");
+    }
+    const renamed = await window.cricutCompanion.imageLibrary.rename({ filePath, name });
+    setImageLibrary((prev) =>
+      prev
+        .map((img) => (img.path === filePath ? renamed : img))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
   }
 
   function handleLanguageChange(nextLanguage: Language) {
@@ -860,6 +913,51 @@ export function App() {
     await saveToLibrary(name, svg, true);
     await loadImageLibrary();
     addSvgToWorkspace(name, svg);
+  }
+
+  function queueRasterImports(imports: LocalRasterImport[]): void {
+    if (imports.length === 0) {
+      return;
+    }
+
+    setActiveRasterImport((current) => {
+      if (current) {
+        setRasterImportQueue((queue) => [...queue, ...imports]);
+        return current;
+      }
+      const [next, ...rest] = imports;
+      setRasterImportQueue((queue) => [...queue, ...rest]);
+      return next ?? null;
+    });
+  }
+
+  function advanceRasterImportQueue(): void {
+    setRasterImportQueue((queue) => {
+      const [next, ...rest] = queue;
+      setActiveRasterImport(next ?? null);
+      return rest;
+    });
+  }
+
+  async function traceLocalRasterImage(source: LocalRasterImport, traceOptions?: RasterTraceOptions): Promise<string> {
+    const rawSvg = await window.cricutCompanion?.image?.traceRasterToSvg({
+      base64: source.base64,
+      fileName: source.fileName,
+      mimeType: source.mimeType,
+      traceOptions,
+    });
+    if (!rawSvg) {
+      throw new Error(language === "nl" ? "Vectorisatie mislukt." : "Vectorisation failed.");
+    }
+    return normalizeAiSvg(rawSvg);
+  }
+
+  async function handleImportLocalRaster(source: LocalRasterImport, svg: string): Promise<void> {
+    const name = stripImageExtension(source.fileName);
+    await saveToLibrary(name, svg, false);
+    await loadImageLibrary();
+    addSvgToWorkspace(source.fileName.replace(RASTER_IMPORT_EXT_RE, ".svg"), svg, true);
+    advanceRasterImportQueue();
   }
 
   function addSvgToWorkspace(name: string, svg: string, normalizeFirst = false): void {
@@ -1537,38 +1635,47 @@ export function App() {
     setProjectMessage(null);
 
     const svgFiles = files.filter((file) => file.name.toLowerCase().endsWith(".svg"));
-    if (svgFiles.length === 0) {
+    const rasterFiles = files.filter(isRasterImportFile);
+    const unsupportedCount = files.length - svgFiles.length - rasterFiles.length;
+    if (svgFiles.length === 0 && rasterFiles.length === 0) {
       setImportMessage(t("import.invalidSvg"));
       event.target.value = "";
       return;
     }
 
     try {
-      const startIndex = importedSvgs.length;
-      const loaded = await Promise.all(svgFiles.map(async (file) => ({ file, svg: await file.text() })));
-      // Save each to library (fire-and-forget, non-fatal)
-      void Promise.all(loaded.map(({ file, svg }) => saveToLibrary(file.name.replace(/\.svg$/i, ""), svg, false)))
-        .then(() => loadImageLibrary());
-      const newItems = loaded.map(({ file, svg }, fileIndex) =>
-        createWorkspaceSvgItem({
-          id: `svg-${Date.now()}-${startIndex + fileIndex}`,
-          fileName: file.name,
-          fileSize: formatFileSize(file.size),
-          svg,
-          language,
-          index: startIndex + fileIndex,
-        }),
-      );
-      pushWorkspaceHistorySnapshot();
-      setImportedSvgs((current) => [...current, ...newItems]);
-      const newSelectedIds = newItems.map((item) => item.id);
-      setSelectedSvgId(newSelectedIds.at(-1) ?? null);
-      setSelectedSvgIds(newSelectedIds);
-      if (svgFiles.length !== files.length) {
+      if (svgFiles.length > 0) {
+        const startIndex = importedSvgs.length;
+        const loaded = await Promise.all(svgFiles.map(async (file) => ({ file, svg: await file.text() })));
+        // Save each to library (fire-and-forget, non-fatal)
+        void Promise.all(loaded.map(({ file, svg }) => saveToLibrary(stripImageExtension(file.name), svg, false)))
+          .then(() => loadImageLibrary());
+        const newItems = loaded.map(({ file, svg }, fileIndex) =>
+          createWorkspaceSvgItem({
+            id: `svg-${Date.now()}-${startIndex + fileIndex}`,
+            fileName: file.name,
+            fileSize: formatFileSize(file.size),
+            svg,
+            language,
+            index: startIndex + fileIndex,
+          }),
+        );
+        pushWorkspaceHistorySnapshot();
+        setImportedSvgs((current) => [...current, ...newItems]);
+        const newSelectedIds = newItems.map((item) => item.id);
+        setSelectedSvgId(newSelectedIds.at(-1) ?? null);
+        setSelectedSvgIds(newSelectedIds);
+        setImportedPlan(null);
+        setCutSession(null);
+      }
+
+      if (rasterFiles.length > 0) {
+        queueRasterImports(await Promise.all(rasterFiles.map(readRasterImport)));
+      }
+
+      if (unsupportedCount > 0) {
         setImportMessage(t("import.invalidSvg"));
       }
-      setImportedPlan(null);
-      setCutSession(null);
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : t("import.openError"));
     }
@@ -1632,6 +1739,10 @@ export function App() {
 
   function handleRestartUpdate(): void {
     void runUpdaterAction(() => window.cricutCompanion?.updater?.install());
+  }
+
+  function handleSkipUpdate(): void {
+    void runUpdaterAction(() => window.cricutCompanion?.updater?.skip());
   }
 
   function handleDismissUpdate(): void {
@@ -1747,7 +1858,17 @@ export function App() {
             onDownloadNow={() => handleDownloadUpdate(false)}
             onDownloadBackground={() => handleDownloadUpdate(true)}
             onRestart={handleRestartUpdate}
+            onSkip={handleSkipUpdate}
             onLater={handleDismissUpdate}
+          />
+        ) : null}
+        {activeRasterImport ? (
+          <LocalImageTraceModal
+            language={language}
+            source={activeRasterImport}
+            onTrace={traceLocalRasterImage}
+            onImport={handleImportLocalRaster}
+            onClose={advanceRasterImportQueue}
           />
         ) : null}
       </>
@@ -1831,6 +1952,7 @@ export function App() {
       imageLibrary={imageLibrary}
       imageLibraryLoading={libraryLoading}
       onLoadImageLibrary={() => void loadImageLibrary()}
+      onRenameLibraryImage={(path, name) => renameLibraryImage(path, name)}
       onDeleteLibraryImage={(p) => void deleteFromLibrary(p)}
       onAddLibraryImageToWorkspace={(img) => addSvgToWorkspace(img.name, img.svg)}
     />
@@ -1850,6 +1972,15 @@ export function App() {
         onImport={(svg, prompt) => void handleImportAiDesign(svg, prompt)}
         onOpenSettings={() => { setAiGenerateOpen(false); setSettingsOpen(true); }}
         onClose={() => setAiGenerateOpen(false)}
+      />
+    ) : null}
+    {activeRasterImport ? (
+      <LocalImageTraceModal
+        language={language}
+        source={activeRasterImport}
+        onTrace={traceLocalRasterImage}
+        onImport={handleImportLocalRaster}
+        onClose={advanceRasterImportQueue}
       />
     ) : null}
     {cutPreview ? (
@@ -1887,6 +2018,7 @@ export function App() {
         onDownloadNow={() => handleDownloadUpdate(false)}
         onDownloadBackground={() => handleDownloadUpdate(true)}
         onRestart={handleRestartUpdate}
+        onSkip={handleSkipUpdate}
         onLater={handleDismissUpdate}
       />
     ) : null}
