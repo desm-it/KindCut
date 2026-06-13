@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.3 - 2026-06-13
+
+### Fixed
+
+- Bundle SliceBug 0.3.6 with a Design Space-compatible `logId` on the cutter startup message.
+- Add native CricutDevice bridge-log details to SliceBug ping-loop timeout diagnostics.
+- Keep the Windows startup timeout path non-hanging while collecting better clues for Bluetooth/helper startup failures.
+
 ## 1.2.2 - 2026-06-13
 
 ### Fixed
