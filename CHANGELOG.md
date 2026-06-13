@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.8 - 2026-06-14
+
+### Fixed
+
+- Bundle SliceBug 0.3.11 with a Windows pipe transport fix for large encrypted CricutDevice startup frames.
+- Write length-prefixed plugin frames completely before flushing, preventing partial writes from leaving CricutDevice waiting on startup data.
+- Add SliceBug tests for partial stdin writes and no-progress pipe failures.
+
 ## 1.2.7 - 2026-06-14
 
 ### Fixed
