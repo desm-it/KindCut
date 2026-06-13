@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.9 - 2026-06-14
+
+### Fixed
+
+- Bundle SliceBug 0.3.12.
+- Use only Design Space's `device-common` CricutDevice helper on Windows, matching the macOS helper selection.
+- Remove the earlier `device-common-next` / `cricut-device-io` helper experiment now that the Windows startup issue is fixed by complete pipe-frame writes.
+
 ## 1.2.8 - 2026-06-14
 
 ### Fixed
