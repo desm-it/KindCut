@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.4 - 2026-06-13
+
+### Fixed
+
+- Bundle SliceBug 0.3.7 so the Windows CricutDevice helper starts in `bridge` mode, matching Design Space's plugin launch path.
+- Keep SliceBug path-helper plugins on their existing bare launch mode while allowing device-helper-specific process arguments.
+- Add release tests for plugin launch arguments so future helper packaging changes are visible.
+
 ## 1.2.3 - 2026-06-13
 
 ### Fixed
