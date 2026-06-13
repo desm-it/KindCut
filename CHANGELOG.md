@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.5 - 2026-06-13
+
+### Changed
+
+- Bundle SliceBug 0.3.8.
+- Capture native CricutDevice helper log messages in SliceBug diagnostics so Windows Bluetooth startup failures can include more readable helper details.
+- Extend the bundled bridge protocol schema with native helper log messages and log levels.
+
 ## 1.2.4 - 2026-06-13
 
 ### Fixed
