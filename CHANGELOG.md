@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.6 - 2026-06-13
+
+### Fixed
+
+- Bundle SliceBug 0.3.9 with a Windows-only helper selection fix that prefers Design Space's newer `device-common-next` helper when available.
+- Keep macOS on the existing `device-common` helper path because cutter connection is currently working there.
+- Request verbose CricutDevice helper logging on Windows and align decoded helper log fields with the real bridge schema.
+
 ## 1.2.5 - 2026-06-13
 
 ### Changed
