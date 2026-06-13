@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.7 - 2026-06-14
+
+### Fixed
+
+- Bundle SliceBug 0.3.10 with a Windows helper-layout fix that keeps `device-common-next` in its own plugin folder instead of copying it over `device-common`.
+- Copy the sibling `cricut-device-io` helper during Windows bootstrap when Design Space provides it.
+- Add a `slicebug cut --device-plugin-path` diagnostic option so a specific Design Space `CricutDevice.exe` can be tested directly from its original folder.
+
 ## 1.2.6 - 2026-06-13
 
 ### Fixed
