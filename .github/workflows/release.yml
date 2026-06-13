@@ -69,6 +69,9 @@ jobs:
       - name: Build mac release
         run: npm run package:desktop:mac
 
+      - name: Verify mac release metadata
+        run: npm run verify:release-assets --workspace @cricut-companion/desktop
+
       - name: Upload mac artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -124,6 +127,9 @@ jobs:
         env:
           PYTHON: python
         run: npm run package:desktop:win
+
+      - name: Verify Windows release metadata
+        run: npm run verify:release-assets --workspace @cricut-companion/desktop
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4

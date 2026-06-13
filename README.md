@@ -53,7 +53,7 @@ If macOS says the app cannot be opened because it is from an unidentified develo
 
 ### Windows
 
-1. Download `KindCut.Setup...exe`.
+1. Download `KindCut-Setup-...exe`.
 2. Run the installer.
 3. Open KindCut from the Start menu or desktop shortcut.
 

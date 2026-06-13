@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.14 - 2026-06-13
+
+### Fixed
+
+- Fix Windows auto-update downloads by making the installer asset name match `latest.yml`.
+- Add release metadata verification so CI fails if updater YAML references a missing build asset.
+- Update README install instructions to use the new Windows installer filename.
+
 ## 1.1.13 - 2026-06-12
 
 ### Fixed

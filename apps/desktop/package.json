@@ -1,6 +1,6 @@
 {
   "name": "@cricut-companion/desktop",
-  "version": "1.1.13",
+  "version": "1.1.14",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,6 +11,7 @@
     "build:renderer": "tsc --noEmit && vite build --outDir dist/renderer",
     "build:shell": "tsc -p tsconfig.shell.json && node scripts/prepare-shell-output.cjs",
     "build:slicebug": "node scripts/build-slicebug-runtime.cjs",
+    "verify:release-assets": "node scripts/verify-release-assets.cjs",
     "verify:slicebug": "node scripts/verify-slicebug-runtime.cjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.shell.json --noEmit",
     "test": "vitest run --passWithNoTests",
@@ -74,9 +75,13 @@
       "identity": "-"
     },
     "win": {
+      "artifactName": "KindCut-Setup-${version}.${ext}",
       "target": [
         "nsis"
       ]
+    },
+    "nsis": {
+      "artifactName": "KindCut-Setup-${version}.${ext}"
     }
   },
   "description": "KindCut desktop app for local-first Cricut design, preview, and SliceBug handoff.",
