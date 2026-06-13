@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1 - 2026-06-13
+
+### Fixed
+
+- Bundle SliceBug 0.3.5 with a clean `device-common` bootstrap copy so stale Windows plugin files are removed before helper setup imports fresh Design Space files.
+- Improve SliceBug bootstrap user selection when Design Space has multiple `LocalData` users, preferring a user that has both `UserSettings` and machine profiles.
+- Add non-secret SliceBug diagnostics for request-key, settings, profile, and device-plugin fingerprints to help debug Windows cutter startup issues.
+- Treat the Windows CricutDevice ping-loop startup timeout as a recoverable helper setup problem, so KindCut retries bootstrap once.
+
 ## 1.2.0 - 2026-06-13
 
 ### Added

@@ -681,6 +681,11 @@ describe("slicebug desktop service", () => {
         "slicebug.exceptions.ProtocolError: incorrect message status: expected 2, got 0",
       ),
     ).toBe(true);
+    expect(
+      isRecoverableCricutDeviceStartError(
+        "CricutDevice kept sending ping frames and never reported the expected startup status after 60.0s",
+      ),
+    ).toBe(true);
     expect(isRecoverableCricutDeviceStartError("EOFError: Plugin stdout closed while reading message")).toBe(false);
   });
 

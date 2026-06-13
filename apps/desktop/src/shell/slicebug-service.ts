@@ -1520,7 +1520,10 @@ function appendText(current: string, next: string): string {
 }
 
 export function isRecoverableCricutDeviceStartError(text: string): boolean {
-  return /incorrect message status:\s*expected\s+2,\s*got\s+0/i.test(text);
+  return (
+    /incorrect message status:\s*expected\s+2,\s*got\s+0/i.test(text) ||
+    /kept sending ping frames|never reported the expected startup status/i.test(text)
+  );
 }
 
 function parseCutAction(text: string): CutActionState {
