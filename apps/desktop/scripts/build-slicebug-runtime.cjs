@@ -89,12 +89,29 @@ function runQuiet(command, args, options = {}) {
   });
 }
 
-function download(url) {
+function formatError(error) {
+  if (error instanceof Error) {
+    return error.stack || error.message || error.name;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function downloadToFile(url, targetPath, redirectCount = 0) {
   return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
+    if (redirectCount > 5) {
+      reject(new Error(`Too many redirects while downloading ${url}`));
+      return;
+    }
+
+    const request = https.get(url, { headers: { "User-Agent": "KindCut-release-builder" } }, (response) => {
       if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         response.resume();
-        download(response.headers.location).then(resolve, reject);
+        const redirectedUrl = new URL(response.headers.location, url).toString();
+        downloadToFile(redirectedUrl, targetPath, redirectCount + 1).then(resolve, reject);
         return;
       }
       if (response.statusCode !== 200) {
@@ -102,11 +119,64 @@ function download(url) {
         reject(new Error(`Download failed (${response.statusCode}) for ${url}`));
         return;
       }
-      const chunks = [];
-      response.on("data", (chunk) => chunks.push(chunk));
-      response.on("end", () => resolve(Buffer.concat(chunks)));
-    }).on("error", reject);
+      const file = fs.createWriteStream(targetPath);
+      response.pipe(file);
+      response.on("error", (error) => {
+        file.destroy(error);
+      });
+      file.on("error", (error) => {
+        fs.rmSync(targetPath, { force: true });
+        reject(error);
+      });
+      file.on("finish", () => {
+        file.close(() => resolve());
+      });
+    });
+
+    request.setTimeout(60_000, () => {
+      request.destroy(new Error(`Download timed out for ${url}`));
+    });
+    request.on("error", reject);
   });
+}
+
+async function downloadWithRetries(url, targetPath) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await downloadToFile(url, targetPath);
+      return;
+    } catch (error) {
+      lastError = error;
+      fs.rmSync(targetPath, { force: true });
+      console.warn(`Download attempt ${attempt} failed: ${formatError(error)}`);
+      await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
+    }
+  }
+
+  console.warn("Falling back to curl for bundled usvg download.");
+  const curl = spawnSync("curl", [
+    "--fail",
+    "--location",
+    "--retry",
+    "3",
+    "--retry-delay",
+    "2",
+    "--connect-timeout",
+    "30",
+    "--output",
+    targetPath,
+    url,
+  ], {
+    cwd: desktopRoot,
+    stdio: "inherit",
+    shell: false,
+  });
+
+  if (curl.status !== 0) {
+    fs.rmSync(targetPath, { force: true });
+    throw new Error(`Could not download bundled usvg. Last Node error: ${formatError(lastError)}`);
+  }
 }
 
 function executableName(name) {
@@ -170,13 +240,14 @@ async function bundleUsvg() {
   fs.mkdirSync(usvgDir, { recursive: true });
 
   console.log(`Downloading bundled usvg for ${process.platform}...`);
-  const zipBytes = await download(info.url);
+  await downloadWithRetries(info.url, zipPath);
+  const zipBytes = fs.readFileSync(zipPath);
+  console.log(`Downloaded bundled usvg archive (${zipBytes.length} bytes).`);
   const actual = crypto.createHash("sha256").update(zipBytes).digest("hex");
   if (actual !== info.sha256) {
     throw new Error(`usvg checksum mismatch. Expected ${info.sha256}, saw ${actual}.`);
   }
 
-  fs.writeFileSync(zipPath, zipBytes);
   run(venvPythonPath(), [
     "-c",
     [
@@ -265,6 +336,6 @@ rewriteMacPythonInstallName(helperPath);
 console.log(`Bundled SliceBug runtime ready: ${helperPath}`);
 
 bundleUsvg().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error(formatError(error));
   process.exit(1);
 });

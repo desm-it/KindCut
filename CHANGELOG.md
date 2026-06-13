@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.2 - 2026-06-13
+
+### Fixed
+
+- Keep the SliceBug 0.3.5 Windows cutter startup diagnostics and helper bootstrap recovery from 1.2.1.
+- Harden the Windows release build by retrying the bundled `usvg` download, falling back to `curl`, and logging full download errors.
+- Pin the Windows release runner to `windows-2022` while GitHub migrates `windows-latest` to the newer Server 2025 image.
+
 ## 1.2.1 - 2026-06-13
 
 ### Fixed
