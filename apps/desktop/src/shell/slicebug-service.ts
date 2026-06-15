@@ -14,6 +14,7 @@ const WINDOWS_CUTTER_BLOCKING_PROCESS_NAMES = new Set([
   "cricutdevice.exe",
   "cricutdevicebridge.exe",
 ]);
+let slicebugLoggingEnabled = false;
 
 export interface SlicebugCandidateOptions {
   platform?: NodeJS.Platform;
@@ -21,10 +22,11 @@ export interface SlicebugCandidateOptions {
   appRoot?: string;
   repoRoot?: string;
   envExecutable?: string;
+  slicebugLoggingEnabled?: boolean;
 }
 
 export interface SlicebugInvocation {
-  args: ["--version"];
+  args: string[];
 }
 
 export interface SlicebugBootstrapInvocation {
@@ -32,7 +34,7 @@ export interface SlicebugBootstrapInvocation {
 }
 
 export interface SlicebugListMaterialsInvocation {
-  args: ["list-materials"];
+  args: string[];
 }
 
 export interface SlicebugPlanInvocation {
@@ -250,6 +252,9 @@ function logSlicebugIssue(context: string, details: Record<string, unknown>): vo
 }
 
 function logSlicebugDebug(context: string, details: Record<string, unknown>): void {
+  if (!slicebugLoggingEnabled) {
+    return;
+  }
   logDiagnostics("debug", `[SliceBug] ${context}`, details);
 }
 
@@ -268,20 +273,27 @@ function logSlicebugResultIssue(context: string, result: RawSlicebugResult): voi
 
 export function buildSlicebugSubprocessEnv(options: SlicebugCandidateOptions = {}): NodeJS.ProcessEnv {
   const bundledUsvg = firstExistingFile(findBundledUsvgCandidates(options));
-  const debugLogPath = process.env.SLICEBUG_DEBUG_LOG ?? slicebugDebugLogPath();
-  const diagnosticsEnv = debugLogPath ? { SLICEBUG_DEBUG_LOG: debugLogPath } : {};
+  const loggingEnabled = options.slicebugLoggingEnabled ?? slicebugLoggingEnabled;
+  const env = { ...process.env };
+  delete env.SLICEBUG_DEBUG;
+  delete env.SLICEBUG_DEBUG_LOG;
+
+  if (loggingEnabled) {
+    const debugLogPath = process.env.SLICEBUG_DEBUG_LOG ?? slicebugDebugLogPath();
+    env.SLICEBUG_DEBUG = "1";
+    if (debugLogPath) {
+      env.SLICEBUG_DEBUG_LOG = debugLogPath;
+    }
+  }
+
   if (!bundledUsvg) {
-    return {
-      ...process.env,
-      ...diagnosticsEnv,
-    };
+    return env;
   }
 
   const usvgDir = path.dirname(bundledUsvg);
   const currentPath = process.env.PATH ?? "";
   return {
-    ...process.env,
-    ...diagnosticsEnv,
+    ...env,
     PATH: currentPath ? `${usvgDir}${path.delimiter}${currentPath}` : usvgDir,
   };
 }
@@ -292,11 +304,23 @@ function slicebugDebugLogPath(): string | null {
 }
 
 export function buildSlicebugInvocation(): SlicebugInvocation {
-  return { args: ["--version"] };
+  return { args: withSlicebugLoggingArg(["--version"]) };
 }
 
 export function buildListMaterialsInvocation(): SlicebugListMaterialsInvocation {
-  return { args: ["list-materials"] };
+  return { args: withSlicebugLoggingArg(["list-materials"]) };
+}
+
+export function getSlicebugLoggingEnabled(): boolean {
+  return slicebugLoggingEnabled;
+}
+
+export function setSlicebugLoggingEnabled(enabled: boolean): void {
+  slicebugLoggingEnabled = enabled;
+}
+
+function withSlicebugLoggingArg(args: string[]): string[] {
+  return slicebugLoggingEnabled ? ["--log", ...args] : args;
 }
 
 export function defaultDesignSpacePaths(platform: NodeJS.Platform = process.platform, homeDir = os.homedir()): Required<SlicebugBootstrapInput> {
@@ -475,13 +499,13 @@ export function findDesignSpaceMachineProfileSerials(designSpaceProfilePath: str
 export function buildBootstrapInvocation(input: SlicebugBootstrapInput = {}): SlicebugBootstrapInvocation {
   const defaults = defaultDesignSpacePaths();
   return {
-    args: [
+    args: withSlicebugLoggingArg([
       "bootstrap",
       "--design-space-path",
       input.designSpacePath ?? defaults.designSpacePath,
       "--design-space-profile-path",
       input.designSpaceProfilePath ?? defaults.designSpaceProfilePath,
-    ],
+    ]),
   };
 }
 
@@ -585,25 +609,26 @@ export function buildSamplePlanRequest(
   <path d="M 48 60 L 96 60" stroke="#000000" fill="none" />
 </svg>
 `;
+  const args = [
+    "plan",
+    inputSvgPath,
+    outputPlanPath,
+    "--material",
+    String(choices.materialId ?? 218),
+    "--mat-preset",
+    choices.matPreset ?? "joy-standard",
+    "--map",
+    "000000:pen",
+    "--map",
+    "ff0000:fine_point_blade",
+  ];
 
   return {
     inputSvgPath,
     outputPlanPath,
     svg,
     invocation: {
-      args: [
-        "plan",
-        inputSvgPath,
-        outputPlanPath,
-        "--material",
-        String(choices.materialId ?? 218),
-        "--mat-preset",
-        choices.matPreset ?? "joy-standard",
-        "--map",
-        "000000:pen",
-        "--map",
-        "ff0000:fine_point_blade",
-      ],
+      args: withSlicebugLoggingArg(args),
     },
   };
 }
@@ -634,7 +659,7 @@ export function buildSvgPlanRequest(workspaceDir: string, input: SvgPlanInput): 
     inputSvgPath,
     outputPlanPath,
     svg: input.svg,
-    invocation: { args },
+    invocation: { args: withSlicebugLoggingArg(args) },
   };
 }
 
@@ -1209,7 +1234,7 @@ export class SlicebugCutSession {
 
   constructor(options: CutSessionOptions) {
     this.command = options.executable;
-    this.args = ["cut", "--software-buttons", options.planPath];
+    this.args = withSlicebugLoggingArg(["cut", "--software-buttons", options.planPath]);
     this.smokeMode = options.smokeMode;
     this.spawnProcess =
       options.spawnProcess ??

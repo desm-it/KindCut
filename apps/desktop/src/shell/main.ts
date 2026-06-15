@@ -41,6 +41,7 @@ import {
   generateSvgSlicebugPlan,
   getSlicebugSetupStatus,
   getSlicebugStatus,
+  setSlicebugLoggingEnabled,
 } from "./slicebug-service";
 import type { CutSessionSnapshot, SvgPlanInput } from "./slicebug-service";
 import { createMainWindowOptions, resolveRendererEntry } from "./window-config";
@@ -138,6 +139,10 @@ type UpdateRendererState = {
   downloadedFile?: string;
 };
 
+type AppSettings = {
+  slicebugLoggingEnabled?: boolean;
+};
+
 type JimpImage = {
   bitmap: {
     data: Buffer;
@@ -165,9 +170,11 @@ const EDIT_STATE_REQUEST_TIMEOUT_MS = 250;
 const PROJECT_STATE_REQUEST_TIMEOUT_MS = 500;
 const PENDING_UPDATE_FILE_NAME = "pending-update.json";
 const SKIPPED_UPDATE_FILE_NAME = "skipped-update.json";
+const SETTINGS_FILE_NAME = "settings.json";
 const ABOUT_COPY =
   "KindCut helps you design, preview, save, and prepare Cricut projects locally. " +
   "Cutter handoff is powered by the bundled SliceBug helper and always requires explicit confirmation.";
+let slicebugLoggingEnabled = false;
 let updateRendererState: UpdateRendererState = {
   status: "idle",
   visible: false,
@@ -283,6 +290,47 @@ function pendingUpdatePath(): string {
 
 function skippedUpdatePath(): string {
   return path.join(app.getPath("userData"), SKIPPED_UPDATE_FILE_NAME);
+}
+
+function appSettingsPath(): string {
+  return path.join(app.getPath("userData"), SETTINGS_FILE_NAME);
+}
+
+function isAppSettings(value: unknown): value is AppSettings {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return record.slicebugLoggingEnabled === undefined || typeof record.slicebugLoggingEnabled === "boolean";
+}
+
+async function readAppSettings(): Promise<AppSettings> {
+  try {
+    const content = await fs.readFile(appSettingsPath(), "utf8");
+    const parsed = JSON.parse(content) as unknown;
+    return isAppSettings(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeAppSettings(settings: AppSettings): Promise<void> {
+  await fs.mkdir(path.dirname(appSettingsPath()), { recursive: true });
+  await fs.writeFile(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+}
+
+async function loadAppSettings(): Promise<void> {
+  const settings = await readAppSettings();
+  slicebugLoggingEnabled = settings.slicebugLoggingEnabled === true;
+  setSlicebugLoggingEnabled(slicebugLoggingEnabled);
+}
+
+async function setSlicebugLoggingPreference(enabled: boolean): Promise<void> {
+  slicebugLoggingEnabled = enabled;
+  setSlicebugLoggingEnabled(enabled);
+  await writeAppSettings({ ...(await readAppSettings()), slicebugLoggingEnabled: enabled });
+  Menu.setApplicationMenu(createAppMenu());
+  logDiagnostics("info", "[KindCut settings] SliceBug logging changed", { enabled });
 }
 
 function isPendingUpdateState(value: unknown): value is PendingUpdateState {
@@ -970,6 +1018,17 @@ async function openLogsFolder(): Promise<void> {
   }
 }
 
+function createSlicebugLoggingMenuItem(): MenuItemConstructorOptions {
+  return {
+    label: "Enable SliceBug Logging",
+    type: "checkbox",
+    checked: slicebugLoggingEnabled,
+    click: (menuItem) => {
+      void setSlicebugLoggingPreference(Boolean(menuItem.checked));
+    },
+  };
+}
+
 function createProjectMenu(): MenuItemConstructorOptions {
   return {
     label: "Project",
@@ -1013,6 +1072,7 @@ function createAppMenu(): ReturnType<typeof Menu.buildFromTemplate> {
               { role: "about" },
               { label: "Check for Updates...", click: checkForUpdatesFromMenu },
               { label: "Open Logs Folder", click: () => void openLogsFolder() },
+              createSlicebugLoggingMenuItem(),
               { type: "separator" },
               { role: "quit" },
             ],
@@ -1050,6 +1110,7 @@ function createAppMenu(): ReturnType<typeof Menu.buildFromTemplate> {
             submenu: [
               { label: "Check for Updates...", click: checkForUpdatesFromMenu },
               { label: "Open Logs Folder", click: () => void openLogsFolder() },
+              createSlicebugLoggingMenuItem(),
               { type: "separator" },
               { label: "About KindCut", click: showAboutDialog },
             ],
@@ -1141,6 +1202,7 @@ async function showContextMenu(window: BrowserWindow): Promise<void> {
     { type: "separator" },
     { label: "Check for Updates...", click: checkForUpdatesFromMenu },
     { label: "Open Logs Folder", click: () => void openLogsFolder() },
+    createSlicebugLoggingMenuItem(),
   ]);
   contextMenu.popup({ window });
 }
@@ -1549,6 +1611,8 @@ ipcMain.handle("image:trace-raster-to-svg", async (_event, input: {
 
 app.whenReady().then(async () => {
   configureDiagnosticsLog(path.join(app.getPath("userData"), "logs"));
+  await loadAppSettings();
+  Menu.setApplicationMenu(createAppMenu());
   logDiagnostics("info", "[KindCut diagnostics] App started", {
     version: app.getVersion(),
     platform: process.platform,
@@ -1559,6 +1623,7 @@ app.whenReady().then(async () => {
     resourcesPath: process.resourcesPath,
     userDataPath: app.getPath("userData"),
     logFilePath: getDiagnosticsLogFilePath(),
+    slicebugLoggingEnabled,
   });
 
   const mainWindow = await createMainWindow();

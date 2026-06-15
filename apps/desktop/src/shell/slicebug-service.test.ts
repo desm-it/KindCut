@@ -26,6 +26,7 @@ import {
   isRecoverableCricutDeviceStartError,
   isBundledUsvgBootstrapFallback,
   parseWindowsTasklistImageNames,
+  setSlicebugLoggingEnabled,
   summarizePlanResult,
   summarizeSlicebugResult,
   vendoredSlicebugFrozenExecutablePath,
@@ -33,6 +34,15 @@ import {
 } from "./slicebug-service";
 
 describe("slicebug desktop service", () => {
+  function withSliceBugLogging<T>(enabled: boolean, callback: () => T): T {
+    setSlicebugLoggingEnabled(enabled);
+    try {
+      return callback();
+    } finally {
+      setSlicebugLoggingEnabled(false);
+    }
+  }
+
   it("looks for packaged and local bundled SliceBug before dev fallbacks", () => {
     expect(
       findSlicebugExecutableCandidates({
@@ -99,9 +109,11 @@ describe("slicebug desktop service", () => {
     expect(env.PATH?.split(path.delimiter)[0]).toBe(path.dirname(usvg));
   });
 
-  it("passes SliceBug debug log location through subprocess env", () => {
-    const previous = process.env.SLICEBUG_DEBUG_LOG;
+  it("does not pass SliceBug debug env vars by default", () => {
+    const previousLog = process.env.SLICEBUG_DEBUG_LOG;
+    const previousDebug = process.env.SLICEBUG_DEBUG;
     process.env.SLICEBUG_DEBUG_LOG = path.join("/tmp", "kindcut-logs", "slicebug-debug.log");
+    process.env.SLICEBUG_DEBUG = "1";
     try {
       const env = buildSlicebugSubprocessEnv({
         platform: "darwin",
@@ -110,7 +122,37 @@ describe("slicebug desktop service", () => {
         repoRoot: "/missing/repo",
       });
 
+      expect(env.SLICEBUG_DEBUG_LOG).toBeUndefined();
+      expect(env.SLICEBUG_DEBUG).toBeUndefined();
+    } finally {
+      if (previousLog === undefined) {
+        delete process.env.SLICEBUG_DEBUG_LOG;
+      } else {
+        process.env.SLICEBUG_DEBUG_LOG = previousLog;
+      }
+      if (previousDebug === undefined) {
+        delete process.env.SLICEBUG_DEBUG;
+      } else {
+        process.env.SLICEBUG_DEBUG = previousDebug;
+      }
+    }
+  });
+
+  it("passes SliceBug debug log location through subprocess env when enabled", () => {
+    const previous = process.env.SLICEBUG_DEBUG_LOG;
+    process.env.SLICEBUG_DEBUG_LOG = path.join("/tmp", "kindcut-logs", "slicebug-debug.log");
+    try {
+      const env = withSliceBugLogging(true, () => {
+        return buildSlicebugSubprocessEnv({
+          platform: "darwin",
+          resourcesPath: "/missing/resources",
+          appRoot: "/missing/app",
+          repoRoot: "/missing/repo",
+        });
+      });
+
       expect(env.SLICEBUG_DEBUG_LOG).toBe(path.join("/tmp", "kindcut-logs", "slicebug-debug.log"));
+      expect(env.SLICEBUG_DEBUG).toBe("1");
     } finally {
       if (previous === undefined) {
         delete process.env.SLICEBUG_DEBUG_LOG;
@@ -122,6 +164,13 @@ describe("slicebug desktop service", () => {
 
   it("builds only the safe non-cutting status invocation", () => {
     expect(buildSlicebugInvocation()).toEqual({ args: ["--version"] });
+  });
+
+  it("prefixes SliceBug commands with the logging flag when enabled", () => {
+    withSliceBugLogging(true, () => {
+      expect(buildSlicebugInvocation()).toEqual({ args: ["--log", "--version"] });
+      expect(buildListMaterialsInvocation()).toEqual({ args: ["--log", "list-materials"] });
+    });
   });
 
   it("builds only the safe non-cutting material validation invocation", () => {
