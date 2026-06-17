@@ -384,6 +384,13 @@ export function App() {
   function handleUnsavedDiscard() {
     const next = pendingNav;
     setPendingNav(null);
+    // Discarding abandons the unsaved edits, so treat the current state as the
+    // clean baseline (like save/open/new do). Otherwise hasUnsavedChanges stays
+    // true after we navigate to the welcome screen — where the confirm modal is
+    // not rendered — so every guarded button (New/Open/Example/close-window)
+    // silently re-arms an invisible prompt and does nothing, leaving the UI
+    // looking frozen until a reload.
+    setRebaseline((n) => n + 1);
     next?.();
   }
 
