@@ -299,7 +299,9 @@ if (!fs.existsSync(venvPythonPath())) {
 const venvPython = venvPythonPath();
 console.log("Installing SliceBug build dependencies...");
 run(venvPython, ["-m", "pip", "install", "-r", "requirements-dev.txt"]);
-run(venvPython, ["-m", "pip", "install", "lief>=0.12.0,<0.13"]);
+// Do not force an old lief here. cx_Freeze (pinned in requirements-dev.txt)
+// brings the lief version its PE parser needs; a stale `lief<0.13` override
+// broke the Windows freeze under cx_Freeze 8.6.4 (missing lief.logging.LEVEL).
 
 console.log("Freezing SliceBug runtime...");
 // SliceBug's setup.py imports setup() from setuptools, so some environments do
@@ -329,6 +331,26 @@ const helperPath = path.join(outputDir, executableName("slicebug"));
 if (!fs.existsSync(helperPath)) {
   console.error(`Expected frozen SliceBug helper at ${helperPath}, but it was not created.`);
   process.exit(1);
+}
+
+// Windows: bundle the native helper-proxy stub (compiled by the CI build step
+// before this script) next to the frozen helper. SliceBug looks for it at
+// helper-proxy/electron.exe to satisfy the Windows device-helper parent-trust
+// gate. SliceBug's own setup.py bundles it via include_files; this script freezes
+// through the cxfreeze CLI instead, so copy it in explicitly here.
+if (process.platform === "win32") {
+  const stubSource = path.join(slicebugRoot, "windows-helper-proxy", "electron.exe");
+  if (!fs.existsSync(stubSource)) {
+    console.error(
+      `Expected compiled helper-proxy stub at ${stubSource}, but it was not found. ` +
+        "The CI step that compiles windows-helper-proxy/electron_stub.c must run before this script."
+    );
+    process.exit(1);
+  }
+  const stubDest = path.join(outputDir, "helper-proxy", "electron.exe");
+  fs.mkdirSync(path.dirname(stubDest), { recursive: true });
+  fs.copyFileSync(stubSource, stubDest);
+  console.log(`Bundled Windows helper-proxy stub: ${stubDest}`);
 }
 
 rewriteMacPythonInstallName(helperPath);
