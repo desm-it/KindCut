@@ -1,6 +1,6 @@
 {
   "name": "@cricut-companion/desktop",
-  "version": "1.2.10",
+  "version": "1.2.11",
   "private": true,
   "type": "module",
   "scripts": {

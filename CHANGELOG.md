@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.11 - 2026-06-17
+
+### Fixed
+
+- Fix the editor's "Don't save" prompt leaving the welcome screen unresponsive (every button silently re-armed an off-screen prompt) until reload.
+- Fix Windows updates failing to install after a restart with "No update filepath provided, can't quit and install".
+
 ## 1.2.10 - 2026-06-17
 
 ### Fixed
