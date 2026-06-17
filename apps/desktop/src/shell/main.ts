@@ -691,7 +691,15 @@ async function installPendingUpdateOnStartup(window: BrowserWindow, pendingUpdat
 }
 
 async function downloadUpdateFileForVersion(version: string, existingFile?: string | null): Promise<string | null> {
-  if (await fileExists(existingFile)) {
+  // macOS installs via runMacUpdateInstaller(), which only needs the downloaded
+  // file path, so a previously downloaded file is enough. On Windows, electron-
+  // updater's quitAndInstall() requires the in-memory download state that only
+  // checkForUpdates()+downloadUpdate() establishes. A fresh process (installing a
+  // pending update after a restart) has none, which otherwise fails with
+  // "No update filepath provided, can't quit and install". So on Windows always
+  // run the updater flow; downloadUpdate() reuses the cached file and does not
+  // re-download.
+  if (process.platform === "darwin" && (await fileExists(existingFile))) {
     return existingFile ?? null;
   }
 
