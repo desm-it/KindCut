@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.10 - 2026-06-17
+
+### Fixed
+
+- Bundle SliceBug 0.4.1.
+- Compile the helper-proxy stub with MSVC during the Windows release build and bundle it with the frozen SliceBug runtime (Windows only).
+
 ## 1.2.9 - 2026-06-14
 
 ### Fixed

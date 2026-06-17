@@ -123,6 +123,15 @@ jobs:
       - name: Check
         run: npm run typecheck && npm run test
 
+      - name: Set up MSVC (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build SliceBug Windows helper proxy stub
+        shell: cmd
+        run: cl /nologo /O1 /MT vendor\slicebug\windows-helper-proxy\electron_stub.c /Fevendor\slicebug\windows-helper-proxy\electron.exe /Fovendor\slicebug\windows-helper-proxy\electron_stub.obj
+
       - name: Build Windows release
         env:
           PYTHON: python
