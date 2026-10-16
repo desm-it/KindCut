@@ -1,6 +1,12 @@
 import { useState } from "react";
 import type { Language } from "../../i18n";
-import type { AiProvider, AiProviderSettings, OpenAiImageModel } from "../../ai-svg-generate";
+import {
+  type AiProvider,
+  type AiProviderSettings,
+  type OpenAiImageModel,
+  DEFAULT_OPENAI_IMAGE_MODEL,
+  OPENAI_IMAGE_MODEL_LABELS,
+} from "../../ai-svg-generate";
 
 export function SettingsModal({
   language,
@@ -62,17 +68,23 @@ export function SettingsModal({
               </p>
               <p className="settings-modal__hint">
                 {nl
-                  ? "GPT Image genereert een PNG die automatisch wordt gevectoriseerd. Alle complexiteitsniveaus gebruiken dit model."
-                  : "GPT Image generates a PNG that is automatically vectorised. All complexity levels use this model."}
+                  ? "GPT Image genereert een PNG die automatisch wordt gevectoriseerd. Alle complexiteitsniveaus gebruiken dit model. Flare is snel en ruim goed genoeg voor silhouetten; kies Sunburst voor gedetailleerde ontwerpen als Flare details mist."
+                  : "GPT Image generates a PNG that is automatically vectorised. All complexity levels use this model. Flare is fast and plenty for silhouettes; pick Sunburst for detailed designs when Flare misses details."}
               </p>
               <select
                 className="settings-modal__input settings-modal__select"
-                value={draft.openaiImageModel ?? "gpt-image-2"}
+                value={draft.openaiImageModel ?? DEFAULT_OPENAI_IMAGE_MODEL}
                 onChange={(e) => setDraft((d) => ({ ...d, openaiImageModel: e.target.value as OpenAiImageModel }))}
               >
-                <option value="gpt-image-2">GPT Image 2 — {nl ? "nieuwste" : "latest"}</option>
-                <option value="gpt-image-1.5">GPT Image 1.5</option>
-                <option value="gpt-image-1">GPT Image 1</option>
+                <option value="gpt-image-2.5-flare">
+                  {OPENAI_IMAGE_MODEL_LABELS["gpt-image-2.5-flare"]} — {nl ? "snel, aanbevolen" : "fast, recommended"}
+                </option>
+                <option value="gpt-image-2.5-sunburst">
+                  {OPENAI_IMAGE_MODEL_LABELS["gpt-image-2.5-sunburst"]} — {nl ? "meest precies, trager" : "most precise, slower"}
+                </option>
+                <option value="gpt-image-2">{OPENAI_IMAGE_MODEL_LABELS["gpt-image-2"]}</option>
+                <option value="gpt-image-1.5">{OPENAI_IMAGE_MODEL_LABELS["gpt-image-1.5"]}</option>
+                <option value="gpt-image-1">{OPENAI_IMAGE_MODEL_LABELS["gpt-image-1"]}</option>
               </select>
             </>
           )}

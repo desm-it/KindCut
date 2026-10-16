@@ -1,7 +1,24 @@
 import type { Language } from "./i18n";
 
 export type AiProvider = "openai" | "recraft";
-export type OpenAiImageModel = "gpt-image-1" | "gpt-image-1.5" | "gpt-image-2";
+export type OpenAiImageModel =
+  | "gpt-image-1"
+  | "gpt-image-1.5"
+  | "gpt-image-2"
+  | "gpt-image-2.5-flare"
+  | "gpt-image-2.5-sunburst";
+
+// Flare: GPT Image 2-level quality at up to ~half the wait and the same token price,
+// plenty for flat silhouettes that get traced anyway. Saved choices are kept.
+export const DEFAULT_OPENAI_IMAGE_MODEL: OpenAiImageModel = "gpt-image-2.5-flare";
+
+export const OPENAI_IMAGE_MODEL_LABELS: Record<OpenAiImageModel, string> = {
+  "gpt-image-2.5-flare": "GPT Image 2.5 Flare",
+  "gpt-image-2.5-sunburst": "GPT Image 2.5 Sunburst",
+  "gpt-image-2": "GPT Image 2",
+  "gpt-image-1.5": "GPT Image 1.5",
+  "gpt-image-1": "GPT Image 1",
+};
 
 export type AiProviderSettings = {
   activeProvider: AiProvider;
@@ -16,7 +33,7 @@ const DEFAULT_SETTINGS: AiProviderSettings = {
   activeProvider: "openai",
   openaiKey: "",
   recraftKey: "",
-  openaiImageModel: "gpt-image-2" as OpenAiImageModel,
+  openaiImageModel: DEFAULT_OPENAI_IMAGE_MODEL,
 };
 
 export function loadAiSettings(): AiProviderSettings {
@@ -94,13 +111,8 @@ async function generateWithDalleAndPotrace(input: AiSvgInput): Promise<string> {
     );
   }
 
-  const imageModel = settings.openaiImageModel ?? "gpt-image-2";
-  const modelLabel: Record<string, string> = {
-    "gpt-image-2": "GPT Image 2",
-    "gpt-image-1.5": "GPT Image 1.5",
-    "gpt-image-1": "GPT Image 1",
-  };
-  const label = modelLabel[imageModel] ?? imageModel;
+  const imageModel = settings.openaiImageModel ?? DEFAULT_OPENAI_IMAGE_MODEL;
+  const label = OPENAI_IMAGE_MODEL_LABELS[imageModel] ?? imageModel;
   // Step 1: Generate PNG
   onProgress?.({ step: 1, total: 3, label: nl ? `Afbeelding genereren met ${label}…` : `Generating image with ${label}…` });
   const pngBase64 = await window.cricutCompanion?.ai?.dalleGeneratePng({ prompt, complexity, language, apiKey, imageModel });

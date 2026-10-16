@@ -1643,17 +1643,19 @@ ipcMain.handle("ai:dalle-generate-png", async (
   _event,
   input: { prompt: string; complexity: number; language: string; apiKey: string; imageModel?: string },
 ): Promise<string> => {
-  const { prompt, complexity, apiKey, imageModel = "gpt-image-2" } = input;
+  const { prompt, complexity, apiKey, imageModel = "gpt-image-2.5-flare" } = input;
   if (!apiKey.trim()) throw new Error("No OpenAI API key configured.");
 
   const imagePrompt = buildGptImagePrompt(prompt.trim(), complexity);
 
   const requestBody = {
-    model: imageModel,   // gpt-image-1 / gpt-image-1.5 / gpt-image-2
+    model: imageModel,   // gpt-image-1 / 1.5 / 2 / 2.5-flare / 2.5-sunburst
     prompt: imagePrompt,
     n: 1,
     size: "1024x1024",
-    quality: "high",     // high = cleanest edges for Jimp threshold + Potrace tracing
+    // high = cleanest edges for Jimp threshold + Potrace tracing. The 2.5 models also offer
+    // xhigh/max, but extra detail only turns into noise and tiny islands in a traced silhouette.
+    quality: "high",
   };
 
   const imgResponse = await fetch("https://api.openai.com/v1/images/generations", {
