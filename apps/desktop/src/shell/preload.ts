@@ -9,6 +9,7 @@ import type {
   SlicebugStatus,
   SvgPlanInput,
 } from "./slicebug-service";
+import type { SpotifyCodeRequest, SpotifyLookupResult, SpotifySearchResult } from "./spotify-code";
 
 type AppActionPayload = {
   action:
@@ -117,6 +118,7 @@ ipcRenderer.on("project-state:request", (_event: IpcRendererEvent, requestId: st
 });
 
 export type LibraryImageMeta = { name: string; path: string; isAi: boolean; svg: string };
+export type SpotifyCodeMeta = { name: string; path: string; svg: string; uri: string | null };
 type RasterTraceOptions = {
   threshold: number;
   detail: number;
@@ -181,6 +183,14 @@ const desktopApi = {
     rename: (input: { filePath: string; name: string }): Promise<LibraryImageMeta> =>
       ipcRenderer.invoke("library:rename", input),
     delete: (filePath: string): Promise<void> => ipcRenderer.invoke("library:delete", filePath),
+  },
+  spotify: {
+    search: (query: string): Promise<SpotifyLookupResult<SpotifySearchResult[]>> =>
+      ipcRenderer.invoke("spotify:search", query),
+    list: (): Promise<SpotifyCodeMeta[]> => ipcRenderer.invoke("spotify:list"),
+    create: (request: SpotifyCodeRequest): Promise<SpotifyLookupResult<SpotifyCodeMeta>> =>
+      ipcRenderer.invoke("spotify:create", request),
+    delete: (filePath: string): Promise<void> => ipcRenderer.invoke("spotify:delete", filePath),
   },
   image: {
     traceRasterToSvg: (input: {

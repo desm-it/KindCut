@@ -66,7 +66,7 @@ import {
 import type { WorkspaceShapeKind } from "../../workspace-shapes";
 import { buildShapePath, shapeHasCorners } from "../../workspace-shapes";
 import type { AiSvgInput } from "../../ai-svg-generate";
-import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult } from "../../app-types";
+import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult, SpotifyCode } from "../../app-types";
 import { cssEscape, isEditableKeyboardTarget } from "../../utils/dom-utils";
 import { FONT_GROUPS } from "../../font-catalog";
 import { isUngroupablePath } from "../../utils/workspace-geometry";
@@ -77,6 +77,7 @@ import { TextEditOverlay } from "./TextEditOverlay";
 import { WorkspaceObjectArtwork } from "./WorkspaceObjectArtwork";
 import { ImageLibraryPanel } from "../panels/ImageLibraryPanel";
 import { ShapeLibraryPanel } from "../panels/ShapeLibraryPanel";
+import { SpotifyCodePanel } from "../panels/SpotifyCodePanel";
 import { EmptyImportState } from "../screens/ImportPanel";
 
 // ── Small presentational helpers for the Card-colors / Pens / picker UI ───────
@@ -360,6 +361,7 @@ export function DesignWorkspace({
   onRenameLibraryImage,
   onDeleteLibraryImage,
   onAddLibraryImageToWorkspace,
+  onAddSpotifyCodeToWorkspace,
 }: {
   language: Language;
   measurementUnit: MeasurementUnit;
@@ -432,6 +434,7 @@ export function DesignWorkspace({
   onRenameLibraryImage: (path: string, name: string) => Promise<void>;
   onDeleteLibraryImage: (path: string) => void;
   onAddLibraryImageToWorkspace: (img: LibraryImage) => void;
+  onAddSpotifyCodeToWorkspace: (code: SpotifyCode) => void;
   onAddText: () => void;
   editingTextId: string | null;
   onEnterTextEdit: (id: string) => void;
@@ -442,18 +445,18 @@ export function DesignWorkspace({
   const { t } = createTranslator(language);
   const [zoom, setZoom] = useState(0.85);
   const [pan, setPan] = useState<Point>({ x: 260, y: 90 });
-  const [shapeDrawerOpen, setShapeDrawerOpen] = useState(false);
-  const [imageDrawerOpen, setImageDrawerOpen] = useState(false);
-  const drawerOpen = imageDrawerOpen || shapeDrawerOpen;
+  const [activeDrawer, setActiveDrawer] = useState<"image" | "shapes" | "spotify" | null>(null);
+  const drawerOpen = activeDrawer !== null;
 
-  function openImageDrawer() {
-    setImageDrawerOpen(true);
-    setShapeDrawerOpen(false);
-    onLoadImageLibrary();
-  }
-  function openShapeDrawer() {
-    setShapeDrawerOpen(true);
-    setImageDrawerOpen(false);
+  function toggleDrawer(drawer: "image" | "shapes" | "spotify") {
+    if (activeDrawer === drawer) {
+      setActiveDrawer(null);
+      return;
+    }
+    setActiveDrawer(drawer);
+    if (drawer === "image") {
+      onLoadImageLibrary();
+    }
   }
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -1405,10 +1408,10 @@ export function DesignWorkspace({
       >
         <aside className="tool-rail no-drag" aria-label={language === "nl" ? "Gereedschappen" : "Tools"}>
           <button
-            className={imageDrawerOpen ? "tool-button tool-button--active" : "tool-button"}
+            className={activeDrawer === "image" ? "tool-button tool-button--active" : "tool-button"}
             type="button"
-            onClick={() => { imageDrawerOpen ? setImageDrawerOpen(false) : openImageDrawer(); }}
-            aria-expanded={imageDrawerOpen}
+            onClick={() => toggleDrawer("image")}
+            aria-expanded={activeDrawer === "image"}
           >
             <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="16" height="16" rx="2.5"/><path d="M3 14.5 7.5 10l3.5 3.5 2.5-2.5 5.5 5.5"/><circle cx="14.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
             {language === "nl" ? "Beeld" : "Image"}
@@ -1418,18 +1421,27 @@ export function DesignWorkspace({
             {language === "nl" ? "Tekst" : "Text"}
           </button>
           <button
-            className={shapeDrawerOpen ? "tool-button tool-button--active" : "tool-button"}
+            className={activeDrawer === "shapes" ? "tool-button tool-button--active" : "tool-button"}
             type="button"
-            onClick={() => { shapeDrawerOpen ? setShapeDrawerOpen(false) : openShapeDrawer(); }}
-            aria-expanded={shapeDrawerOpen}
+            onClick={() => toggleDrawer("shapes")}
+            aria-expanded={activeDrawer === "shapes"}
             aria-controls="shape-library-panel"
           >
             <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="11" width="9" height="9" rx="1.5"/><circle cx="15.5" cy="6.5" r="4.5"/></svg>
             {language === "nl" ? "Vormen" : "Shapes"}
           </button>
+          <button
+            className={activeDrawer === "spotify" ? "tool-button tool-button--active" : "tool-button"}
+            type="button"
+            onClick={() => toggleDrawer("spotify")}
+            aria-expanded={activeDrawer === "spotify"}
+          >
+            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="11" r="3.2"/><path d="M11 9.5v3M13.5 6.5v9M16 8.5v5M18.5 10v2"/></svg>
+            Spotify
+          </button>
         </aside>
 
-        {imageDrawerOpen ? (
+        {activeDrawer === "image" ? (
           <ImageLibraryPanel
             language={language}
             hasActiveAiKey={hasActiveAiKey}
@@ -1437,19 +1449,26 @@ export function DesignWorkspace({
             loading={imageLibraryLoading}
             onAskAi={() => { onOpenAiGenerate(); }}
             onFileImport={onSvgFileChange}
-            onUseImage={(img) => { onAddLibraryImageToWorkspace(img); setImageDrawerOpen(false); }}
+            onUseImage={(img) => { onAddLibraryImageToWorkspace(img); setActiveDrawer(null); }}
             onRenameImage={onRenameLibraryImage}
             onDeleteImage={onDeleteLibraryImage}
           />
         ) : null}
 
-        {shapeDrawerOpen ? (
+        {activeDrawer === "shapes" ? (
           <ShapeLibraryPanel
             language={language}
             onAddShape={(shapeKind) => {
               onAddShape(shapeKind);
-              setShapeDrawerOpen(false);
+              setActiveDrawer(null);
             }}
+          />
+        ) : null}
+
+        {activeDrawer === "spotify" ? (
+          <SpotifyCodePanel
+            language={language}
+            onUseCode={(code) => { onAddSpotifyCodeToWorkspace(code); setActiveDrawer(null); }}
           />
         ) : null}
 

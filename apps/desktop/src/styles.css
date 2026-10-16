@@ -1864,6 +1864,128 @@ a {
   filter: brightness(0.97);
 }
 
+/* ── Spotify code panel ───────────────────────────────────────────────────── */
+
+.spotify-library__heading {
+  margin: 4px 0 0;
+  color: #735941;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.spotify-library__error {
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(192, 57, 43, 0.25);
+  border-radius: 7px;
+  background: #fdf0ec;
+  color: #8a2f22;
+  font-size: 0.73rem;
+  line-height: 1.35;
+}
+
+.spotify-library__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding-right: 2px;
+}
+
+.spotify-result {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid rgba(121, 82, 51, 0.16);
+  border-radius: 8px;
+  background: #fffdf9;
+  color: #3d2400;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 100ms, background 100ms;
+}
+
+.spotify-result:hover:not(:disabled) {
+  border-color: rgba(143, 79, 43, 0.42);
+  background: #fbefe1;
+}
+
+.spotify-result:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.spotify-result--adding:disabled {
+  opacity: 1;
+  border-color: rgba(106, 133, 64, 0.5);
+}
+
+.spotify-result__cover {
+  width: 40px;
+  height: 40px;
+  border-radius: 5px;
+  background: rgba(121, 82, 51, 0.12);
+  object-fit: cover;
+  display: block;
+}
+
+.spotify-result__text {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.spotify-result__text strong,
+.spotify-result__text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spotify-result__text strong {
+  font-size: 0.76rem;
+}
+
+.spotify-result__text span {
+  color: #735941;
+  font-size: 0.7rem;
+}
+
+.spotify-code-tile__preview {
+  width: 100%;
+  aspect-ratio: 4;
+  object-fit: contain;
+  padding: 2px 4px;
+  box-sizing: border-box;
+  background: #fff;
+  display: block;
+}
+
+.spotify-code-tile__name {
+  font-size: 0.68rem;
+  color: #735941;
+  padding: 3px 6px 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.spotify-code-tile__confirm {
+  flex-direction: row;
+}
+
+.spotify-code-tile__confirm .image-tile__confirm-yes,
+.spotify-code-tile__confirm .image-tile__confirm-no {
+  width: auto;
+}
+
 .stage-statusbar {
   min-height: 42px;
   display: flex;

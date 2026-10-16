@@ -1,5 +1,8 @@
 export type LibraryImage = { name: string; path: string; isAi: boolean; svg: string };
 
+export type SpotifyCode = { name: string; path: string; svg: string; uri: string | null };
+export type { SpotifyCodeErrorCode, SpotifySearchResult } from "./shell/spotify-code";
+
 export type SlicebugPlanResult = {
   ok: boolean;
   executable: string;

@@ -34,6 +34,18 @@ import {
   logDiagnostics,
 } from "./diagnostics-log";
 import {
+  type SpotifyCodeRequest,
+  type SpotifyLookupOptions,
+  type SpotifyLookupResult,
+  type SpotifySearchResult,
+  fetchSpotifyCodeSvg,
+  readSpotifyCodeSvgInfo,
+  resolveSpotifyEntity,
+  runSpotifyLookup,
+  searchSpotifySongs,
+  spotifyCodeDisplayName,
+} from "./spotify-code";
+import {
   SlicebugCutSession,
   bootstrapSlicebug,
   checkForBlockingCutterProcesses,
@@ -1359,7 +1371,8 @@ async function ensureLibraryDir(): Promise<void> {
 }
 
 function sanitizeFileName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9\-_\s]/g, "").trim().replace(/\s+/g, "-").slice(0, 60) || `image-${Date.now()}`;
+  // Keep accented and non-Latin letters (song titles, Dutch prompts); drop everything else risky in file names.
+  return name.normalize("NFC").replace(/[^\p{L}\p{N}\-_\s]/gu, "").trim().replace(/\s+/g, "-").slice(0, 60) || `image-${Date.now()}`;
 }
 
 function displayNameFromLibraryFileName(file: string): string {
@@ -1440,6 +1453,83 @@ ipcMain.handle("library:rename", async (_event, input: { filePath: string; name:
 
 ipcMain.handle("library:delete", async (_event, filePath: string): Promise<void> => {
   await fs.unlink(filePath);
+});
+
+// ── Spotify codes ─────────────────────────────────────────────────────────────
+
+type SpotifyCodeMeta = { name: string; path: string; svg: string; uri: string | null };
+
+// Kept in their own subfolder so they don't crowd the image library.
+function getSpotifyCodeDir(): string {
+  return path.join(getLibraryDir(), "spotify");
+}
+
+function spotifyLookupOptions(): SpotifyLookupOptions {
+  return { userAgent: `KindCut/${app.getVersion()} (+https://github.com/desm-it/KindCut)` };
+}
+
+function logSpotifyLookupError(action: string): (error: unknown) => void {
+  return (error) => {
+    logDiagnostics("warn", `[Spotify] ${action} failed`, error instanceof Error ? error.message : error);
+  };
+}
+
+async function listSpotifyCodes(): Promise<SpotifyCodeMeta[]> {
+  const dir = getSpotifyCodeDir();
+  await fs.mkdir(dir, { recursive: true });
+  const files = (await fs.readdir(dir)).filter((file) => file.toLowerCase().endsWith(".svg"));
+  const items = await Promise.all(
+    files.map(async (file) => {
+      const filePath = path.join(dir, file);
+      const svg = await fs.readFile(filePath, "utf8");
+      const info = readSpotifyCodeSvgInfo(svg);
+      return { name: info.label ?? displayNameFromLibraryFileName(file), path: filePath, svg, uri: info.uri };
+    }),
+  );
+  return items.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function findAvailableSpotifyCodePath(name: string): Promise<string> {
+  let suffix = 1;
+  while (true) {
+    const safeName = sanitizeFileName(suffix === 1 ? name : `${name} ${suffix}`);
+    const filePath = path.join(getSpotifyCodeDir(), `${safeName}.svg`);
+    if (!(await fileExists(filePath))) {
+      return filePath;
+    }
+    suffix += 1;
+  }
+}
+
+ipcMain.handle("spotify:search", async (_event, query: string): Promise<SpotifyLookupResult<SpotifySearchResult[]>> =>
+  runSpotifyLookup(() => searchSpotifySongs(query, spotifyLookupOptions()), logSpotifyLookupError("Search")),
+);
+
+ipcMain.handle("spotify:list", async (): Promise<SpotifyCodeMeta[]> => listSpotifyCodes());
+
+ipcMain.handle("spotify:create", async (_event, request: SpotifyCodeRequest): Promise<SpotifyLookupResult<SpotifyCodeMeta>> =>
+  runSpotifyLookup(async () => {
+    const options = spotifyLookupOptions();
+    const entity = await resolveSpotifyEntity(request, options);
+    // Re-adding a song reuses its saved code instead of piling up numbered copies.
+    const existing = (await listSpotifyCodes()).find((code) => code.uri === entity.uri);
+    if (existing) {
+      return existing;
+    }
+    const svg = await fetchSpotifyCodeSvg(entity, options);
+    const filePath = await findAvailableSpotifyCodePath(spotifyCodeDisplayName(entity.title, entity.artist));
+    await fs.writeFile(filePath, svg, "utf8");
+    logDiagnostics("info", "[Spotify] Saved code", { uri: entity.uri, filePath });
+    return { name: spotifyCodeDisplayName(entity.title, entity.artist), path: filePath, svg, uri: entity.uri };
+  }, logSpotifyLookupError("Create code")),
+);
+
+ipcMain.handle("spotify:delete", async (_event, filePath: string): Promise<void> => {
+  const target = path.resolve(filePath);
+  if (!target.startsWith(`${path.resolve(getSpotifyCodeDir())}${path.sep}`)) {
+    throw new Error("That file is outside the KindCut Spotify code folder.");
+  }
+  await fs.unlink(target);
 });
 
 ipcMain.handle("system:fonts", async (): Promise<string[]> => {

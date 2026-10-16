@@ -1962,6 +1962,7 @@ export function App() {
       onRenameLibraryImage={(path, name) => renameLibraryImage(path, name)}
       onDeleteLibraryImage={(p) => void deleteFromLibrary(p)}
       onAddLibraryImageToWorkspace={(img) => addSvgToWorkspace(img.name, img.svg)}
+      onAddSpotifyCodeToWorkspace={(code) => addSvgToWorkspace(code.name, code.svg)}
     />
     {settingsOpen ? (
       <SettingsModal
