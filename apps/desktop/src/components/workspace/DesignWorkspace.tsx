@@ -35,6 +35,16 @@ import {
 } from "../../i18n";
 import { MAT_PRESETS, MATERIAL_OPTIONS } from "@cricut-companion/slicebug-bridge";
 import {
+  DEFAULT_PEN_FILL,
+  PEN_FILL_DENSITY_MAX,
+  PEN_FILL_DENSITY_MIN,
+  PEN_FILL_PATTERNS,
+  type PenFillPattern,
+  type PenFillSettings,
+  penFillPatternTile,
+} from "@cricut-companion/craft-core";
+import { canPenFill } from "../../pen-fill-render";
+import {
   MOVEABLE_CENTER_DIRECTION,
   ROTATION_SNAP_INTERVAL_DEGREES,
   ROTATION_SNAP_THRESHOLD_DEGREES,
@@ -74,13 +84,38 @@ import { MatIcon, MaterialIcon, materialCategoryOf, PAPER_MATERIAL_IDS, MATERIAL
 import { Ruler } from "./Ruler";
 import { WorkspaceToolbar } from "./WorkspaceToolbar";
 import { TextEditOverlay } from "./TextEditOverlay";
-import { WorkspaceObjectArtwork } from "./WorkspaceObjectArtwork";
+import { PenFillPatternDef, WorkspaceObjectArtwork } from "./WorkspaceObjectArtwork";
 import { ImageLibraryPanel } from "../panels/ImageLibraryPanel";
 import { ShapeLibraryPanel } from "../panels/ShapeLibraryPanel";
 import { SpotifyCodePanel } from "../panels/SpotifyCodePanel";
 import { EmptyImportState } from "../screens/ImportPanel";
 
 // ── Small presentational helpers for the Card-colors / Pens / picker UI ───────
+
+const PEN_FILL_LABELS: Record<PenFillPattern, { nl: string; en: string }> = {
+  lines: { nl: "Lijnen", en: "Lines" },
+  cross: { nl: "Kruis", en: "Cross" },
+  grid: { nl: "Raster", en: "Grid" },
+  triangles: { nl: "Driehoek", en: "Triangles" },
+  cubic: { nl: "Kubus", en: "Cubic" },
+  honeycomb: { nl: "Honingraat", en: "Honeycomb" },
+  dots: { nl: "Stippen", en: "Dots" },
+};
+
+/** A small live sample of a fill pattern, drawn with the same tile as the canvas. */
+function PenFillSwatch({ pattern }: { pattern: PenFillPattern }) {
+  const tile = penFillPatternTile({ enabled: true, pattern, density: 30, angle: 45 }, 1.25);
+  if (!tile) return null;
+  const id = `pen-fill-swatch-${pattern}`;
+  return (
+    <svg className="pen-fill-pattern__swatch" viewBox="0 0 40 26" aria-hidden="true">
+      <defs>
+        <PenFillPatternDef id={id} tile={tile} color="currentColor" patternTransform="" />
+      </defs>
+      <rect x="1" y="1" width="38" height="24" rx="4" fill={`url(#${id})`} stroke="currentColor" strokeWidth="1.25" />
+    </svg>
+  );
+}
 
 function PaperIcon() {
   return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3"/></svg>;
@@ -324,6 +359,7 @@ export function DesignWorkspace({
   onExitTextEdit,
   onTextContentChange,
   onShapeCornerRadiusChange,
+  onPenFillChange,
   onSelectSvg,
   onSelectSvgGroup,
   onSelectAllSvgs,
@@ -441,6 +477,7 @@ export function DesignWorkspace({
   onExitTextEdit: (id: string) => void;
   onTextContentChange: (ids: string | string[], patch: Partial<WorkspaceTextContent>) => void;
   onShapeCornerRadiusChange: (ids: string | string[], radius: number) => void;
+  onPenFillChange: (ids: string[], patch: Partial<PenFillSettings>) => void;
 }) {
   const { t } = createTranslator(language);
   const [zoom, setZoom] = useState(0.85);
@@ -1164,15 +1201,17 @@ export function DesignWorkspace({
         // update the SVG viewBox to the actual size and the path to that same space.
         if (item.shapeKind) {
           const svgEl = target.querySelector("svg");
-          const pathEl = svgEl?.querySelector("path");
-          if (svgEl && pathEl) {
+          // The outline and the pen-fill clip both carry the shape geometry.
+          const pathEls = svgEl?.querySelectorAll("[data-shape-geometry]") ?? [];
+          if (svgEl && pathEls.length > 0) {
             const sx = Math.abs(transform.scaleX) || 1;
             const sy = Math.abs(transform.scaleY) || 1;
             const aw = Math.max(1, item.frame.width * sx);
             const ah = Math.max(1, item.frame.height * sy);
             const worldRadius = Math.min((item.cornerRadius ?? 0) * Math.min(sx, sy), Math.min(aw, ah) / 2);
+            const d = buildShapePath(item.shapeKind, aw, ah, worldRadius);
             svgEl.setAttribute("viewBox", `0 0 ${aw} ${ah}`);
-            pathEl.setAttribute("d", buildShapePath(item.shapeKind, aw, ah, worldRadius));
+            pathEls.forEach((pathEl) => pathEl.setAttribute("d", d));
           }
         }
       }
@@ -1891,6 +1930,8 @@ export function DesignWorkspace({
               const multi = selectedObjs.length > 1;
               const allText = selectedObjs.every((o) => Boolean(o.textContent));
               const allCorners = selectedObjs.every((o) => o.shapeKind && shapeHasCorners(o.shapeKind));
+              // Fill is a pen option: offered only when everything selected is drawn with a pen.
+              const allPenFillable = selectedObjs.every((o) => canPenFill(o, tools));
               const primaryColor = primary.textContent ? primary.textContent.color : (primary.paths[0]?.stroke ?? "#000000");
 
               // Apply a tool/pen colour to the whole selection (text stores it in its
@@ -2052,6 +2093,68 @@ export function DesignWorkspace({
                             className="text-slider"
                           />
                         </div>
+                      );
+                    })() : null}
+
+                    {allPenFillable ? (() => {
+                      const fill = primary.penFill ?? { ...DEFAULT_PEN_FILL, enabled: false };
+                      return (
+                        <>
+                          <div className="object-settings__row object-settings__row--toggle">
+                            <label className="object-settings__label" htmlFor="pen-fill-toggle">
+                              {nl ? "Opvullen (pen)" : "Fill (pen)"}
+                            </label>
+                            <button id="pen-fill-toggle" type="button" role="switch"
+                              aria-checked={fill.enabled}
+                              className={`toggle-switch${fill.enabled ? " toggle-switch--on" : ""}`}
+                              onClick={() => onPenFillChange(ids, { enabled: !fill.enabled })}
+                              title={nl
+                                ? "Vul de vorm met een patroon van penlijnen"
+                                : "Fill the shape with a pattern of pen lines"}
+                            >
+                              <span className="toggle-switch__knob" />
+                            </button>
+                          </div>
+                          {fill.enabled ? (
+                            <>
+                              <div className="object-settings__row object-settings__row--swatches">
+                                <span className="object-settings__label">{nl ? "Patroon" : "Pattern"}</span>
+                                <div className="pen-fill-patterns" role="radiogroup" aria-label={nl ? "Vulpatroon" : "Fill pattern"}>
+                                  {PEN_FILL_PATTERNS.map((pattern) => (
+                                    <button key={pattern} type="button" role="radio"
+                                      aria-checked={fill.pattern === pattern}
+                                      className={`pen-fill-pattern${fill.pattern === pattern ? " pen-fill-pattern--active" : ""}`}
+                                      onClick={() => onPenFillChange(ids, { pattern })}
+                                    >
+                                      <PenFillSwatch pattern={pattern} />
+                                      <span>{PEN_FILL_LABELS[pattern][nl ? "nl" : "en"]}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="object-settings__row">
+                                <label className="object-settings__label" htmlFor="pen-fill-density">
+                                  {nl ? "Dichtheid" : "Density"} <em>{fill.density}%</em>
+                                </label>
+                                <input id="pen-fill-density" type="range" min={PEN_FILL_DENSITY_MIN} max={PEN_FILL_DENSITY_MAX} step={1}
+                                  value={fill.density}
+                                  onChange={(e) => onPenFillChange(ids, { density: Number(e.target.value) })}
+                                  className="text-slider"
+                                />
+                              </div>
+                              <div className="object-settings__row">
+                                <label className="object-settings__label" htmlFor="pen-fill-angle">
+                                  {nl ? "Hoek" : "Angle"} <em>{fill.angle}°</em>
+                                </label>
+                                <input id="pen-fill-angle" type="range" min={0} max={175} step={5}
+                                  value={fill.angle}
+                                  onChange={(e) => onPenFillChange(ids, { angle: Number(e.target.value) })}
+                                  className="text-slider"
+                                />
+                              </div>
+                            </>
+                          ) : null}
+                        </>
                       );
                     })() : null}
                   </div>

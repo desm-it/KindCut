@@ -79,3 +79,50 @@ describe("buildWorkspaceCutSvg", () => {
     expect(svg).toContain(`transform="translate(5 10)"`);
   });
 });
+
+describe("pen fill in the cut SVG", () => {
+  const tools = [
+    { color: "#1f6feb", type: "pen" as const },
+    { color: "#8f4f2b", type: "cut" as const },
+  ];
+  const square: WorkspaceObject = {
+    ...obj,
+    paths: [{ id: "p1", d: "M0 0H40V40H0Z", fill: "none", stroke: "#1f6feb", strokeWidth: "1.5" }],
+    transform: { x: 20, y: 30, scaleX: 2, scaleY: 2, rotation: 0 },
+    penFill: { enabled: true, pattern: "lines", density: 25, angle: 45 },
+  };
+
+  function pathCount(svg: string): number {
+    return svg.match(/<path\b/g)?.length ?? 0;
+  }
+
+  it("adds the fill as real open pen strokes inside the object's transform", () => {
+    const svg = buildWorkspaceCutSvg([square], MAT_W, MAT_H, tools);
+    expect(pathCount(svg)).toBe(2);
+    const fill = /<path d="([^"]+)" fill="none" stroke="#1f6feb" stroke-width="1.25"/.exec(svg)?.[1] ?? "";
+    expect(fill).toMatch(/^M/);
+    expect(fill).not.toContain("url(");
+    // Fill points stay within the 40×40 frame (the group transform scales them to the mat).
+    const numbers = fill.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
+    expect(Math.min(...numbers)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...numbers)).toBeLessThanOrEqual(40);
+  });
+
+  it("keeps the fill spacing a real distance when the object is scaled", () => {
+    const small = buildWorkspaceCutSvg([{ ...square, transform: { ...square.transform, scaleX: 1, scaleY: 1 } }], MAT_W, MAT_H, tools);
+    const large = buildWorkspaceCutSvg([square], MAT_W, MAT_H, tools);
+    const strokes = (svg: string) => /<path d="([^"]+)" fill="none" stroke="#1f6feb" stroke-width="1.25"/.exec(svg)?.[1]?.split("L").length ?? 0;
+    // Twice the size in each direction ≈ twice as many hatch lines at the same spacing.
+    expect(strokes(large) / strokes(small)).toBeGreaterThan(1.7);
+    expect(strokes(large) / strokes(small)).toBeLessThan(2.3);
+  });
+
+  it("leaves the fill out when it is switched off or the object is cut, but keeps the setting", () => {
+    const off = { ...square, penFill: { ...square.penFill!, enabled: false } };
+    expect(pathCount(buildWorkspaceCutSvg([off], MAT_W, MAT_H, tools))).toBe(1);
+
+    const cut = { ...square, paths: [{ ...square.paths[0]!, stroke: "#8f4f2b" }] } as WorkspaceObject;
+    expect(pathCount(buildWorkspaceCutSvg([cut], MAT_W, MAT_H, tools))).toBe(1);
+    expect(cut.penFill?.enabled).toBe(true);
+  });
+});

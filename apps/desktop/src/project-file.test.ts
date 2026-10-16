@@ -219,6 +219,50 @@ describe("KindCut project files", () => {
     expect(parsed.selectedObjectId).toBe("object-1");
   });
 
+  it("saves pen fill as settings and reopens it, cleaning up invalid values", () => {
+    const object = {
+      id: "object-1",
+      type: "path" as const,
+      kind: "shape" as const,
+      sourceKind: "shape" as const,
+      shapeKind: "circle" as const,
+      fileName: "Cirkel",
+      fileSize: "",
+      frame: { width: 100, height: 100 },
+      paths: [{ id: "path-1", d: "M0 0H10", fill: "none", stroke: "#1f6feb", strokeWidth: "2" }],
+      transform: { x: 1, y: 2, scaleX: 1, scaleY: 1, rotation: 0 },
+    };
+    const saved = serializeProjectFile(
+      buildProjectFile({
+        name: "fill",
+        selectedMaterialId: 218,
+        selectedMatPreset: "joy-standard",
+        measurementUnit: "cm",
+        workspaceObjects: [
+          { ...object, penFill: { enabled: false, pattern: "honeycomb", density: 35, angle: 30 } },
+          { ...object, id: "object-2" },
+        ],
+      }),
+    );
+    // Only the settings are stored — never generated stroke geometry.
+    const stored = (JSON.parse(saved) as { workspaceObjects: Array<{ penFill?: unknown; paths: unknown[] }> }).workspaceObjects[0];
+    expect(stored?.penFill).toEqual({ enabled: false, pattern: "honeycomb", density: 35, angle: 30 });
+    expect(stored?.paths).toHaveLength(1);
+
+    const parsed = parseProjectFile(saved);
+    expect(parsed.workspaceObjects[0]?.penFill).toEqual({ enabled: false, pattern: "honeycomb", density: 35, angle: 30 });
+    expect(parsed.workspaceObjects[1]?.penFill).toBeUndefined();
+
+    const tampered = JSON.parse(saved) as { workspaceObjects: Array<Record<string, unknown>> };
+    tampered.workspaceObjects[0]!.penFill = { enabled: true, pattern: "spiral", density: 900, angle: 200 };
+    expect(parseProjectFile(JSON.stringify(tampered)).workspaceObjects[0]?.penFill).toEqual({
+      enabled: true,
+      pattern: "lines",
+      density: 100,
+      angle: 20,
+    });
+  });
+
   it("saves and loads a grouped workspace object", () => {
     const parsed = parseProjectFile(serializeProjectFile(buildProjectFile({
       name: "groep",

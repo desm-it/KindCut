@@ -13,6 +13,7 @@ export type WorkspaceClipboardSvgItem = {
   paths: WorkspacePathData[];
   transform: WorkspaceItemTransform;
   textContent?: WorkspaceTextContent;
+  penFill?: WorkspaceObject["penFill"];
 };
 
 export type PastedWorkspaceSvgItemInput = WorkspaceClipboardSvgItem & {
@@ -40,6 +41,7 @@ export function getSelectedWorkspaceClipboardItems(
       paths: item.paths.map((path) => ({ ...path })),
       transform: { ...item.transform },
       textContent: item.textContent ? { ...item.textContent } : undefined,
+      penFill: item.penFill ? { ...item.penFill } : undefined,
     }));
 }
 

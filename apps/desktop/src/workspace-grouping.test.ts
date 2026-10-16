@@ -99,3 +99,32 @@ describe("workspace grouping", () => {
     expect(parts.every((p) => p.shapeKind === undefined)).toBe(true);
   });
 });
+
+describe("pen fill on groups", () => {
+  const fill = { enabled: true, pattern: "cross" as const, density: 30, angle: 45 };
+  const member = (id: string, penFill?: typeof fill): WorkspaceObject => ({
+    id,
+    type: "path",
+    kind: "image",
+    sourceKind: "image",
+    fileName: id,
+    fileSize: "",
+    sizeCopy: "",
+    frame: { width: 10, height: 10 },
+    paths: [{ id: "p", d: "M0 0H10V10H0Z", fill: "none", stroke: "#1f6feb", strokeWidth: "1" }],
+    transform: { x: id === "a" ? 0 : 20, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    penFill,
+  });
+
+  it("keeps a fill every member shares and hands it back on ungroup", () => {
+    const group = createWorkspaceGroup({ id: "g", items: [member("a", fill), member("b", fill)], label: "Groep", fileSize: "" });
+    expect(group?.penFill).toEqual(fill);
+    const parts = ungroupWorkspaceObject({ group: group!, idPrefix: "u", labelForIndex: (index) => `deel ${index}` });
+    expect(parts.map((part) => part.penFill)).toEqual([fill, fill]);
+  });
+
+  it("drops the fill when members disagree", () => {
+    const group = createWorkspaceGroup({ id: "g", items: [member("a", fill), member("b")], label: "Groep", fileSize: "" });
+    expect(group?.penFill).toBeUndefined();
+  });
+});

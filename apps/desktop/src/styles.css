@@ -4079,6 +4079,50 @@ a {
   gap: 6px;
 }
 
+/* ── Pen fill pattern picker ───────────────────────────────────────────────── */
+.pen-fill-patterns {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
+}
+
+.pen-fill-pattern {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-height: 0;
+  padding: 5px 4px 4px;
+  border: 1px solid rgba(121, 82, 51, 0.18);
+  border-radius: 8px;
+  background: #fffdf9;
+  color: #8a6d54;
+  font-size: 0.66rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: none;
+  transform: none;
+}
+
+.pen-fill-pattern:hover:not(:disabled) {
+  border-color: rgba(143, 79, 43, 0.42);
+  background: #fbefe1;
+  box-shadow: none;
+  transform: none;
+}
+
+.pen-fill-pattern--active {
+  border-color: #8f4f2b;
+  background: rgba(143, 79, 43, 0.1);
+  color: #5d3822;
+}
+
+.pen-fill-pattern__swatch {
+  width: 40px;
+  height: 26px;
+  display: block;
+}
+
 .tool-picker {
   display: flex;
   flex-direction: column;

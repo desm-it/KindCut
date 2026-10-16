@@ -34,7 +34,14 @@ export function createWorkspaceGroup(input: {
     frame: { width: bounds.width, height: bounds.height },
     paths,
     transform: { x: bounds.left, y: bounds.top, scaleX: 1, scaleY: 1, rotation: 0 },
+    penFill: sharedPenFill(input.items),
   };
+}
+
+// A group is one object with one fill setting, so it can only keep a fill all its members agree on.
+function sharedPenFill(items: WorkspaceObject[]): WorkspaceObject["penFill"] {
+  const [first, ...rest] = items.map((item) => JSON.stringify(item.penFill ?? null));
+  return first && first !== "null" && rest.every((fill) => fill === first) ? (JSON.parse(first) as WorkspaceObject["penFill"]) : undefined;
 }
 
 export function ungroupWorkspaceObject(input: {
@@ -72,6 +79,7 @@ export function ungroupWorkspaceObject(input: {
       sizeCopy: input.group.sizeCopy,
       frame: { ...input.group.frame },
       transform: { ...input.group.transform },
+      penFill: input.group.penFill ? { ...input.group.penFill } : undefined,
     };
     if (cleanedPaths.length === 1) {
       return { ...base, type: "path" as const, paths: [cleanedPaths[0]!] as [WorkspacePathData] };
@@ -123,6 +131,7 @@ export function splitCompoundPathItem(input: {
     frame: { ...item.frame },
     transform: { ...item.transform },
     paths: [{ ...path, id: "path-1", d }] as [WorkspacePathData],
+    penFill: item.penFill ? { ...item.penFill } : undefined,
   }));
 }
 

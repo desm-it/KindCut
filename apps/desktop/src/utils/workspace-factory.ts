@@ -68,6 +68,7 @@ export function createWorkspaceObjectItem({
   transform,
   textContent,
   cornerRadius,
+  penFill,
 }: {
   id: string;
   type: "path" | "group";
@@ -83,6 +84,7 @@ export function createWorkspaceObjectItem({
   transform?: WorkspaceItemTransform;
   textContent?: WorkspaceObject["textContent"];
   cornerRadius?: number;
+  penFill?: WorkspaceObject["penFill"];
 }): WorkspaceSvgItem {
   return {
     id,
@@ -98,6 +100,7 @@ export function createWorkspaceObjectItem({
     transform: transform ?? { x: 32 + index * 24, y: 32 + index * 24, scaleX: 1, scaleY: 1, rotation: 0 },
     textContent: textContent ? { ...textContent } : undefined,
     cornerRadius,
+    penFill: penFill ? { ...penFill } : undefined,
   } as WorkspaceSvgItem;
 }
 

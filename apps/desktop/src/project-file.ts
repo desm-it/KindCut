@@ -2,6 +2,7 @@ import { type CardSize, type MeasurementUnit, type WorkspaceItemTransform, isCar
 import { type WorkspaceShapeKind, isWorkspaceShapeKind } from "./workspace-shapes";
 import type { WorkspacePathData } from "./workspace-objects";
 import { extractWorkspacePathsFromSvg } from "./workspace-svg-import";
+import { type PenFillSettings, normalizePenFill } from "@cricut-companion/craft-core";
 
 export const KINDCUT_PROJECT_FORMAT = "kindcut-project";
 export const KINDCUT_PROJECT_VERSION = 1;
@@ -115,6 +116,8 @@ export type SavedWorkspaceObject = {
   transform?: WorkspaceItemTransform;
   textContent?: import("./workspace-objects").WorkspaceTextContent;
   cornerRadius?: number;
+  // Pen fill is saved as settings only and regenerated when drawn, so it stays editable.
+  penFill?: PenFillSettings;
 };
 
 export type KindCutProjectFile = {
@@ -299,6 +302,7 @@ function parseWorkspaceObject(value: unknown, fallbackId: string): SavedWorkspac
     transform: parseTransform(value.transform),
     textContent: isRecord(value.textContent) ? value.textContent as import("./workspace-objects").WorkspaceTextContent : undefined,
     cornerRadius: typeof value.cornerRadius === "number" ? value.cornerRadius : undefined,
+    penFill: normalizePenFill(value.penFill) ?? undefined,
   });
 }
 
@@ -356,6 +360,7 @@ function normalizeSavedWorkspaceObject(value: SavedWorkspaceObject): SavedWorksp
     transform: value.transform ? normalizeTransform(value.transform) : undefined,
     textContent: value.textContent,
     cornerRadius: typeof value.cornerRadius === "number" ? value.cornerRadius : undefined,
+    penFill: normalizePenFill(value.penFill) ?? undefined,
   };
 }
 

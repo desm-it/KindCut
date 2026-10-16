@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { buildBeginnerProject, joyStandardMat, validateProject } from "@cricut-companion/craft-core";
+import {
+  DEFAULT_PEN_FILL,
+  type PenFillSettings,
+  buildBeginnerProject,
+  joyStandardMat,
+  normalizePenFill,
+  validateProject,
+} from "@cricut-companion/craft-core";
 import { createDesignPrompt } from "@cricut-companion/ai-designer";
 import { MAT_PRESETS, MATERIAL_OPTIONS, buildPlanCommand } from "@cricut-companion/slicebug-bridge";
 import { preflightSvg } from "@cricut-companion/svg-preflight";
@@ -332,6 +339,7 @@ export function App() {
           transform: o.transform,
           textContent: o.textContent,
           cornerRadius: o.cornerRadius,
+          penFill: o.penFill,
         })),
       }),
     [importedSvgs, selectedMaterialId, selectedMatPreset, measurementUnit, tools, paperColor, cardSize, insertSlots],
@@ -630,6 +638,7 @@ export function App() {
         transform: item.transform,
         textContent: item.textContent,
         cornerRadius: item.cornerRadius,
+        penFill: item.penFill,
       })),
       selectedObjectId: selectedSvgId,
       selectedSvgId: null,
@@ -666,6 +675,7 @@ export function App() {
         index,
         transform: item.transform,
         cornerRadius: item.cornerRadius,
+        penFill: item.penFill,
       });
       if (item.textContent) base.textContent = item.textContent;
       return base;
@@ -716,6 +726,7 @@ export function App() {
         index: item.index,
         transform: item.transform,
         textContent: item.textContent,
+        penFill: item.penFill,
       }),
     );
     pushWorkspaceHistorySnapshot();
@@ -1197,6 +1208,26 @@ export function App() {
         return { ...item, cornerRadius: clamped, paths } as WorkspaceSvgItem;
       }),
     );
+  }
+
+  // Slider drags send a change per tick; keep a burst of fill edits as one undo step.
+  const lastPenFillHistoryAt = useRef(0);
+
+  function handlePenFillChange(ids: string[], patch: Partial<PenFillSettings>) {
+    const idSet = new Set(ids);
+    const now = Date.now();
+    if (now - lastPenFillHistoryAt.current > 600) {
+      pushWorkspaceHistorySnapshot();
+    }
+    lastPenFillHistoryAt.current = now;
+    setImportedSvgs((current) =>
+      current.map((item) => {
+        if (!idSet.has(item.id)) return item;
+        const penFill = normalizePenFill({ ...(item.penFill ?? DEFAULT_PEN_FILL), ...patch });
+        return penFill ? { ...item, penFill } : item;
+      }),
+    );
+    setImportedPlan(null);
   }
 
   // ── End text ─────────────────────────────────────────────────────────────────
@@ -1924,6 +1955,7 @@ export function App() {
       onExitTextEdit={commitTextEdit}
       onTextContentChange={handleTextContentChange}
       onShapeCornerRadiusChange={handleShapeCornerRadiusChange}
+      onPenFillChange={handlePenFillChange}
       onSelectSvg={selectSingleSvg}
       onSelectSvgGroup={selectSvgGroup}
       onSelectAllSvgs={handleSelectAllSvgs}

@@ -2,6 +2,8 @@ import type { WorkspaceShapeKind } from "./workspace-shapes";
 import type { WorkspaceItemFrame, WorkspaceItemTransform } from "./workspace-utils";
 import { traceCenterlinePathD } from "./centerline-trace";
 import { buildShapePath } from "./workspace-shapes";
+import type { PenFillSettings } from "@cricut-companion/craft-core";
+import { buildPenFillStrokes } from "./pen-fill-render";
 
 export type WorkspaceObjectSourceKind = "image" | "shape" | "text";
 
@@ -47,6 +49,7 @@ export type WorkspaceObjectBase = {
   frame: WorkspaceItemFrame;
   textContent?: WorkspaceTextContent; // present only for text items
   cornerRadius?: number; // corner-rounding for shapes (frame units, radius at scale 1)
+  penFill?: PenFillSettings; // infill pattern for pen-drawn objects; strokes are generated, never stored
 };
 
 export type WorkspacePathObject = WorkspaceObjectBase & {
@@ -129,7 +132,12 @@ function buildItemInnerSvg(item: WorkspaceObject, tools?: CutTool[]): string {
   const shapeD = item.shapeKind
     ? buildShapePath(item.shapeKind, item.frame.width, item.frame.height, item.cornerRadius ?? 0, item.transform.scaleX, item.transform.scaleY)
     : null;
-  return item.paths.map((path) => {
+  // Pen fills go out as real open strokes in the pen colour: slicebug only draws stroked
+  // outlines, so a fill="url(#pattern)" or clip-path would be ignored.
+  const fillStrokes = buildPenFillStrokes(item, tools).map(({ color, d }) =>
+    `<path d="${escapeXml(d)}" fill="none" stroke="${escapeXml(color)}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>`,
+  ).join("");
+  return fillStrokes + item.paths.map((path) => {
     const pathTransform = !shapeD && path.pathTransform ? ` transform="${escapeXml(path.pathTransform)}"` : "";
     const strokeLinecap = path.strokeLinecap ? ` stroke-linecap="${escapeXml(path.strokeLinecap)}"` : "";
     const strokeLinejoin = path.strokeLinejoin ? ` stroke-linejoin="${escapeXml(path.strokeLinejoin)}"` : "";

@@ -137,3 +137,6 @@ export function validateProject(project: CraftProject): { ok: boolean; messages:
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
+
+export * from "./svg-path-geometry";
+export * from "./pen-fill";
