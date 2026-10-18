@@ -349,6 +349,56 @@ export function flattenSvgPath(d: string, tolerance = 0.25): FlatSubpath[] {
   return subpaths;
 }
 
+export type Rect = { x: number; y: number; width: number; height: number };
+
+/**
+ * Cuts a polyline at the edges of `rect` and returns the runs that lie inside
+ * (Liang–Barsky per segment, joining consecutive inside pieces).
+ */
+export function clipPolylineToRect(points: Point[], rect: Rect): Point[][] {
+  const minX = rect.x;
+  const maxX = rect.x + rect.width;
+  const minY = rect.y;
+  const maxY = rect.y + rect.height;
+  const runs: Point[][] = [];
+  let run: Point[] | null = null;
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index] as Point;
+    const b = points[index + 1] as Point;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    let t0 = 0;
+    let t1 = 1;
+    let visible = true;
+    for (const [p, q] of [[-dx, a.x - minX], [dx, maxX - a.x], [-dy, a.y - minY], [dy, maxY - a.y]] as const) {
+      if (p === 0) {
+        if (q < 0) visible = false;
+        continue;
+      }
+      const t = q / p;
+      if (p < 0) t0 = Math.max(t0, t);
+      else t1 = Math.min(t1, t);
+    }
+    if (!visible || t0 > t1) {
+      run = null;
+      continue;
+    }
+    const start = t0 === 0 ? a : { x: a.x + t0 * dx, y: a.y + t0 * dy };
+    const end = t1 === 1 ? b : { x: a.x + t1 * dx, y: a.y + t1 * dy };
+    const last = run?.[run.length - 1];
+    if (run && last && t0 === 0 && last.x === start.x && last.y === start.y) {
+      run.push(end);
+    } else {
+      run = [start, end];
+      runs.push(run);
+    }
+    // Leaving through an edge ends this run; the next inside piece starts a new one.
+    if (t1 < 1) run = null;
+  }
+  return runs.filter((candidate) => candidate.length > 1);
+}
+
 export function formatPolylinePath(polylines: Array<{ points: Point[]; closed?: boolean }>, decimals = 3): string {
   const factor = 10 ** decimals;
   const format = (value: number) => String(Math.round(value * factor) / factor);

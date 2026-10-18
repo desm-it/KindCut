@@ -9,7 +9,7 @@ import {
   normalizePenFill,
   penFillPatternTile,
 } from "./pen-fill";
-import { type Point, applyMatrix, flattenSvgPath, formatPolylinePath, parseSvgTransform } from "./svg-path-geometry";
+import { type Point, applyMatrix, clipPolylineToRect, flattenSvgPath, formatPolylinePath, parseSvgTransform } from "./svg-path-geometry";
 
 function rectRing(x: number, y: number, width: number, height: number): Point[] {
   return [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
@@ -61,6 +61,25 @@ describe("flattenSvgPath", () => {
     const [arc] = flattenSvgPath("M0 0a5 5 0 0010 0");
     expect(arc?.points.at(-1)?.x).toBeCloseTo(10);
     expect(flattenSvgPath("M0 0 10 0 10 10")[0]?.points).toHaveLength(3);
+  });
+});
+
+describe("clipPolylineToRect", () => {
+  const rect = { x: 0, y: 0, width: 10, height: 10 };
+
+  it("keeps inside lines whole and drops outside ones", () => {
+    expect(clipPolylineToRect([{ x: 1, y: 1 }, { x: 5, y: 5 }, { x: 9, y: 1 }], rect)).toEqual([
+      [{ x: 1, y: 1 }, { x: 5, y: 5 }, { x: 9, y: 1 }],
+    ]);
+    expect(clipPolylineToRect([{ x: 20, y: 1 }, { x: 30, y: 5 }], rect)).toEqual([]);
+  });
+
+  it("cuts a line that leaves and re-enters into separate runs", () => {
+    const runs = clipPolylineToRect([{ x: 2, y: 5 }, { x: 15, y: 5 }, { x: 15, y: 8 }, { x: 5, y: 8 }], rect);
+    expect(runs).toEqual([
+      [{ x: 2, y: 5 }, { x: 10, y: 5 }],
+      [{ x: 10, y: 8 }, { x: 5, y: 8 }],
+    ]);
   });
 });
 

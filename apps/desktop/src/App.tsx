@@ -42,7 +42,9 @@ import {
   type WorkspaceSvgItem,
   type WorkspaceTextContent,
   buildWorkspaceObjectsSvg,
+  buildWorkspaceCutPreviewSvg,
   buildWorkspaceCutSvg,
+  isCutSvgEmpty,
 } from "./workspace-objects";
 import { clearCenterlineCache, traceCenterlinePathD } from "./centerline-trace";
 import { googleFontsHref } from "./font-catalog";
@@ -1607,18 +1609,23 @@ export function App() {
 
   // The tools actually used by the design (matched to path/text colours), in the order
   // they run: pens draw first, the blade cuts last. Drives the visual cut steps.
+  // Once a cut is prepared, count only colours in the cropped cutter SVG, so a tool used
+  // just by objects parked off the paper doesn't show up as a step.
+  const [cutPlanColors, setCutPlanColors] = useState<Set<string> | null>(null);
   const usedCutTools = useMemo(() => {
-    const used = new Set<string>();
-    for (const item of importedSvgs) {
-      if (item.textContent) used.add(item.textContent.color.toLowerCase());
-      for (const path of item.paths) if (path.stroke) used.add(path.stroke.toLowerCase());
+    const used = new Set<string>(cutPlanColors ?? []);
+    if (!cutPlanColors) {
+      for (const item of importedSvgs) {
+        if (item.textContent) used.add(item.textContent.color.toLowerCase());
+        for (const path of item.paths) if (path.stroke) used.add(path.stroke.toLowerCase());
+      }
+      if (selectedMaterialId === MATERIAL_INSERT_ID && insertSlots) used.add(getBehindColor(tools).toLowerCase());
     }
-    if (selectedMaterialId === MATERIAL_INSERT_ID && insertSlots) used.add(getBehindColor(tools).toLowerCase());
     const list = tools
       .filter((tool) => used.has(tool.color.toLowerCase()))
       .map((tool) => ({ tool: (tool.type === "pen" ? "pen" : "fine_point_blade") as "pen" | "fine_point_blade", color: tool.color }));
     return [...list.filter((t) => t.tool === "pen"), ...list.filter((t) => t.tool !== "pen")];
-  }, [importedSvgs, tools, selectedMaterialId, insertSlots]);
+  }, [importedSvgs, tools, selectedMaterialId, insertSlots, cutPlanColors]);
 
   async function handleOpenCutPreview() {
     if (importedSvgs.length === 0) return;
@@ -1636,8 +1643,28 @@ export function App() {
           return buildInsertSlotsPaths(dims.width * WORKSPACE_PIXELS_PER_INCH, dims.height * WORKSPACE_PIXELS_PER_INCH, getBehindColor(tools));
         })()
       : "";
-    const svg = buildWorkspaceCutSvg(resolvedItems, matW, matH, tools, WORKSPACE_PIXELS_PER_INCH, slotsSvg);
+    // Only what lies on the paper is drawn or cut: the chosen card area for insert cards,
+    // otherwise the whole mat. Objects parked beside the mat stay in the project but are
+    // left out, and objects hanging off an edge are cropped there.
+    const paperDims = selectedMaterialId === MATERIAL_INSERT_ID && cardSize ? CARD_SIZES[cardSize] : matDims;
+    const paper = { x: 0, y: 0, width: paperDims.width * WORKSPACE_PIXELS_PER_INCH, height: paperDims.height * WORKSPACE_PIXELS_PER_INCH };
+    const planSvg = buildWorkspaceCutSvg(resolvedItems, matW, matH, tools, WORKSPACE_PIXELS_PER_INCH, slotsSvg, paper);
+    const svg = buildWorkspaceCutPreviewSvg(resolvedItems, matW, matH, tools, WORKSPACE_PIXELS_PER_INCH, slotsSvg, paper);
     const colorMap = buildToolColorMap();
+    setCutPlanColors(new Set([...planSvg.matchAll(/stroke="(#[0-9a-fA-F]{3,8})"/g)].map((match) => (match[1] ?? "").toLowerCase())));
+
+    if (isCutSvgEmpty(planSvg)) {
+      const message = language === "nl"
+        ? "Er staat niets op het papier om te tekenen of te snijden. Sleep je ontwerp op het papier."
+        : "There is nothing on the paper to draw or cut. Drag your design onto the paper.";
+      setCutPreview({
+        plan: { ok: false, executable: "", inputSvgPath: "", outputPlanPath: "", stdout: "", stderr: "", message, plan: null },
+        svg,
+        matPreset: selectedMatPreset,
+        paperColor,
+      });
+      return;
+    }
 
     if (!window.cricutCompanion?.slicebug) {
       setCutPreview({
@@ -1652,7 +1679,7 @@ export function App() {
     setImportedPlanLoading(true);
     try {
       const plan = await window.cricutCompanion.slicebug.createPlan({
-        svg,
+        svg: planSvg,
         fileName: importedSvgs[0]?.fileName ?? "design",
         materialId: selectedMaterialId,
         matPreset: selectedMatPreset,

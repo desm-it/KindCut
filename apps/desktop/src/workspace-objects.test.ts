@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceObject } from "./workspace-objects";
-import { buildWorkspaceCutSvg } from "./workspace-objects";
+import { buildWorkspaceCutPreviewSvg, buildWorkspaceCutSvg, isCutSvgEmpty } from "./workspace-objects";
 
 const PIXELS_PER_INCH = 80;
 const MAT_W = 4.5 * PIXELS_PER_INCH; // 360
@@ -124,5 +124,63 @@ describe("pen fill in the cut SVG", () => {
     const cut = { ...square, paths: [{ ...square.paths[0]!, stroke: "#8f4f2b" }] } as WorkspaceObject;
     expect(pathCount(buildWorkspaceCutSvg([cut], MAT_W, MAT_H, tools))).toBe(1);
     expect(cut.penFill?.enabled).toBe(true);
+  });
+});
+
+describe("cropping the cut SVG to the paper", () => {
+  const paper = { x: 0, y: 0, width: MAT_W, height: MAT_H };
+  const tools = [
+    { color: "#1f6feb", type: "pen" as const },
+    { color: "#ff0000", type: "cut" as const },
+  ];
+  const at = (x: number, y: number, extra: Partial<WorkspaceObject> = {}): WorkspaceObject =>
+    ({ ...obj, paths: [{ id: "p1", d: "M0 0H40V40H0Z", fill: "none", stroke: "#ff0000", strokeWidth: "1.5" }], transform: { x, y, scaleX: 1, scaleY: 1, rotation: 0 }, ...extra }) as WorkspaceObject;
+
+  function numbersIn(svg: string): number[] {
+    return [...svg.matchAll(/ d="([^"]+)"/g)].flatMap((match) => (match[1] ?? "").match(/-?\d+(\.\d+)?/g)?.map(Number) ?? []);
+  }
+
+  it("leaves objects that are fully on the paper untouched", () => {
+    const item = at(20, 30);
+    expect(buildWorkspaceCutSvg([item], MAT_W, MAT_H, tools, 80, "", paper)).toBe(buildWorkspaceCutSvg([item], MAT_W, MAT_H, tools));
+  });
+
+  it("leaves out objects parked beside the mat", () => {
+    const svg = buildWorkspaceCutSvg([at(MAT_W + 50, 30), at(20, -200)], MAT_W, MAT_H, tools, 80, "", paper);
+    expect(isCutSvgEmpty(svg)).toBe(true);
+  });
+
+  it("cuts an object that hangs off the edge at the paper edge", () => {
+    const svg = buildWorkspaceCutSvg([at(MAT_W - 10, 30)], MAT_W, MAT_H, tools, 80, "", paper);
+    expect(isCutSvgEmpty(svg)).toBe(false);
+    expect(svg).toContain('fill="none" stroke="#ff0000"');
+    const numbers = numbersIn(svg);
+    expect(Math.max(...numbers)).toBeLessThanOrEqual(MAT_W);
+    // One stroke: in along the bottom edge, up the left side, out along the top edge.
+    expect(svg).toMatch(/d="M360 70L350 70L350 30L360 30"/);
+  });
+
+  it("crops rotated objects and pen fills too", () => {
+    const filled = at(MAT_W - 20, 40, {
+      paths: [{ id: "p1", d: "M0 0H40V40H0Z", fill: "none", stroke: "#1f6feb", strokeWidth: "1.5" }],
+      transform: { x: MAT_W - 20, y: 40, scaleX: 1, scaleY: 1, rotation: 30 },
+      penFill: { enabled: true, pattern: "lines", density: 30, angle: 45 },
+    } as Partial<WorkspaceObject>);
+    const svg = buildWorkspaceCutSvg([filled], MAT_W, MAT_H, tools, 80, "", paper);
+    expect(svg.match(/<path\b/g)?.length).toBe(2);
+    expect(Math.max(...numbersIn(svg))).toBeLessThanOrEqual(MAT_W + 1e-6);
+  });
+
+  it("crops to a smaller card area", () => {
+    const card = { x: 0, y: 0, width: 3.5 * 80, height: 4.9 * 80 };
+    const svg = buildWorkspaceCutSvg([at(card.width - 20, card.height - 20)], MAT_W, MAT_H, tools, 80, "", card);
+    const numbers = numbersIn(svg);
+    expect(Math.max(...numbers)).toBeLessThanOrEqual(card.height);
+  });
+
+  it("previews the full design clipped to the paper", () => {
+    const preview = buildWorkspaceCutPreviewSvg([at(MAT_W - 10, 30)], MAT_W, MAT_H, tools, 80, "", paper);
+    expect(preview).toContain('<clipPath id="kindcut-paper"><rect x="0" y="0" width="360" height="960"/></clipPath>');
+    expect(preview).toContain('d="M0 0H40V40H0Z" fill="#ff0000"');
   });
 });
