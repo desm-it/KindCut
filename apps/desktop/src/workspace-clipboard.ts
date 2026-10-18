@@ -14,6 +14,7 @@ export type WorkspaceClipboardSvgItem = {
   transform: WorkspaceItemTransform;
   textContent?: WorkspaceTextContent;
   penFill?: WorkspaceObject["penFill"];
+  spotify?: WorkspaceObject["spotify"];
 };
 
 export type PastedWorkspaceSvgItemInput = WorkspaceClipboardSvgItem & {
@@ -42,6 +43,7 @@ export function getSelectedWorkspaceClipboardItems(
       transform: { ...item.transform },
       textContent: item.textContent ? { ...item.textContent } : undefined,
       penFill: item.penFill ? { ...item.penFill } : undefined,
+      spotify: item.spotify ? { ...item.spotify } : undefined,
     }));
 }
 

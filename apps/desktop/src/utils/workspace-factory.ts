@@ -69,6 +69,7 @@ export function createWorkspaceObjectItem({
   textContent,
   cornerRadius,
   penFill,
+  spotify,
 }: {
   id: string;
   type: "path" | "group";
@@ -85,6 +86,7 @@ export function createWorkspaceObjectItem({
   textContent?: WorkspaceObject["textContent"];
   cornerRadius?: number;
   penFill?: WorkspaceObject["penFill"];
+  spotify?: WorkspaceObject["spotify"];
 }): WorkspaceSvgItem {
   return {
     id,
@@ -101,6 +103,7 @@ export function createWorkspaceObjectItem({
     textContent: textContent ? { ...textContent } : undefined,
     cornerRadius,
     penFill: penFill ? { ...penFill } : undefined,
+    spotify: spotify ? { ...spotify } : undefined,
   } as WorkspaceSvgItem;
 }
 

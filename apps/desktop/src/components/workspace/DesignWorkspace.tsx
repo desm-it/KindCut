@@ -398,6 +398,7 @@ export function DesignWorkspace({
   onDeleteLibraryImage,
   onAddLibraryImageToWorkspace,
   onAddSpotifyCodeToWorkspace,
+  onReplaceSpotifyCode,
 }: {
   language: Language;
   measurementUnit: MeasurementUnit;
@@ -471,6 +472,7 @@ export function DesignWorkspace({
   onDeleteLibraryImage: (path: string) => void;
   onAddLibraryImageToWorkspace: (img: LibraryImage) => void;
   onAddSpotifyCodeToWorkspace: (code: SpotifyCode) => void;
+  onReplaceSpotifyCode: (itemId: string, code: SpotifyCode) => void;
   onAddText: () => void;
   editingTextId: string | null;
   onEnterTextEdit: (id: string) => void;
@@ -484,8 +486,17 @@ export function DesignWorkspace({
   const [pan, setPan] = useState<Point>({ x: 260, y: 90 });
   const [activeDrawer, setActiveDrawer] = useState<"image" | "shapes" | "spotify" | null>(null);
   const drawerOpen = activeDrawer !== null;
+  // When set, the Spotify drawer swaps this code's song instead of adding a new code.
+  const [spotifyReplaceId, setSpotifyReplaceId] = useState<string | null>(null);
+  const spotifyReplaceTarget = spotifyReplaceId ? importedSvgs.find((item) => item.id === spotifyReplaceId) ?? null : null;
+
+  function openSpotifyReplace(itemId: string) {
+    setSpotifyReplaceId(itemId);
+    setActiveDrawer("spotify");
+  }
 
   function toggleDrawer(drawer: "image" | "shapes" | "spotify") {
+    setSpotifyReplaceId(null);
     if (activeDrawer === drawer) {
       setActiveDrawer(null);
       return;
@@ -1507,7 +1518,14 @@ export function DesignWorkspace({
         {activeDrawer === "spotify" ? (
           <SpotifyCodePanel
             language={language}
-            onUseCode={(code) => { onAddSpotifyCodeToWorkspace(code); setActiveDrawer(null); }}
+            replacing={spotifyReplaceTarget?.fileName ?? null}
+            onCancelReplace={() => setSpotifyReplaceId(null)}
+            onUseCode={(code) => {
+              if (spotifyReplaceTarget) onReplaceSpotifyCode(spotifyReplaceTarget.id, code);
+              else onAddSpotifyCodeToWorkspace(code);
+              setSpotifyReplaceId(null);
+              setActiveDrawer(null);
+            }}
           />
         ) : null}
 
@@ -1957,6 +1975,17 @@ export function DesignWorkspace({
                       <label className="object-settings__label">{t("object.tool")}</label>
                       <SwatchPicker tools={tools} selectedColor={primaryColor} onPick={applyColor} language={language} />
                     </div>
+
+                    {!multi && primary.spotify ? (
+                      <div className="object-settings__row object-settings__row--swatches">
+                        <span className="object-settings__label">{nl ? "Spotify-nummer" : "Spotify song"}</span>
+                        <span className="object-settings__hint">{primary.spotify.name}</span>
+                        <button type="button" className="object-settings__edit-btn" onClick={() => openSpotifyReplace(primary.id)}>
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 5.5h9l-2.5-2.5M13.5 10.5h-9l2.5 2.5"/></svg>
+                          {nl ? "Ander nummer kiezen" : "Change song"}
+                        </button>
+                      </div>
+                    ) : null}
 
                     {allText ? (() => {
                       const tc = primary.textContent!;

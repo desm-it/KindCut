@@ -50,7 +50,10 @@ export type WorkspaceObjectBase = {
   textContent?: WorkspaceTextContent; // present only for text items
   cornerRadius?: number; // corner-rounding for shapes (frame units, radius at scale 1)
   penFill?: PenFillSettings; // infill pattern for pen-drawn objects; strokes are generated, never stored
+  spotify?: WorkspaceSpotifyRef; // set on Spotify codes, so the song can be swapped in place
 };
+
+export type WorkspaceSpotifyRef = { uri: string; name: string };
 
 export type WorkspacePathObject = WorkspaceObjectBase & {
   type: "path";

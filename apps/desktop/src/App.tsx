@@ -102,7 +102,7 @@ import {
   loadAiSettings,
   saveAiSettings,
 } from "./ai-svg-generate";
-import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult } from "./app-types";
+import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult, SpotifyCode } from "./app-types";
 import type { UpdateState } from "./shell/preload";
 import { DesignWorkspace } from "./components/workspace/DesignWorkspace";
 import { WelcomeScreen } from "./components/screens/WelcomeScreen";
@@ -340,6 +340,7 @@ export function App() {
           textContent: o.textContent,
           cornerRadius: o.cornerRadius,
           penFill: o.penFill,
+          spotify: o.spotify,
         })),
       }),
     [importedSvgs, selectedMaterialId, selectedMatPreset, measurementUnit, tools, paperColor, cardSize, insertSlots],
@@ -639,6 +640,7 @@ export function App() {
         textContent: item.textContent,
         cornerRadius: item.cornerRadius,
         penFill: item.penFill,
+        spotify: item.spotify,
       })),
       selectedObjectId: selectedSvgId,
       selectedSvgId: null,
@@ -676,6 +678,7 @@ export function App() {
         transform: item.transform,
         cornerRadius: item.cornerRadius,
         penFill: item.penFill,
+        spotify: item.spotify,
       });
       if (item.textContent) base.textContent = item.textContent;
       return base;
@@ -727,6 +730,7 @@ export function App() {
         transform: item.transform,
         textContent: item.textContent,
         penFill: item.penFill,
+        spotify: item.spotify,
       }),
     );
     pushWorkspaceHistorySnapshot();
@@ -978,7 +982,7 @@ export function App() {
     advanceRasterImportQueue();
   }
 
-  function addSvgToWorkspace(name: string, svg: string, normalizeFirst = false): void {
+  function addSvgToWorkspace(name: string, svg: string, normalizeFirst = false, extra: Partial<WorkspaceSvgItem> = {}): void {
     const finalSvg = normalizeFirst ? normalizeAiSvg(svg) : svg;
     const item = createWorkspaceSvgItem({
       id: `svg-${Date.now()}`,
@@ -998,11 +1002,48 @@ export function App() {
       item.transform.scaleY = scale;
     }
     // New artwork defaults to "Cut" — shown filled in the behind colour.
-    const cutItem = recolorItem(item, getBehindColor(tools));
+    const cutItem = recolorItem({ ...item, ...extra } as WorkspaceSvgItem, getBehindColor(tools));
     pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) => [...current, cutItem]);
     setSelectedSvgId(item.id);
     setSelectedSvgIds([item.id]);
+    setImportedPlan(null);
+    setCutSession(null);
+  }
+
+  // Swap a Spotify code's song in place: same position, size, tool and fill, new bars.
+  // Every code shares one layout (logo + fixed first/middle/last reference bars), so
+  // only the bar heights change; the size is still matched in case a frame differs.
+  function replaceSpotifyCode(itemId: string, code: SpotifyCode): void {
+    const current = importedSvgs.find((item) => item.id === itemId);
+    if (!current) return;
+    const fresh = createWorkspaceSvgItem({
+      id: current.id,
+      kind: "image",
+      fileName: code.name,
+      fileSize: "",
+      svg: code.svg,
+      language,
+      index: 0,
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    });
+    const color = current.paths[0]?.stroke ?? getBehindColor(tools);
+    const replaced = recolorItem({
+      ...current,
+      type: fresh.type,
+      paths: fresh.paths,
+      frame: fresh.frame,
+      sizeCopy: fresh.sizeCopy,
+      fileName: code.name,
+      spotify: code.uri ? { uri: code.uri, name: code.name } : current.spotify,
+      transform: {
+        ...current.transform,
+        scaleX: (current.frame.width * current.transform.scaleX) / fresh.frame.width,
+        scaleY: (current.frame.height * current.transform.scaleY) / fresh.frame.height,
+      },
+    } as WorkspaceSvgItem, color);
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((items) => items.map((item) => (item.id === itemId ? replaced : item)));
     setImportedPlan(null);
     setCutSession(null);
   }
@@ -1994,7 +2035,9 @@ export function App() {
       onRenameLibraryImage={(path, name) => renameLibraryImage(path, name)}
       onDeleteLibraryImage={(p) => void deleteFromLibrary(p)}
       onAddLibraryImageToWorkspace={(img) => addSvgToWorkspace(img.name, img.svg)}
-      onAddSpotifyCodeToWorkspace={(code) => addSvgToWorkspace(code.name, code.svg)}
+      onAddSpotifyCodeToWorkspace={(code) =>
+        addSvgToWorkspace(code.name, code.svg, false, code.uri ? { spotify: { uri: code.uri, name: code.name } } : {})}
+      onReplaceSpotifyCode={replaceSpotifyCode}
     />
     {settingsOpen ? (
       <SettingsModal

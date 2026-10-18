@@ -1875,6 +1875,34 @@ a {
   text-transform: uppercase;
 }
 
+.spotify-library__replace {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(106, 133, 64, 0.35);
+  border-radius: 7px;
+  background: rgba(106, 133, 64, 0.1);
+  color: #3f5422;
+  font-size: 0.73rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.spotify-library__replace button {
+  flex: none;
+  min-height: 0;
+  padding: 3px 8px;
+  border: 1px solid rgba(63, 84, 34, 0.35);
+  border-radius: 6px;
+  background: #fffdf9;
+  color: #3f5422;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .spotify-library__error {
   margin: 0;
   padding: 7px 9px;
@@ -2694,6 +2722,12 @@ a {
   border: 2px solid #fffaf2;
   box-shadow: 0 1px 3px rgba(70,42,24,0.2);
   cursor: pointer;
+}
+
+.object-settings__hint {
+  font-size: 0.74rem;
+  color: #5d3822;
+  overflow-wrap: anywhere;
 }
 
 .object-settings__edit-btn {

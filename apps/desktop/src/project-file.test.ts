@@ -263,6 +263,38 @@ describe("KindCut project files", () => {
     });
   });
 
+  it("keeps a Spotify code's song link so it can be swapped after reopening", () => {
+    const saved = serializeProjectFile(
+      buildProjectFile({
+        name: "code",
+        selectedMaterialId: 218,
+        selectedMatPreset: "joy-standard",
+        measurementUnit: "cm",
+        workspaceObjects: [
+          {
+            id: "object-1",
+            type: "group",
+            kind: "image",
+            sourceKind: "image",
+            fileName: "Halo - Beyoncé",
+            fileSize: "",
+            frame: { width: 360, height: 60 },
+            paths: [{ id: "path-1", d: "M0 0H10", fill: "none", stroke: "#8f4f2b", strokeWidth: "2" }],
+            spotify: { uri: "spotify:track:3CXZukNyVJUjLUYGA88F0a", name: "Halo - Beyoncé" },
+          },
+        ],
+      }),
+    );
+    expect(parseProjectFile(saved).workspaceObjects[0]?.spotify).toEqual({
+      uri: "spotify:track:3CXZukNyVJUjLUYGA88F0a",
+      name: "Halo - Beyoncé",
+    });
+
+    const tampered = JSON.parse(saved) as { workspaceObjects: Array<Record<string, unknown>> };
+    tampered.workspaceObjects[0]!.spotify = { uri: "https://example.com", name: "x" };
+    expect(parseProjectFile(JSON.stringify(tampered)).workspaceObjects[0]?.spotify).toBeUndefined();
+  });
+
   it("saves and loads a grouped workspace object", () => {
     const parsed = parseProjectFile(serializeProjectFile(buildProjectFile({
       name: "groep",

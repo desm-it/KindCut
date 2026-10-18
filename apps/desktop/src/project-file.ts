@@ -1,6 +1,6 @@
 import { type CardSize, type MeasurementUnit, type WorkspaceItemTransform, isCardSize } from "./workspace-utils";
 import { type WorkspaceShapeKind, isWorkspaceShapeKind } from "./workspace-shapes";
-import type { WorkspacePathData } from "./workspace-objects";
+import type { WorkspacePathData, WorkspaceSpotifyRef } from "./workspace-objects";
 import { extractWorkspacePathsFromSvg } from "./workspace-svg-import";
 import { type PenFillSettings, normalizePenFill } from "@cricut-companion/craft-core";
 
@@ -118,6 +118,7 @@ export type SavedWorkspaceObject = {
   cornerRadius?: number;
   // Pen fill is saved as settings only and regenerated when drawn, so it stays editable.
   penFill?: PenFillSettings;
+  spotify?: WorkspaceSpotifyRef;
 };
 
 export type KindCutProjectFile = {
@@ -303,7 +304,15 @@ function parseWorkspaceObject(value: unknown, fallbackId: string): SavedWorkspac
     textContent: isRecord(value.textContent) ? value.textContent as import("./workspace-objects").WorkspaceTextContent : undefined,
     cornerRadius: typeof value.cornerRadius === "number" ? value.cornerRadius : undefined,
     penFill: normalizePenFill(value.penFill) ?? undefined,
+    spotify: normalizeSpotifyRef(value.spotify),
   });
+}
+
+function normalizeSpotifyRef(value: unknown): WorkspaceSpotifyRef | undefined {
+  if (!isRecord(value) || typeof value.uri !== "string" || !/^spotify:[a-z]+:[0-9A-Za-z]{22}$/.test(value.uri)) {
+    return undefined;
+  }
+  return { uri: value.uri, name: typeof value.name === "string" ? value.name : "" };
 }
 
 function parseWorkspacePath(value: unknown): WorkspacePathData {
@@ -361,6 +370,7 @@ function normalizeSavedWorkspaceObject(value: SavedWorkspaceObject): SavedWorksp
     textContent: value.textContent,
     cornerRadius: typeof value.cornerRadius === "number" ? value.cornerRadius : undefined,
     penFill: normalizePenFill(value.penFill) ?? undefined,
+    spotify: normalizeSpotifyRef(value.spotify),
   };
 }
 

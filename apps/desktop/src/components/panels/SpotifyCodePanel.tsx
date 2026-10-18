@@ -39,9 +39,14 @@ function codePreviewSrc(svg: string): string {
 
 export function SpotifyCodePanel({
   language,
+  replacing = null,
+  onCancelReplace,
   onUseCode,
 }: {
   language: Language;
+  /** Name of the code whose song is being changed; null when adding a new code. */
+  replacing?: string | null;
+  onCancelReplace?: () => void;
   onUseCode: (code: SpotifyCode) => void;
 }) {
   const nl = language === "nl";
@@ -137,6 +142,12 @@ export function SpotifyCodePanel({
 
   return (
     <aside className="image-library spotify-library no-drag" aria-label={nl ? "Spotify-codes" : "Spotify codes"}>
+      {replacing ? (
+        <div className="spotify-library__replace" role="status">
+          <span>{nl ? `Kies een nieuw nummer voor “${replacing}”` : `Pick a new song for “${replacing}”`}</span>
+          <button type="button" onClick={onCancelReplace}>{nl ? "Annuleren" : "Cancel"}</button>
+        </div>
+      ) : null}
       <input
         type="search"
         className="image-library__search"
