@@ -61,6 +61,12 @@ import { isVersionAtLeast, shouldSuppressSkippedUpdate } from "./update-version"
 import type { SkippedUpdateState } from "./update-version";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
+// Dev builds find SliceBug relative to the working directory, but on macOS the dev
+// launcher starts Electron through LaunchServices (see scripts/dev-shell.cjs), which
+// runs apps from "/". Work from the app folder whatever started us.
+if (!app.isPackaged) {
+  process.chdir(app.getAppPath());
+}
 let activeCutSession: SlicebugCutSession | null = null;
 const closeAllowedWindows = new WeakSet<BrowserWindow>();
 let updateCheckInProgress = false;

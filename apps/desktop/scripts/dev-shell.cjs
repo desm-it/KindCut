@@ -5,10 +5,11 @@
 // because Vite silently moved to the next port while Electron did not.
 //
 // Set VITE_DEV_SERVER_PORT (or PORT) to force a specific port.
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
+const os = require("node:os");
 const path = require("node:path");
 
 const desktopRoot = path.resolve(__dirname, "..");
@@ -18,10 +19,12 @@ const PORT_SCAN_LIMIT = 50;
 
 const children = [];
 let shuttingDown = false;
+let stopExtraProcess = () => {};
 
 function shutdown(code) {
   if (shuttingDown) return;
   shuttingDown = true;
+  stopExtraProcess();
   for (const child of children) {
     if (child.exitCode === null && !child.killed) {
       child.kill("SIGTERM");
@@ -115,6 +118,10 @@ async function main() {
   await waitForServer(url);
 
   console.log(`[dev-shell] Launching Electron with VITE_DEV_SERVER_URL=${url}`);
+  if (process.platform === "darwin") {
+    launchElectronMac(url);
+    return;
+  }
   const electron = spawn(require("electron"), ["."], {
     cwd: desktopRoot,
     stdio: "inherit",
@@ -122,6 +129,57 @@ async function main() {
   });
   children.push(electron);
   electron.on("exit", (code) => shutdown(code ?? 0));
+}
+
+// macOS charges a process's Bluetooth use to the app at the top of its process
+// tree. Spawned directly, that is whatever started this script (a terminal, an
+// IDE, an AI agent), and when it has no Bluetooth permission macOS kills
+// SliceBug's CricutDevice helper on startup, so cuts fail with "Plugin stdout
+// closed ... expected 4 bytes, got 0". Launching through LaunchServices makes
+// the dev Electron.app responsible for itself, so macOS asks once for
+// Electron's Bluetooth access, like the packaged KindCut.app.
+function launchElectronMac(url) {
+  const electronBinary = require("electron");
+  const appBundle = path.resolve(electronBinary, "..", "..", "..");
+  const logFile = path.join(os.tmpdir(), `kindcut-dev-electron-${process.pid}.log`);
+  fs.writeFileSync(logFile, "");
+
+  // `open` starts the app with launchd's environment, so pass on what the app reads.
+  const forwarded = Object.entries({ ...process.env, VITE_DEV_SERVER_URL: url }).filter(
+    ([name]) => name === "PATH" || name === "NODE_ENV" || name === "VITE_DEV_SERVER_URL" || /^(KINDCUT|CRICUT|SLICEBUG|ELECTRON)_/.test(name),
+  );
+  const opener = spawn(
+    "open",
+    [
+      "-W", // wait for the app to quit, so quitting Electron ends this script
+      "-n",
+      "-a", appBundle,
+      "--stdout", logFile,
+      "--stderr", logFile,
+      ...forwarded.flatMap(([name, value]) => ["--env", `${name}=${value}`]),
+      "--args", desktopRoot,
+    ],
+    { stdio: "inherit" },
+  );
+  children.push(opener);
+  opener.on("exit", (code) => shutdown(code ?? 0));
+
+  // Electron's output goes to the log file; echo it here like a normal child process.
+  const tail = spawn("tail", ["-n", "+1", "-f", logFile], { stdio: ["ignore", "inherit", "inherit"] });
+  children.push(tail);
+
+  // Stopping this script doesn't stop an app started by LaunchServices; do it by command line.
+  stopExtraProcess = () => {
+    const commandLine = `${electronBinary} ${desktopRoot}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const found = spawnSync("pgrep", ["-f", "-x", commandLine], { encoding: "utf8" });
+    for (const pid of found.stdout.split(/\s+/).filter(Boolean)) {
+      try {
+        process.kill(Number(pid), "SIGTERM");
+      } catch {
+        // Already gone.
+      }
+    }
+  };
 }
 
 main().catch((error) => {
