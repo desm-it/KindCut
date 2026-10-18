@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.0 - 2026-10-18
+
+### Added
+
+- Add a **Spotify** drawer: search for a song (no Spotify account or API key needed) or paste a Spotify link to a song, album, playlist, artist or podcast, and place its scannable code. Codes are saved in `Documents/KindCut/images/spotify/`, named after the song and artist.
+- Add **Change song** for Spotify codes on the canvas, which swaps the song while keeping the code's position, size, tool and fill.
+- Add pen **Fill** for objects drawn with a pen: lines, cross, grid, triangles, cubic, honeycomb or dots, with density and angle. The fill is shown on the canvas and in the cut preview, drawn as real pen strokes, and saved as a setting, so it can always be changed or switched off.
+- Add the **GPT Image 2.5 Flare** and **Sunburst** image models. Flare is the new default for new setups; saved model choices are kept.
+
+### Changed
+
+- Only what lies on the paper is drawn or cut. Objects parked beside the mat stay in the project but are left out, and objects hanging off the paper are cropped at its edge, as shown in the cut preview.
+- Library file names keep accented and non-Latin letters.
+
 ## 1.2.11 - 2026-06-17
 
 ### Fixed
