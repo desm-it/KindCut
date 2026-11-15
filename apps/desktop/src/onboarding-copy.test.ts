@@ -40,7 +40,7 @@ describe("onboarding copy", () => {
     );
 
     expect(copy.tone).toBe("warning");
-    expect(copy.title).toBe("Een hulpje heeft aandacht nodig");
+    expect(copy.title).toBe("Snijden werkt nog niet");
     expect(copy.message).not.toMatch(/executable|PATH|slicebug --version|stdout|stderr|JSON/i);
     expect(copy.details.join("\n")).toMatch(/PATH/);
   });
@@ -80,7 +80,7 @@ describe("onboarding copy", () => {
       "en",
     );
 
-    expect(copy.title).toBe("One helper needs attention");
+    expect(copy.title).toBe("Cutting doesn't work yet");
   });
 
   it("turns tool ids into crafter-friendly labels", () => {

@@ -140,3 +140,5 @@ function slugify(value: string): string {
 
 export * from "./svg-path-geometry";
 export * from "./pen-fill";
+export * from "./dot-print";
+export * from "./outline";

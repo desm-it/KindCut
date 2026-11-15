@@ -101,7 +101,7 @@ describe("workspace grouping", () => {
 });
 
 describe("pen fill on groups", () => {
-  const fill = { enabled: true, pattern: "cross" as const, density: 30, angle: 45 };
+  const fill = { enabled: true, pattern: "cross" as const, density: 30, angle: 45, dotStyle: "circle" as const };
   const member = (id: string, penFill?: typeof fill): WorkspaceObject => ({
     id,
     type: "path",

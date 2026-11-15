@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { Language, TranslationKey } from "../../i18n";
 import { getMatName, getMaterialName, createTranslator, getTranslatedCutActionCopy } from "../../i18n";
-import { getMatDimensionsInches } from "../../workspace-utils";
+import { type MeasurementUnit, formatLength, getMatDimensionsInches } from "../../workspace-utils";
 import { MATERIAL_OPTIONS } from "@cricut-companion/slicebug-bridge";
 import type { CutSessionSnapshot, SlicebugPlanResult } from "../../app-types";
 import { DEBUG } from "../../dev-flags";
@@ -120,8 +120,8 @@ function isCutterConnectionFailure(transcript: string): boolean {
 function parseToolDesc(desc: string): CutTool | null {
   const pen = desc.match(/pen\s*\(\s*([^)]+?)\s*\)/i);
   if (pen?.[1]) return { tool: "pen", color: pen[1].trim() };
-  if (/blade|fine[\s_]*point|\bcut\b/i.test(desc)) return { tool: "fine_point_blade", color: "#6a4d38" };
-  if (/\bpen\b|marker/i.test(desc)) return { tool: "pen", color: "#6a4d38" };
+  if (/blade|fine[\s_]*point|\bcut\b/i.test(desc)) return { tool: "fine_point_blade", color: "#4a433d" };
+  if (/\bpen\b|marker/i.test(desc)) return { tool: "pen", color: "#4a433d" };
   return null;
 }
 
@@ -270,7 +270,7 @@ function CutStepDetail({ language, matPreset, cutSession, steps, current, reques
     const tool = requestedTool ?? steps[current]?.tool ?? null;
     visual = (
       <span className="cut-detail__glyph cut-detail__glyph--tool">
-        {tool ? <ToolGlyph tool={tool.tool} color={tool.color} /> : <ToolGlyph tool="pen" color="#6a4d38" />}
+        {tool ? <ToolGlyph tool={tool.tool} color={tool.color} /> : <ToolGlyph tool="pen" color="#4a433d" />}
       </span>
     );
     name = tool ? `${t("cut.load")} ${prettyToolName(tool.tool)}` : t("cutAction.load-tools.title");
@@ -293,6 +293,7 @@ function CutStepDetail({ language, matPreset, cutSession, steps, current, reques
 
 export function CutPreviewModal({
   language,
+  measurementUnit,
   preview,
   cutBusy,
   cutSession,
@@ -304,6 +305,7 @@ export function CutPreviewModal({
   onStopCut,
 }: {
   language: Language;
+  measurementUnit: MeasurementUnit;
   preview: { plan: SlicebugPlanResult; svg: string; matPreset: string; paperColor: string };
   cutBusy: boolean;
   cutSession: CutSessionSnapshot | null;
@@ -380,7 +382,7 @@ export function CutPreviewModal({
                 style={{ width: previewW, height: previewH, display: "block" }}
               />
             </div>
-            <p className="cut-modal__mat-label">{matDims.width} × {matDims.height} in · {getMatName(matPreset, language)}</p>
+            <p className="cut-modal__mat-label">{formatLength(matDims.width, measurementUnit, language).replace(/ \S+$/, "")} × {formatLength(matDims.height, measurementUnit, language)} · {getMatName(matPreset, language)}</p>
           </div>
 
           <div className="cut-modal__info">

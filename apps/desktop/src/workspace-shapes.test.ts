@@ -4,6 +4,7 @@ import {
   WORKSPACE_SHAPE_KINDS,
   buildShapePath,
   buildWorkspaceShapePathObject,
+  defaultShapeFrame,
   getWorkspaceShapePath,
   isWorkspaceShapeKind,
   shapeHasCorners,
@@ -29,7 +30,8 @@ describe("workspace shapes", () => {
   it("recognizes only supported shape kinds", () => {
     expect(isWorkspaceShapeKind("circle")).toBe(true);
     expect(isWorkspaceShapeKind("rounded-square")).toBe(true);
-    expect(isWorkspaceShapeKind("heart")).toBe(false);
+    expect(isWorkspaceShapeKind("heart")).toBe(true);
+    expect(isWorkspaceShapeKind("blob")).toBe(false);
     expect(isWorkspaceShapeKind(null)).toBe(false);
   });
 
@@ -38,6 +40,29 @@ describe("workspace shapes", () => {
     expect(shapeHasCorners("square")).toBe(true);
     expect(shapeHasCorners("triangle")).toBe(true);
     expect(shapeHasCorners("star")).toBe(true);
+  });
+
+  it("line: runs through the middle of its box and has no corners to round", () => {
+    expect(buildShapePath("line", 120, 14)).toBe("M 0 7 H 120");
+    expect(shapeHasCorners("line")).toBe(false);
+    expect(defaultShapeFrame("line")).toEqual({ width: 170, height: 14 });
+    expect(defaultShapeFrame("star")).toEqual({ width: 170, height: 170 });
+  });
+
+  it("heart: fills its box exactly and is symmetric", () => {
+    const d = buildShapePath("heart", 100, 80);
+    const points = [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    expect(Math.min(...xs)).toBeCloseTo(0, 2);
+    expect(Math.max(...xs)).toBeCloseTo(100, 2);
+    expect(Math.min(...ys)).toBeCloseTo(0, 2);
+    expect(Math.max(...ys)).toBeCloseTo(80, 2);
+    // The tip is at the bottom, in the middle.
+    const tip = points.reduce((lowest, point) => (point.y > lowest.y ? point : lowest));
+    expect(tip.x).toBeCloseTo(50, 1);
+    expect(d.endsWith("Z")).toBe(true);
+    expect(shapeHasCorners("heart")).toBe(false);
   });
 
   it("rectangle: radius 0 has sharp corners, radius > 0 adds corner arcs", () => {

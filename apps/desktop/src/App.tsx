@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import {
+  DEFAULT_DASH,
+  DEFAULT_OUTLINE,
   DEFAULT_PEN_FILL,
+  type DashSettings,
+  type DotPrintSettings,
+  type OutlineSettings,
   type PenFillSettings,
+  normalizeDash,
+  normalizeOutline,
+  normalizeDotPrintSettings,
   buildBeginnerProject,
   joyStandardMat,
   normalizePenFill,
@@ -22,6 +30,7 @@ import {
   DEFAULT_TOOLS,
   buildProjectFile,
   getBehindColor,
+  getPens,
   getSafeProjectFileName,
   parseProjectFile,
   serializeProjectFile,
@@ -69,7 +78,14 @@ import {
   CARD_SIZES,
   buildInsertSlotsPaths,
   isCardSize,
+  type WorkspaceRect,
+  type AlignMode,
+  alignWorkspaceItems,
+  distributeWorkspaceItems,
+  findFreePlacement,
   getMatDimensionsInches,
+  getWorkspaceSelectionBounds,
+  intersectRects,
   loadMeasurementUnitPreference,
   normalizeWorkspaceItemTransform,
   rotatePoint,
@@ -92,6 +108,8 @@ import {
   workspaceTransformsEqual,
 } from "./utils/workspace-factory";
 import { normalizeAiSvg } from "./utils/svg-normalize";
+import { type CardTemplate, buildTemplateItems } from "./card-templates";
+import { activeOutline, outlineFramePath, outlineTool } from "./outline-render";
 import { isEditableKeyboardTarget } from "./utils/dom-utils";
 import { type WorkspaceShapeKind, buildShapePath } from "./workspace-shapes";
 import { createWorkspaceGroup, ungroupWorkspaceObject } from "./workspace-grouping";
@@ -105,6 +123,15 @@ import {
   saveAiSettings,
 } from "./ai-svg-generate";
 import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult, SpotifyCode } from "./app-types";
+import { type RecentProject, addRecentProject, loadRecentProjects, removeRecentProject, saveRecentProjects } from "./recent-projects";
+import {
+  defaultDotPrintSettings,
+  dotPrintToPaths,
+  ensureInkPens,
+  loadRasterImage,
+  missingInkPens,
+  readDotPrintImageFile,
+} from "./dot-print-render";
 import type { UpdateState } from "./shell/preload";
 import { DesignWorkspace } from "./components/workspace/DesignWorkspace";
 import { WelcomeScreen } from "./components/screens/WelcomeScreen";
@@ -253,7 +280,8 @@ export function App() {
   const [projectOpening, setProjectOpening] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [selectedMaterialId, setSelectedMaterialId] = useState(218);
-  const [selectedMatPreset, setSelectedMatPreset] = useState("joy-standard");
+  // Start on the short mat: it fits the screen whole and suits most first projects.
+  const [selectedMatPreset, setSelectedMatPreset] = useState("joy-standard-short");
   // Insert-card sub-options (only meaningful for the insert-card material).
   const [cardSize, setCardSize] = useState<CardSize | null>(null);
   const [insertSlots, setInsertSlots] = useState(false);
@@ -343,6 +371,10 @@ export function App() {
           cornerRadius: o.cornerRadius,
           penFill: o.penFill,
           spotify: o.spotify,
+          dotPrint: o.dotPrint,
+          dashed: o.dashed,
+          outline: o.outline,
+          hollow: o.hollow,
         })),
       }),
     [importedSvgs, selectedMaterialId, selectedMatPreset, measurementUnit, tools, paperColor, cardSize, insertSlots],
@@ -551,9 +583,72 @@ export function App() {
     enterWorkspace();
   }
 
+  function handleStartTemplate(template: CardTemplate) {
+    guardNavigation(() => doStartTemplate(template));
+  }
+
+  // A template is a new project with its mat, material and a few ordinary objects set up.
+  function doStartTemplate(template: CardTemplate) {
+    doNewProject();
+    setSelectedMatPreset(template.matPreset);
+    setSelectedMaterialId(template.materialId);
+    setCardSize(template.cardSize);
+    setInsertSlots(template.insertSlots);
+    const items = buildTemplateItems({
+      template,
+      language,
+      cutColor: getBehindColor(DEFAULT_TOOLS),
+      penColor: getPens(DEFAULT_TOOLS)[0]?.color ?? "#000000",
+      timestamp: Date.now(),
+      createText: (content, index, id) => createTextItem(content, index, id),
+    });
+    setImportedSvgs(items);
+    setRebaseline((n) => n + 1);
+  }
+
   function handleOpenProject() {
     guardNavigation(() => void doOpenProject());
   }
+
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() => loadRecentProjects());
+
+  function updateRecentProjects(update: (list: RecentProject[]) => RecentProject[]) {
+    setRecentProjects((list) => {
+      const next = update(list);
+      saveRecentProjects(next);
+      return next;
+    });
+  }
+
+  function handleOpenRecentProject(projectPath: string) {
+    guardNavigation(() => void doOpenRecentProject(projectPath));
+  }
+
+  async function doOpenRecentProject(projectPath: string) {
+    if (!window.cricutCompanion?.project?.openPath) {
+      setProjectMessage(t("project.openInDesktop"));
+      return;
+    }
+    setProjectOpening(true);
+    try {
+      const result = await window.cricutCompanion.project.openPath(projectPath);
+      if (result.canceled || !result.content) {
+        throw new Error(t("project.openEmpty"));
+      }
+      applyProjectFile(parseProjectFile(result.content), projectPath);
+      updateRecentProjects((list) => addRecentProject(list, projectPath));
+      setProjectMessage(null);
+      enterWorkspace();
+    } catch {
+      // The file was moved, renamed or deleted: drop it from the list and say so.
+      updateRecentProjects((list) => removeRecentProject(list, projectPath));
+      setRecentProjectError(projectPath);
+    } finally {
+      setProjectOpening(false);
+    }
+  }
+
+  const [recentProjectError, setRecentProjectError] = useState<string | null>(null);
 
   async function doOpenProject() {
     if (!window.cricutCompanion?.project) {
@@ -572,6 +667,8 @@ export function App() {
         throw new Error(t("project.openEmpty"));
       }
       applyProjectFile(parseProjectFile(result.content), result.path);
+      const openedPath = result.path;
+      if (openedPath) updateRecentProjects((list) => addRecentProject(list, openedPath));
       setProjectMessage(DEBUG ? t("project.opened", { path: result.path }) : null);
       enterWorkspace();
     } catch (error) {
@@ -602,6 +699,8 @@ export function App() {
         return false;
       }
       setCurrentProjectPath(result.path);
+      const savedPath = result.path;
+      if (savedPath) updateRecentProjects((list) => addRecentProject(list, savedPath));
       setProjectMessage(DEBUG ? t("project.saved", { path: result.path }) : null);
       setSavedToast((n) => n + 1); // cute fly-in confirmation
       setRebaseline((n) => n + 1); // saved = clean
@@ -643,6 +742,10 @@ export function App() {
         cornerRadius: item.cornerRadius,
         penFill: item.penFill,
         spotify: item.spotify,
+        dotPrint: item.dotPrint,
+        dashed: item.dashed,
+        outline: item.outline,
+        hollow: item.hollow,
       })),
       selectedObjectId: selectedSvgId,
       selectedSvgId: null,
@@ -681,6 +784,10 @@ export function App() {
         cornerRadius: item.cornerRadius,
         penFill: item.penFill,
         spotify: item.spotify,
+        dotPrint: item.dotPrint,
+        dashed: item.dashed,
+        outline: item.outline,
+        hollow: item.hollow,
       });
       if (item.textContent) base.textContent = item.textContent;
       return base;
@@ -731,8 +838,13 @@ export function App() {
         index: item.index,
         transform: item.transform,
         textContent: item.textContent,
+        cornerRadius: item.cornerRadius,
         penFill: item.penFill,
         spotify: item.spotify,
+        dotPrint: item.dotPrint,
+        dashed: item.dashed,
+        outline: item.outline,
+        hollow: item.hollow,
       }),
     );
     pushWorkspaceHistorySnapshot();
@@ -809,9 +921,14 @@ export function App() {
     }
     const selectedSet = new Set(idsToGroup);
     const selectedObjects = importedSvgs.filter((item) => selectedSet.has(item.id));
-    // Text renders live from its content (no paths), so it can't be flattened into a
-    // path-based group without disappearing — don't group when text is selected.
-    if (selectedObjects.some((item) => item.textContent)) {
+    // Text and dot prints render live from their content (no paths), so they can't be
+    // flattened into a path-based group without disappearing — don't group them.
+    if (selectedObjects.some((item) => item.textContent || item.dotPrint)) {
+      return false;
+    }
+    // A group has one line style, so a fold line grouped with a solid outline would
+    // silently become a full cut. Keep fold lines out of groups.
+    if (selectedObjects.some((item) => item.dashed?.enabled)) {
       return false;
     }
     const partCount = selectedObjects.reduce((total, item) => total + item.paths.length, 0);
@@ -906,8 +1023,40 @@ export function App() {
     return true;
   }
 
-  function handleAddWorkspaceShape(shapeKind: WorkspaceShapeKind) {
-    const item = recolorItem(
+  // The part of the paper that is on screen (the whole paper when none of it is).
+  const visibleAreaRef = useRef<(() => WorkspaceRect | null) | null>(null);
+
+  function getPlacementArea(): WorkspaceRect {
+    const dims = selectedMaterialId === MATERIAL_INSERT_ID && cardSize ? CARD_SIZES[cardSize] : getMatDimensionsInches(selectedMatPreset);
+    const paper = { x: 0, y: 0, width: dims.width * WORKSPACE_PIXELS_PER_INCH, height: dims.height * WORKSPACE_PIXELS_PER_INCH };
+    const visible = visibleAreaRef.current?.() ?? null;
+    return (visible && intersectRects(paper, visible)) ?? paper;
+  }
+
+  /**
+   * Puts new objects in the middle of the paper the user is looking at, next to
+   * what is already there instead of on top of it.
+   */
+  function placeNewItems<T extends WorkspaceSvgItem>(items: T[]): T[] {
+    const area = getPlacementArea();
+    const occupied = importedSvgs.flatMap((item) => {
+      const bounds = getWorkspaceSelectionBounds([item]);
+      return bounds ? [{ x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height }] : [];
+    });
+    return items.map((item) => {
+      const size = { width: item.frame.width * item.transform.scaleX, height: item.frame.height * item.transform.scaleY };
+      const spot = findFreePlacement({ size, area, occupied });
+      occupied.push({ ...spot, ...size });
+      return { ...item, transform: { ...item.transform, ...spot } };
+    });
+  }
+
+  function placeNewItem<T extends WorkspaceSvgItem>(item: T): T {
+    return placeNewItems([item])[0] ?? item;
+  }
+
+  function handleAddWorkspaceShape(shapeKind: WorkspaceShapeKind, options: { fold?: boolean } = {}) {
+    const shape = recolorItem(
       createWorkspaceShapeItem({
         shapeKind,
         language,
@@ -916,6 +1065,9 @@ export function App() {
       }),
       getBehindColor(tools),
     );
+    const item = placeNewItem(options.fold
+      ? { ...shape, fileName: language === "nl" ? "Vouwlijn" : "Fold line", dashed: { ...DEFAULT_DASH } }
+      : shape);
     pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) => [...current, item]);
     setSelectedSvgId(item.id);
@@ -1004,7 +1156,7 @@ export function App() {
       item.transform.scaleY = scale;
     }
     // New artwork defaults to "Cut" — shown filled in the behind colour.
-    const cutItem = recolorItem({ ...item, ...extra } as WorkspaceSvgItem, getBehindColor(tools));
+    const cutItem = placeNewItem(recolorItem({ ...item, ...extra } as WorkspaceSvgItem, getBehindColor(tools)));
     pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) => [...current, cutItem]);
     setSelectedSvgId(item.id);
@@ -1211,7 +1363,7 @@ export function App() {
       // New text defaults to Cut (the behind colour) so placed text is cut by default.
       color: getBehindColor(tools),
     };
-    const item = createTextItem(defaultContent, importedSvgs.length);
+    const item = placeNewItem(createTextItem(defaultContent, importedSvgs.length));
     pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) => [...current, item]);
     setSelectedSvgId(item.id);
@@ -1271,6 +1423,183 @@ export function App() {
       }),
     );
     setImportedPlan(null);
+  }
+
+  // Slider drags and held arrow keys send many small changes; keep a burst as one undo step.
+  const lastBurstHistory = useRef<{ kind: string; at: number }>({ kind: "", at: 0 });
+  function pushBurstHistory(kind: string) {
+    const now = Date.now();
+    if (lastBurstHistory.current.kind !== kind || now - lastBurstHistory.current.at > 600) {
+      pushWorkspaceHistorySnapshot();
+    }
+    lastBurstHistory.current = { kind, at: now };
+  }
+
+  function handleDashChange(ids: string[], patch: Partial<DashSettings>) {
+    const idSet = new Set(ids);
+    pushBurstHistory("dash");
+    setImportedSvgs((current) =>
+      current.map((item) => {
+        if (!idSet.has(item.id)) return item;
+        const dashed = normalizeDash({ ...(item.dashed ?? { ...DEFAULT_DASH, enabled: false }), ...patch });
+        return dashed ? { ...item, dashed } : item;
+      }),
+    );
+    setImportedPlan(null);
+  }
+
+  function handleHollowChange(ids: string[], hollow: boolean) {
+    const idSet = new Set(ids);
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((current) => current.map((item) => (idSet.has(item.id) ? { ...item, hollow: hollow || undefined } : item)));
+  }
+
+  function handleOutlineChange(ids: string[], patch: Partial<OutlineSettings>) {
+    const idSet = new Set(ids);
+    pushBurstHistory("outline");
+    setImportedSvgs((current) =>
+      current.map((item) => {
+        if (!idSet.has(item.id)) return item;
+        const outline = normalizeOutline({ ...(item.outline ?? { ...DEFAULT_OUTLINE, enabled: false }), ...patch });
+        return outline ? { ...item, outline } : item;
+      }),
+    );
+    setImportedPlan(null);
+  }
+
+  /**
+   * Turns the outline of each selected object into an object of its own (placed just
+   * behind it), for when it should be moved, cut from another sheet or edited separately.
+   */
+  function handleOutlineDetach(ids: string[]) {
+    const idSet = new Set(ids);
+    const timestamp = Date.now();
+    const detached = new Map<string, WorkspaceSvgItem>();
+    importedSvgs.forEach((item, index) => {
+      const outline = idSet.has(item.id) ? activeOutline(item) : null;
+      const d = outline ? outlineFramePath(item) : "";
+      if (!outline || !d) return;
+      const base = createWorkspaceObjectItem({
+        id: `outline-${timestamp}-${index}`,
+        type: "path",
+        kind: "image",
+        fileName: language === "nl" ? `Rand van ${item.fileName}` : `Outline of ${item.fileName}`,
+        fileSize: "",
+        frame: { ...item.frame },
+        paths: [{ id: "path-1", d, fill: "none", stroke: outlineTool(outline, tools).color, strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }],
+        language,
+        index,
+        transform: { ...item.transform },
+      });
+      detached.set(item.id, computeSnugFrame(base));
+    });
+    if (detached.size === 0) return;
+    pushWorkspaceHistorySnapshot();
+    setImportedSvgs((current) =>
+      current.flatMap((item) => {
+        const outlineItem = detached.get(item.id);
+        return outlineItem && item.outline ? [outlineItem, { ...item, outline: { ...item.outline, enabled: false } }] : [item];
+      }),
+    );
+    const newIds = [...detached.values()].map((item) => item.id);
+    setSelectedSvgId(newIds.at(-1) ?? null);
+    setSelectedSvgIds(newIds);
+    setImportedPlan(null);
+  }
+
+  /** The paper objects are lined up on: the chosen card for insert cards, otherwise the whole mat. */
+  function getPaperRect(): WorkspaceRect {
+    const dims = selectedMaterialId === MATERIAL_INSERT_ID && cardSize ? CARD_SIZES[cardSize] : getMatDimensionsInches(selectedMatPreset);
+    return { x: 0, y: 0, width: dims.width * WORKSPACE_PIXELS_PER_INCH, height: dims.height * WORKSPACE_PIXELS_PER_INCH };
+  }
+
+  function handleAlignSelection(mode: AlignMode) {
+    const selected = importedSvgs.filter((item) => selectedSvgIds.includes(item.id));
+    handleSvgTransformsCommit(alignWorkspaceItems(selected, mode, getPaperRect()));
+  }
+
+  function handleDistributeSelection(axis: "x" | "y") {
+    const selected = importedSvgs.filter((item) => selectedSvgIds.includes(item.id));
+    handleSvgTransformsCommit(distributeWorkspaceItems(selected, axis));
+  }
+
+  function handleNudgeSelection(dx: number, dy: number): boolean {
+    if (selectedSvgIds.length === 0 || editingTextId) return false;
+    const idSet = new Set(selectedSvgIds);
+    pushBurstHistory("nudge");
+    setImportedSvgs((current) =>
+      current.map((item) =>
+        idSet.has(item.id)
+          ? { ...item, transform: normalizeWorkspaceItemTransform({ ...item.transform, x: item.transform.x + dx, y: item.transform.y + dy }) }
+          : item,
+      ),
+    );
+    setImportedPlan(null);
+    return true;
+  }
+
+  // ── Dot prints ───────────────────────────────────────────────────────────────
+
+  async function handleDotPrintFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const picture = await readDotPrintImageFile(file);
+      // Inks need pens in the project's pen list, or their dots would be skipped.
+      const inkPens = ensureInkPens(tools);
+      if (inkPens.tools !== tools) setTools(inkPens.tools);
+      const width = 3 * WORKSPACE_PIXELS_PER_INCH;
+      const item = placeNewItem(createWorkspaceObjectItem({
+        id: `dotprint-${Date.now()}`,
+        type: "group",
+        kind: "image",
+        fileName: stripImageExtension(file.name),
+        fileSize: "",
+        frame: { width, height: (width * picture.height) / picture.width },
+        paths: [],
+        language,
+        index: importedSvgs.length,
+        dotPrint: { image: picture.dataUrl, settings: defaultDotPrintSettings(inkPens.pens) },
+      }));
+      pushWorkspaceHistorySnapshot();
+      setImportedSvgs((current) => [...current, item]);
+      setSelectedSvgId(item.id);
+      setSelectedSvgIds([item.id]);
+      setImportedPlan(null);
+      setCutSession(null);
+    } catch (error) {
+      console.error("[DotPrint] Import failed:", error);
+      setImportMessage(language === "nl" ? "Deze foto kon niet worden geopend." : "This photo could not be opened.");
+    }
+  }
+
+  const lastDotPrintHistoryAt = useRef(0);
+
+  function handleDotPrintChange(ids: string[], patch: Partial<DotPrintSettings>) {
+    const idSet = new Set(ids);
+    const now = Date.now();
+    if (now - lastDotPrintHistoryAt.current > 600) {
+      pushWorkspaceHistorySnapshot();
+    }
+    lastDotPrintHistoryAt.current = now;
+    setImportedSvgs((current) =>
+      current.map((item) => {
+        if (!idSet.has(item.id) || !item.dotPrint) return item;
+        const settings = normalizeDotPrintSettings({ ...item.dotPrint.settings, ...patch });
+        return settings ? { ...item, dotPrint: { ...item.dotPrint, settings } } : item;
+      }),
+    );
+    setImportedPlan(null);
+  }
+
+  /** Dot prints become real pen paths (one colour after the other) so they cut like any pen drawing. */
+  async function resolveDotPrintItemsForCutting(items: WorkspaceSvgItem[]): Promise<WorkspaceSvgItem[]> {
+    return Promise.all(items.map(async (item) => {
+      if (!item.dotPrint) return item;
+      const image = await loadRasterImage(item.dotPrint.image);
+      return { ...item, type: "group", paths: dotPrintToPaths(item, image), dotPrint: undefined } as WorkspaceSvgItem;
+    }));
   }
 
   // ── End text ─────────────────────────────────────────────────────────────────
@@ -1618,11 +1947,20 @@ export function App() {
       for (const item of importedSvgs) {
         if (item.textContent) used.add(item.textContent.color.toLowerCase());
         for (const path of item.paths) if (path.stroke) used.add(path.stroke.toLowerCase());
+        const outline = activeOutline(item);
+        if (outline) used.add(outlineTool(outline, tools).color.toLowerCase());
       }
       if (selectedMaterialId === MATERIAL_INSERT_ID && insertSlots) used.add(getBehindColor(tools).toLowerCase());
     }
+    // Pens run in the order they appear in the cut file (dot prints: light inks first).
+    const runOrder = cutPlanColors ? [...cutPlanColors] : [];
     const list = tools
       .filter((tool) => used.has(tool.color.toLowerCase()))
+      .sort((a, b) => {
+        const indexA = runOrder.indexOf(a.color.toLowerCase());
+        const indexB = runOrder.indexOf(b.color.toLowerCase());
+        return (indexA < 0 ? Infinity : indexA) - (indexB < 0 ? Infinity : indexB);
+      })
       .map((tool) => ({ tool: (tool.type === "pen" ? "pen" : "fine_point_blade") as "pen" | "fine_point_blade", color: tool.color }));
     return [...list.filter((t) => t.tool === "pen"), ...list.filter((t) => t.tool !== "pen")];
   }, [importedSvgs, tools, selectedMaterialId, insertSlots, cutPlanColors]);
@@ -1634,8 +1972,9 @@ export function App() {
     const matDims = getMatDimensionsInches(selectedMatPreset);
     const matW = matDims.width * WORKSPACE_PIXELS_PER_INCH;
     const matH = matDims.height * WORKSPACE_PIXELS_PER_INCH;
-    // Convert any text items to traced paths so slicebug can cut them
-    const resolvedItems = await resolveTextItemsForCutting(importedSvgs);
+    // Convert any text items to traced paths and dot prints to pen dots so slicebug can use them
+    const resolvedItems = await resolveDotPrintItemsForCutting(await resolveTextItemsForCutting(importedSvgs));
+    const missingPens = [...new Set(importedSvgs.flatMap((item) => missingInkPens(item, tools)))];
     // Insert-card corner slots (cut in the behind colour) sit at the active card area.
     const slotsSvg = selectedMaterialId === MATERIAL_INSERT_ID && insertSlots
       ? (() => {
@@ -1653,10 +1992,14 @@ export function App() {
     const colorMap = buildToolColorMap();
     setCutPlanColors(new Set([...planSvg.matchAll(/stroke="(#[0-9a-fA-F]{3,8})"/g)].map((match) => (match[1] ?? "").toLowerCase())));
 
-    if (isCutSvgEmpty(planSvg)) {
-      const message = language === "nl"
-        ? "Er staat niets op het papier om te tekenen of te snijden. Sleep je ontwerp op het papier."
-        : "There is nothing on the paper to draw or cut. Drag your design onto the paper.";
+    if (isCutSvgEmpty(planSvg) || missingPens.length > 0) {
+      const message = missingPens.length > 0
+        ? language === "nl"
+          ? `Een stippelfoto gebruikt pennen die niet in je pennenlijst staan (${missingPens.join(", ")}). Voeg ze toe bij Pennen.`
+          : `A dot photo uses pens that aren't in your pen list (${missingPens.join(", ")}). Add them under Pens.`
+        : language === "nl"
+          ? "Er staat niets op het papier om te tekenen of te snijden. Sleep je ontwerp op het papier."
+          : "There is nothing on the paper to draw or cut. Drag your design onto the paper.";
       setCutPreview({
         plan: { ok: false, executable: "", inputSvgPath: "", outputPlanPath: "", stdout: "", stderr: "", message, plan: null },
         svg,
@@ -1756,7 +2099,7 @@ export function App() {
         // Save each to library (fire-and-forget, non-fatal)
         void Promise.all(loaded.map(({ file, svg }) => saveToLibrary(stripImageExtension(file.name), svg, false)))
           .then(() => loadImageLibrary());
-        const newItems = loaded.map(({ file, svg }, fileIndex) =>
+        const newItems = placeNewItems(loaded.map(({ file, svg }, fileIndex) =>
           createWorkspaceSvgItem({
             id: `svg-${Date.now()}-${startIndex + fileIndex}`,
             fileName: file.name,
@@ -1765,7 +2108,7 @@ export function App() {
             language,
             index: startIndex + fileIndex,
           }),
-        );
+        ));
         pushWorkspaceHistorySnapshot();
         setImportedSvgs((current) => [...current, ...newItems]);
         const newSelectedIds = newItems.map((item) => item.id);
@@ -1892,7 +2235,7 @@ export function App() {
         selectedObjectCount: selCount,
         objectCount: importedSvgs.length,
         hasInternalClipboard: workspaceClipboard.current.length > 0,
-        canGroup: selCount >= 2 && !selectedObjects.some((item) => item.textContent),
+        canGroup: selCount >= 2 && !selectedObjects.some((item) => item.textContent || item.dotPrint || item.dashed?.enabled),
         canUngroup: selectedObjects.some((item) => item.type === "group" || isUngroupablePath(item)),
         canReorder: selCount === 1 && importedSvgs.length > 1,
       };
@@ -1954,6 +2297,11 @@ export function App() {
           onNewProject={handleNewProject}
           onOpenProject={handleOpenProject}
           onExampleProject={() => void handleExampleProject()}
+          onStartTemplate={handleStartTemplate}
+          recentProjects={recentProjects}
+          recentProjectError={recentProjectError}
+          projectOpening={projectOpening}
+          onOpenRecentProject={(projectPath) => { setRecentProjectError(null); handleOpenRecentProject(projectPath); }}
           onCheckSetup={() => void refreshSlicebugStatus()}
           onBootstrapSetup={() => void runSlicebugBootstrap()}
         />
@@ -2024,10 +2372,19 @@ export function App() {
       onTextContentChange={handleTextContentChange}
       onShapeCornerRadiusChange={handleShapeCornerRadiusChange}
       onPenFillChange={handlePenFillChange}
+      onDashChange={handleDashChange}
+      onHollowChange={handleHollowChange}
+      onOutlineChange={handleOutlineChange}
+      onOutlineDetach={handleOutlineDetach}
+      onAlign={handleAlignSelection}
+      onDistribute={handleDistributeSelection}
+      onNudge={handleNudgeSelection}
+      onDotPrintChange={handleDotPrintChange}
+      onDotPrintImport={(event) => void handleDotPrintFileChange(event)}
+      visibleAreaRef={visibleAreaRef}
       onSelectSvg={selectSingleSvg}
       onSelectSvgGroup={selectSvgGroup}
       onSelectAllSvgs={handleSelectAllSvgs}
-      canPaste={clipboardHasItems}
       onCopySvgs={handleCopySvgs}
       onPasteSvgs={handlePasteSvgs}
       onCutSvgs={handleCutSvgs}
@@ -2040,6 +2397,8 @@ export function App() {
       onReorderLayerToTarget={handleReorderLayerToTarget}
       onRenameObject={handleRenameObject}
       onChangeObjectColor={handleChangeObjectColor}
+      canUndo={workspaceHistory.past.length > 0}
+      canRedo={workspaceHistory.future.length > 0}
       onUndoSvgs={handleUndoWorkspace}
       onRedoSvgs={handleRedoWorkspace}
       onWorkspaceContextMenu={markWorkspaceContextMenuTarget}
@@ -2096,6 +2455,7 @@ export function App() {
     {cutPreview ? (
       <CutPreviewModal
         language={language}
+        measurementUnit={measurementUnit}
         preview={cutPreview}
         cutBusy={cutBusy}
         cutSession={cutSession}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_DOT_PRINT } from "@cricut-companion/craft-core";
 
 import {
   DEFAULT_BEHIND_COLOR,
@@ -239,18 +240,18 @@ describe("KindCut project files", () => {
         selectedMatPreset: "joy-standard",
         measurementUnit: "cm",
         workspaceObjects: [
-          { ...object, penFill: { enabled: false, pattern: "honeycomb", density: 35, angle: 30 } },
+          { ...object, penFill: { enabled: false, pattern: "honeycomb", density: 35, angle: 30, dotStyle: "circle" } },
           { ...object, id: "object-2" },
         ],
       }),
     );
     // Only the settings are stored — never generated stroke geometry.
     const stored = (JSON.parse(saved) as { workspaceObjects: Array<{ penFill?: unknown; paths: unknown[] }> }).workspaceObjects[0];
-    expect(stored?.penFill).toEqual({ enabled: false, pattern: "honeycomb", density: 35, angle: 30 });
+    expect(stored?.penFill).toEqual({ enabled: false, pattern: "honeycomb", density: 35, angle: 30, dotStyle: "circle" });
     expect(stored?.paths).toHaveLength(1);
 
     const parsed = parseProjectFile(saved);
-    expect(parsed.workspaceObjects[0]?.penFill).toEqual({ enabled: false, pattern: "honeycomb", density: 35, angle: 30 });
+    expect(parsed.workspaceObjects[0]?.penFill).toEqual({ enabled: false, pattern: "honeycomb", density: 35, angle: 30, dotStyle: "circle" });
     expect(parsed.workspaceObjects[1]?.penFill).toBeUndefined();
 
     const tampered = JSON.parse(saved) as { workspaceObjects: Array<Record<string, unknown>> };
@@ -260,7 +261,58 @@ describe("KindCut project files", () => {
       pattern: "lines",
       density: 100,
       angle: 20,
+      dotStyle: "circle",
     });
+  });
+
+  it("saves fold lines, outlines and kept pieces as settings and restores them", () => {
+    const object = {
+      id: "object-1",
+      type: "path" as const,
+      kind: "shape" as const,
+      sourceKind: "shape" as const,
+      shapeKind: "line" as const,
+      fileName: "Vouwlijn",
+      fileSize: "",
+      frame: { width: 100, height: 14 },
+      paths: [{ id: "path-1", d: "M 0 7 H 100", fill: "none", stroke: "#8f4f2b", strokeWidth: "1.5" }],
+      transform: { x: 1, y: 2, scaleX: 1, scaleY: 1, rotation: 0 },
+    };
+    const saved = serializeProjectFile(
+      buildProjectFile({
+        name: "card",
+        selectedMaterialId: 19,
+        selectedMatPreset: "joy-standard",
+        measurementUnit: "cm",
+        workspaceObjects: [
+          { ...object, dashed: { enabled: true, dashMm: 4, gapMm: 2 } },
+          { ...object, id: "object-2", shapeKind: "heart" as const, hollow: true, outline: { enabled: true, distanceMm: 2.5, penId: "pen-1", holes: true } },
+          { ...object, id: "object-3" },
+        ],
+      }),
+    );
+    // Settings only: the dashes and the outline are regenerated, never written to the file.
+    const stored = (JSON.parse(saved) as { workspaceObjects: Array<{ paths: Array<{ d: string }> }> }).workspaceObjects;
+    expect(stored.map((item) => item.paths[0]?.d)).toEqual(["M 0 7 H 100", "M 0 7 H 100", "M 0 7 H 100"]);
+
+    const parsed = parseProjectFile(saved).workspaceObjects;
+    expect(parsed[0]?.shapeKind).toBe("line");
+    expect(parsed[0]?.dashed).toEqual({ enabled: true, dashMm: 4, gapMm: 2 });
+    expect(parsed[0]?.outline).toBeUndefined();
+    expect(parsed[1]?.shapeKind).toBe("heart");
+    expect(parsed[1]?.outline).toEqual({ enabled: true, distanceMm: 2.5, penId: "pen-1", holes: true });
+    expect(parsed[1]?.hollow).toBe(true);
+    expect(parsed[2]?.dashed).toBeUndefined();
+    expect(parsed[2]?.hollow).toBeUndefined();
+
+    const tampered = JSON.parse(saved) as { workspaceObjects: Array<Record<string, unknown>> };
+    tampered.workspaceObjects[0]!.dashed = { dashMm: 500, gapMm: -3 };
+    tampered.workspaceObjects[1]!.outline = { distanceMm: "wide", penId: 7 };
+    tampered.workspaceObjects[1]!.hollow = "yes";
+    const repaired = parseProjectFile(JSON.stringify(tampered)).workspaceObjects;
+    expect(repaired[0]?.dashed).toEqual({ enabled: true, dashMm: 10, gapMm: 1 });
+    expect(repaired[1]?.outline).toEqual({ enabled: true, distanceMm: 3, penId: null, holes: false });
+    expect(repaired[1]?.hollow).toBeUndefined();
   });
 
   it("keeps a Spotify code's song link so it can be swapped after reopening", () => {
@@ -293,6 +345,39 @@ describe("KindCut project files", () => {
     const tampered = JSON.parse(saved) as { workspaceObjects: Array<Record<string, unknown>> };
     tampered.workspaceObjects[0]!.spotify = { uri: "https://example.com", name: "x" };
     expect(parseProjectFile(JSON.stringify(tampered)).workspaceObjects[0]?.spotify).toBeUndefined();
+  });
+
+  it("saves a dot photo with its picture and settings, without paths", () => {
+    const saved = serializeProjectFile(
+      buildProjectFile({
+        name: "photo",
+        selectedMaterialId: 218,
+        selectedMatPreset: "joy-standard",
+        measurementUnit: "cm",
+        workspaceObjects: [
+          {
+            id: "object-1",
+            type: "group",
+            kind: "image",
+            sourceKind: "image",
+            fileName: "Oma",
+            fileSize: "",
+            frame: { width: 240, height: 180 },
+            paths: [],
+            dotPrint: {
+              image: "data:image/png;base64,iVBORw0KGgo=",
+              settings: { ...DEFAULT_DOT_PRINT, spacingMm: 0.8, dotStyle: "dash" },
+            },
+          },
+        ],
+      }),
+    );
+    const object = parseProjectFile(saved).workspaceObjects[0];
+    expect(object?.paths).toEqual([]);
+    expect(object?.dotPrint).toEqual({
+      image: "data:image/png;base64,iVBORw0KGgo=",
+      settings: { ...DEFAULT_DOT_PRINT, spacingMm: 0.8, dotStyle: "dash" },
+    });
   });
 
   it("saves and loads a grouped workspace object", () => {

@@ -7,6 +7,7 @@
 // fill can always be changed or removed again.
 
 import type { Point } from "./svg-path-geometry";
+import { type DotStyle, dotInkAreaMm2, dotPathData, dotStroke, normalizeDotStyle } from "./dot-print";
 
 export const PEN_FILL_PATTERNS = ["lines", "cross", "grid", "triangles", "cubic", "honeycomb", "dots"] as const;
 export type PenFillPattern = (typeof PEN_FILL_PATTERNS)[number];
@@ -18,9 +19,11 @@ export type PenFillSettings = {
   density: number;
   /** Pattern rotation in degrees. */
   angle: number;
+  /** How each dot of the dots pattern is drawn. */
+  dotStyle: DotStyle;
 };
 
-export const DEFAULT_PEN_FILL: PenFillSettings = { enabled: true, pattern: "lines", density: 25, angle: 45 };
+export const DEFAULT_PEN_FILL: PenFillSettings = { enabled: true, pattern: "lines", density: 25, angle: 45, dotStyle: "circle" };
 
 export const PEN_FILL_DENSITY_MIN = 5;
 export const PEN_FILL_DENSITY_MAX = 100;
@@ -38,6 +41,8 @@ export type PenFillPolyline = { points: Point[]; closed: boolean };
 export type PenFillOptions = {
   /** Pen line width, in the same units as the region coordinates. */
   penWidth: number;
+  /** Region units per millimetre (for the fixed-size dot shapes); defaults to a 0.4 mm pen. */
+  unitsPerMm?: number;
   /** Safety cap on generated pattern pieces, so a huge, dense fill can't freeze the app. */
   maxElements?: number;
 };
@@ -63,6 +68,7 @@ export function normalizePenFill(value: unknown): PenFillSettings | null {
       ? Math.min(PEN_FILL_DENSITY_MAX, Math.max(PEN_FILL_DENSITY_MIN, Math.round(density)))
       : DEFAULT_PEN_FILL.density,
     angle: Number.isFinite(angle) ? ((Math.round(angle) % 180) + 180) % 180 : DEFAULT_PEN_FILL.angle,
+    dotStyle: normalizeDotStyle(record.dotStyle, DEFAULT_PEN_FILL.dotStyle),
   };
 }
 
@@ -350,7 +356,7 @@ type DotLattice = { kind: "dots"; rotation: number; spacing: number; tileWidth: 
 type Lattice = LineLattice | HexLattice | DotLattice;
 
 /** Pattern geometry for a coverage ratio (0–1): the feature size that gives that much ink. */
-function patternScale(pattern: PenFillPattern, penWidth: number, coverage: number): number {
+function patternScale(pattern: PenFillPattern, penWidth: number, coverage: number, dotStyle: DotStyle, unitsPerMm: number): number {
   switch (pattern) {
     case "lines":
       return penWidth / coverage;
@@ -365,9 +371,11 @@ function patternScale(pattern: PenFillPattern, penWidth: number, coverage: numbe
     case "cubic":
       // Honeycomb plus an inner "Y" per hexagon doubles the line length.
       return (4 * penWidth) / (Math.sqrt(3) * coverage);
-    case "dots":
-      // A dot covers about π·w² and each sits in a √3/2·s² cell.
-      return penWidth * Math.sqrt((2 * Math.PI) / (Math.sqrt(3) * coverage));
+    case "dots": {
+      // Each dot sits in a √3/2·s² cell of the staggered grid.
+      const dotArea = dotInkAreaMm2(dotStyle, penWidth / unitsPerMm) * unitsPerMm * unitsPerMm;
+      return Math.sqrt(dotArea / ((Math.sqrt(3) / 2) * coverage));
+    }
   }
 }
 
@@ -468,14 +476,7 @@ function dotCentres(spacing: number, bounds: Bounds): Point[] {
   return centres;
 }
 
-/** A dot drawn as a tiny closed circle; with the pen's own width it inks a disc about two pen widths across. */
-function dotPolyline(centre: Point, radius: number): Point[] {
-  const sides = 8;
-  return Array.from({ length: sides + 1 }, (_, side) => {
-    const angle = (side / sides) * Math.PI * 2;
-    return { x: centre.x + radius * Math.cos(angle), y: centre.y + radius * Math.sin(angle) };
-  });
-}
+
 
 // ── Generation ───────────────────────────────────────────────────────────────
 
@@ -517,7 +518,8 @@ export function generatePenFill(regions: FillRegion[], settings: PenFillSettings
   if (!normalized?.enabled || !(options.penWidth > 0) || !bounds) {
     return [];
   }
-  let scale = patternScale(normalized.pattern, options.penWidth, normalized.density / 100);
+  const unitsPerMm = options.unitsPerMm ?? options.penWidth / PEN_LINE_WIDTH_MM;
+  let scale = patternScale(normalized.pattern, options.penWidth, normalized.density / 100, normalized.dotStyle, unitsPerMm);
 
   // Spread a huge, dense fill out rather than generating an unusable number of strokes.
   const estimate = estimateElements(buildLattice(normalized.pattern, normalized.angle, scale), bounds, scale);
@@ -547,10 +549,10 @@ export function generatePenFill(regions: FillRegion[], settings: PenFillSettings
   if (lattice.kind === "dots") {
     return dotCentres(lattice.spacing, frame)
       .filter((centre) => frame.containsPoint(centre))
-      .map((centre) => ({
-        points: dotPolyline(centre, options.penWidth / 2).map((point) => frame.toRegion(point)),
-        closed: true,
-      }));
+      .map((centre) => {
+        const dot = dotStroke(centre.x, centre.y, normalized.dotStyle, unitsPerMm);
+        return { points: dot.points.map((point) => frame.toRegion(point)), closed: dot.closed };
+      });
   }
   const clipped: Polyline[] = [];
   for (const polyline of hexLatticePolylines(lattice.side, lattice.cubes, frame)) {
@@ -572,7 +574,8 @@ export type PenFillTile = {
   d: string;
   /** Dot centres in tile coordinates (dots pattern only). */
   dots: Point[];
-  dotRadius: number;
+  /** The pen moves for those dots, in the chosen dot style (draw with round caps). */
+  dotD: string;
 };
 
 function formatTileNumber(value: number): string {
@@ -584,12 +587,12 @@ function formatTileNumber(value: number): string {
  * <pattern> instead of generating every stroke. Tile coordinates use the same
  * units as the regions passed to generatePenFill.
  */
-export function penFillPatternTile(settings: PenFillSettings, penWidth: number): PenFillTile | null {
+export function penFillPatternTile(settings: PenFillSettings, penWidth: number, unitsPerMm = penWidth / PEN_LINE_WIDTH_MM): PenFillTile | null {
   const normalized = normalizePenFill(settings);
   if (!normalized || !(penWidth > 0)) {
     return null;
   }
-  const scale = patternScale(normalized.pattern, penWidth, normalized.density / 100);
+  const scale = patternScale(normalized.pattern, penWidth, normalized.density / 100, normalized.dotStyle, unitsPerMm);
   const lattice = buildLattice(normalized.pattern, normalized.angle, scale);
   const { tileWidth: width, tileHeight: height } = lattice;
   // Neighbouring tiles' strokes spill a little into this one; cover one tile around it.
@@ -616,6 +619,7 @@ export function penFillPatternTile(settings: PenFillSettings, penWidth: number):
     segments.push(...hexLatticePolylines(lattice.side, lattice.cubes, spill));
   }
 
+  const dots = lattice.kind === "dots" ? dotCentres(lattice.spacing, spill) : [];
   return {
     width,
     height,
@@ -623,7 +627,7 @@ export function penFillPatternTile(settings: PenFillSettings, penWidth: number):
     d: segments
       .map((points) => points.map((point, index) => `${index === 0 ? "M" : "L"}${formatTileNumber(point.x)} ${formatTileNumber(point.y)}`).join(""))
       .join(""),
-    dots: lattice.kind === "dots" ? dotCentres(lattice.spacing, spill) : [],
-    dotRadius: penWidth / 2,
+    dots,
+    dotD: dots.map((dot) => dotPathData(dot.x, dot.y, normalized.dotStyle, unitsPerMm)).join(""),
   };
 }

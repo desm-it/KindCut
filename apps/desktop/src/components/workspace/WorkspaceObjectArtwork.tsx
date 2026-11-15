@@ -1,10 +1,13 @@
-import { useId } from "react";
-import type { PenFillTile } from "@cricut-companion/craft-core";
+import { useId, useMemo } from "react";
+import { type PenFillTile, dotPathData, dotPrintInkBleed, dotPrintInkTip } from "@cricut-companion/craft-core";
 import type { WorkspaceObject } from "../../workspace-objects";
 import type { WorkspaceTool } from "../../project-file";
 import { traceCenterlinePathD } from "../../centerline-trace";
 import { buildShapePath } from "../../workspace-shapes";
 import { PEN_LINE_WIDTH_PX, activePenFill, penFillTileFor, penPathsByColor } from "../../pen-fill-render";
+import { dotPrintChannels, dotPrintSizeMm, useRasterImage } from "../../dot-print-render";
+import { activeDash, dashedFramePath, dashedRealSizePath } from "../../dash-render";
+import { activeOutline, outlineFramePath, outlineRealSizePath, outlineTool } from "../../outline-render";
 
 /**
  * The repeating tile of a pen fill. `patternTransform` maps the tile's real-size
@@ -17,18 +20,97 @@ export function PenFillPatternDef({ id, tile, color, patternTransform }: { id: s
       patternTransform={`${patternTransform} rotate(${tile.rotation})`}
     >
       <path d={tile.d} fill="none" stroke={color} strokeWidth={PEN_LINE_WIDTH_PX} strokeLinecap="round" strokeLinejoin="round" />
-      {tile.dots.map((dot, index) => (
-        <circle key={index} cx={dot.x} cy={dot.y} r={tile.dotRadius} fill="none" stroke={color} strokeWidth={PEN_LINE_WIDTH_PX} />
-      ))}
+      {tile.dotD ? (
+        <path d={tile.dotD} fill="none" stroke={color} strokeWidth={PEN_LINE_WIDTH_PX} strokeLinecap="round" strokeLinejoin="round" />
+      ) : null}
     </pattern>
   );
 }
 
+// Marker ink isn't a crisp disc: it bleeds into the paper, and where the halos of
+// neighbouring dots meet, the wet inks run into each other. The preview widens and
+// softens each ink layer by the object's "ink bleed" and multiplies the layers, so
+// colours mix like overlapping marker ink. (Preview only: the cutter still gets the
+// exact dot positions.)
+function inkLook(tipMm: number, inkBleed: number) {
+  const bleed = Number.isFinite(inkBleed) ? Math.min(1, Math.max(0, inkBleed / 100)) : 0.5;
+  return {
+    strokeWidth: tipMm * (1 + 0.6 * bleed),
+    blur: tipMm * (0.05 + 0.55 * bleed),
+    opacity: 0.95 - 0.1 * bleed,
+  };
+}
+
+/**
+ * A picture as pen dots. The SVG is laid out in millimetres, so the dots and
+ * pen tip are drawn at their real size; inks multiply like real overlapping ink.
+ */
+function DotPrintArtwork({ item }: { item: WorkspaceObject }) {
+  const inkFilterId = `dot-ink-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const image = useRasterImage(item.dotPrint?.image);
+  const size = dotPrintSizeMm(item);
+  const settings = item.dotPrint?.settings;
+  const layers = useMemo(() => {
+    if (!image || !settings) return [];
+    return dotPrintChannels(item, image).map((channel) => ({
+      ink: channel.ink,
+      color: channel.color,
+      d: channel.dots.map((dot) => dotPathData(dot.x, dot.y, settings.dotStyle, 1)).join(""),
+    }));
+    // The cache keys on picture, size and settings, so those are the real inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [image, size.width, size.height, settings]);
+
+  if (!settings) return null;
+  // Black and the colours bleed by their own amounts, so each group gets its own softening.
+  const looks = {
+    colors: inkLook(dotPrintInkTip(settings, "c"), dotPrintInkBleed(settings, "c")),
+    black: inkLook(dotPrintInkTip(settings, "k"), dotPrintInkBleed(settings, "k")),
+  };
+  return (
+    <svg aria-hidden="true" focusable="false" width="100%" height="100%" overflow="visible"
+      viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none"
+    >
+      <defs>
+        {(["colors", "black"] as const).map((group) => (
+          <filter key={group} id={`${inkFilterId}-${group}`} x="-5%" y="-5%" width="110%" height="110%">
+            <feGaussianBlur stdDeviation={looks[group].blur} />
+          </filter>
+        ))}
+      </defs>
+      {image ? null : <rect width="100%" height="100%" fill="rgba(41, 37, 33, 0.06)" />}
+      {layers.map((layer) => {
+        const group = layer.ink === "k" ? "black" : "colors";
+        const look = looks[group];
+        return (
+          <path key={layer.ink} d={layer.d} fill="none" stroke={layer.color} strokeWidth={look.strokeWidth}
+            strokeLinecap="round" strokeLinejoin="round" opacity={look.opacity} filter={`url(#${inkFilterId}-${group})`}
+            style={{ mixBlendMode: "multiply" }} />
+        );
+      })}
+    </svg>
+  );
+}
+
 export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject; tools?: WorkspaceTool[] }) {
+  if (item.dotPrint) {
+    return <DotPrintArtwork item={item} />;
+  }
+  return <PathArtwork item={item} tools={tools} />;
+}
+
+function PathArtwork({ item, tools }: { item: WorkspaceObject; tools?: WorkspaceTool[] }) {
   // SVG ids are document-wide; React ids contain characters that are awkward in url(#…).
   const fillId = `pen-fill-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const penFill = activePenFill(item, tools);
   const fillTile = penFill ? penFillTileFor(item) : null;
+  const dash = activeDash(item);
+  // The border around the object: just a line on the canvas (in its tool's colour), so the design stays visible.
+  const outline = activeOutline(item);
+  const outlineColor = outline ? outlineTool(outline, tools).color : null;
+  const outlinePath = (d: string, strokeWidth: number) => (d && outlineColor
+    ? <path d={d} fill="none" stroke={outlineColor} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    : null);
   // Text items: render using SVG <text> elements for live display
   if (item.textContent && item.paths.length === 0) {
     const tc = item.textContent;
@@ -54,6 +136,7 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
         >
           <path d={d} fill="none" stroke={displayColor} strokeWidth={penStrokeWidth}
             strokeLinecap="round" strokeLinejoin="round" />
+          {outline ? outlinePath(outlineFramePath(item), penStrokeWidth) : null}
         </svg>
       );
     }
@@ -82,6 +165,7 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
             letterSpacing={tc.letterSpacing}
           >{line || " "}</text>
         ))}
+        {outline ? outlinePath(outlineFramePath(item), penStrokeWidth) : null}
       </svg>
     );
   }
@@ -124,8 +208,10 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
             <rect width="100%" height="100%" fill={`url(#${fillId})`} clipPath={`url(#${fillId}-clip)`} />
           </>
         ) : null}
-        <path data-shape-geometry="" d={d} fill={fill} stroke={strokeColor} strokeWidth={1.25}
+        {/* A dashed shape shows its real dashes (while it is being resized, a plain line). */}
+        <path data-shape-geometry="" d={dash ? dashedRealSizePath(d, dash) : d} fill={dash || item.hollow ? "none" : fill} stroke={strokeColor} strokeWidth={1.25}
           strokeLinecap="round" strokeLinejoin="round" />
+        {outline ? outlinePath(outlineRealSizePath(item), 1.25) : null}
       </svg>
     );
   }
@@ -168,7 +254,7 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
         const matchedTool = tools?.find((t) => t.color.toLowerCase() === (path.stroke ?? "").toLowerCase());
         const isPen = matchedTool?.type === "pen";
         let effectiveFill: string;
-        if (isPen) {
+        if (isPen || item.hollow) {
           effectiveFill = "none";
         } else if (matchedTool) {
           effectiveFill = matchedTool.color;
@@ -176,6 +262,12 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
           effectiveFill = path.fill;
         } else {
           effectiveFill = path.stroke ?? "#000000";
+        }
+        if (dash) {
+          return (
+            <path key={path.id} d={dashedFramePath(item, path.d, path.pathTransform, dash)} fill="none"
+              stroke={path.stroke} strokeWidth={penStrokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+          );
         }
         return (
           <path
@@ -192,6 +284,9 @@ export function WorkspaceObjectArtwork({ item, tools }: { item: WorkspaceObject;
         );
         });
       })()}
+      {outline
+        ? outlinePath(outlineFramePath(item), 1.25 / Math.max(0.01, Math.min(Math.abs(item.transform.scaleX), Math.abs(item.transform.scaleY))))
+        : null}
     </svg>
   );
 }

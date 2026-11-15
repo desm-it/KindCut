@@ -10,6 +10,7 @@ export function ImageLibraryPanel({
   loading,
   onAskAi,
   onFileImport,
+  onDotPrintImport,
   onUseImage,
   onRenameImage,
   onDeleteImage,
@@ -20,6 +21,7 @@ export function ImageLibraryPanel({
   loading: boolean;
   onAskAi: () => void;
   onFileImport: (event: ChangeEvent<HTMLInputElement>) => void;
+  onDotPrintImport: (event: ChangeEvent<HTMLInputElement>) => void;
   onUseImage: (img: LibraryImage) => void;
   onRenameImage: (path: string, name: string) => Promise<void>;
   onDeleteImage: (path: string) => void;
@@ -44,7 +46,7 @@ export function ImageLibraryPanel({
 
   function svgPreviewSrc(svg: string): string {
     try {
-      const PREVIEW_COLOR = "#5a3a1a";
+      const PREVIEW_COLOR = "#2f2a26";
       const styled = svg
         .replace(/\sfill="[^"]*"/gi, ` fill="${PREVIEW_COLOR}"`)
         .replace(/\sfill='[^']*'/gi, ` fill='${PREVIEW_COLOR}'`)
@@ -88,49 +90,75 @@ export function ImageLibraryPanel({
   return (
     <aside className="image-library no-drag" aria-label={nl ? "Afbeeldingsbibliotheek" : "Image library"}>
       <div className="image-library__actions">
-        <button
-          type="button"
-          className={`image-library__action-btn${hasActiveAiKey ? "" : " image-library__action-btn--warn"}`}
-          onClick={onAskAi}
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 1L9.5 5.5H14L10.5 8.5L12 13L8 10.5L4 13L5.5 8.5L2 5.5H6.5Z"/></svg>
-          {nl ? "AI genereren" : "Ask AI"}
-        </button>
-        <label className="image-library__action-btn">
+        <label className="image-library__action">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M2 10.5 5.5 7l2.5 2.5 2-2 4 4"/><circle cx="10.5" cy="5.5" r="1.2" fill="currentColor" stroke="none"/></svg>
-          {nl ? "Van PC" : "Open from PC"}
+          <span>
+            <strong>{nl ? "Eigen afbeelding" : "Your own image"}</strong>
+            <small>{nl ? "Kies een SVG, PNG of JPG van je computer" : "Pick an SVG, PNG or JPG from your computer"}</small>
+          </span>
           <input type="file" accept=".svg,image/svg+xml,.png,image/png,.jpg,.jpeg,image/jpeg" multiple onChange={onFileImport} />
+        </label>
+        <button type="button" className="image-library__action" onClick={onAskAi}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 1L9.5 5.5H14L10.5 8.5L12 13L8 10.5L4 13L5.5 8.5L2 5.5H6.5Z"/></svg>
+          <span>
+            <strong>{nl ? "Laat AI tekenen" : "Let AI draw it"}</strong>
+            <small>
+              {hasActiveAiKey
+                ? (nl ? "Beschrijf wat je wilt, AI maakt de vorm" : "Describe what you want, AI makes the shape")
+                : (nl ? "Heeft eerst een AI-sleutel nodig (Instellingen)" : "Needs an AI key first (Settings)")}
+            </small>
+          </span>
+        </button>
+        <label className="image-library__action">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <circle cx="4" cy="4" r="1.3"/><circle cx="8" cy="4" r="1.3"/><circle cx="12" cy="4" r="1.3"/>
+            <circle cx="6" cy="8" r="1.3"/><circle cx="10" cy="8" r="1.3"/>
+            <circle cx="4" cy="12" r="1.3"/><circle cx="8" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/>
+          </svg>
+          <span>
+            <strong>{nl ? "Foto als stippen" : "Photo as dots"}</strong>
+            <small>{nl ? "Pennen tekenen een foto in stippen na" : "Pens redraw a photo in dots"}</small>
+          </span>
+          <input type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={onDotPrintImport} />
         </label>
       </div>
 
-      <input
-        type="search"
-        className="image-library__search"
-        placeholder={nl ? "Zoeken…" : "Search…"}
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
+      {/* Search and filters only earn their space once there is something to find. */}
+      {images.length > 0 ? (
+        <>
+          <p className="image-library__heading">{nl ? "Eerder gebruikt" : "Used before"}</p>
+          <input
+            type="search"
+            className="image-library__search"
+            placeholder={nl ? "Zoeken…" : "Search…"}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
 
-      <div className="image-library__filters">
-        {(["all", "ai", "uploaded"] as const).map((f) => (
-          <button
-            key={f}
-            type="button"
-            className={`image-library__filter${filter === f ? " image-library__filter--active" : ""}`}
-            onClick={() => setFilter(f)}
-          >
-            {f === "all" ? (nl ? "Alle" : "All") : f === "ai" ? "AI" : (nl ? "Upload" : "Upload")}
-          </button>
-        ))}
-      </div>
+          <div className="image-library__filters">
+            {(["all", "ai", "uploaded"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={`image-library__filter${filter === f ? " image-library__filter--active" : ""}`}
+                onClick={() => setFilter(f)}
+              >
+                {f === "all" ? (nl ? "Alles" : "All") : f === "ai" ? "AI" : (nl ? "Eigen" : "Own")}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       {loading ? (
         <div className="image-library__empty">{nl ? "Laden…" : "Loading…"}</div>
       ) : filtered.length === 0 ? (
         <div className="image-library__empty">
-          {search.trim()
+          {search.trim() || images.length > 0
             ? (nl ? "Geen resultaten" : "No results")
-            : (nl ? "Bibliotheek is leeg" : "Library is empty")}
+            : (nl
+              ? "Afbeeldingen die je toevoegt blijven hier staan, zodat je ze later opnieuw kunt gebruiken."
+              : "Images you add stay here, so you can use them again later.")}
         </div>
       ) : (
         <div className="image-library__grid">

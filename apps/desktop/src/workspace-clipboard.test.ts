@@ -62,6 +62,27 @@ describe("workspace clipboard", () => {
     expect(pasted[0]?.textContent).not.toBe(textItem.textContent); // cloned, not shared
   });
 
+  it("keeps corner rounding, fold line, outline and kept-piece settings on a copy", () => {
+    const styled: WorkspaceObject = {
+      ...baseItem,
+      kind: "shape",
+      sourceKind: "shape",
+      shapeKind: "rounded-square",
+      cornerRadius: 40,
+      hollow: true,
+      dashed: { enabled: true, dashMm: 3, gapMm: 3 },
+      outline: { enabled: true, distanceMm: 3, penId: null, holes: false },
+    };
+    const [copied] = getSelectedWorkspaceClipboardItems([styled], [styled.id], null);
+    const [pasted] = createPastedWorkspaceSvgInputs({ items: [copied!], startIndex: 1, timestamp: 5 });
+    expect(pasted?.cornerRadius).toBe(40);
+    expect(pasted?.hollow).toBe(true);
+    expect(pasted?.dashed).toEqual(styled.dashed);
+    expect(pasted?.outline).toEqual(styled.outline);
+    // Copies, not the same objects.
+    expect(copied?.dashed).not.toBe(styled.dashed);
+  });
+
   it("falls back to the primary selected image when the multi-selection is empty", () => {
     const copied = getSelectedWorkspaceClipboardItems([baseItem], [], "object-1");
 

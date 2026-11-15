@@ -1,6 +1,8 @@
 import { LANGUAGES, type Language, createTranslator } from "../../i18n";
 import { APP_NAME, getFriendlySlicebugStatusCopy } from "../../onboarding-copy";
 import { DEBUG } from "../../dev-flags";
+import { type RecentProject, recentProjectFolder, recentProjectName } from "../../recent-projects";
+import { CARD_TEMPLATES, type CardTemplate, buildTemplatePreviewSvg } from "../../card-templates";
 
 // Friendly craft scene: a card on a Cricut mat with a flower, drawn line and sparkles.
 function WelcomeArt() {
@@ -98,6 +100,11 @@ export function WelcomeScreen({
   onNewProject,
   onOpenProject,
   onExampleProject,
+  onStartTemplate,
+  recentProjects,
+  recentProjectError,
+  projectOpening,
+  onOpenRecentProject,
   onCheckSetup,
   onBootstrapSetup,
 }: {
@@ -112,10 +119,18 @@ export function WelcomeScreen({
   onNewProject: () => void;
   onOpenProject: () => void;
   onExampleProject: () => void;
+  onStartTemplate: (template: CardTemplate) => void;
+  recentProjects: RecentProject[];
+  /** Path of a recent project that could not be opened (it was moved or deleted). */
+  recentProjectError: string | null;
+  projectOpening: boolean;
+  onOpenRecentProject: (path: string) => void;
   onCheckSetup: () => void;
   onBootstrapSetup: () => void;
 }) {
   const { t } = createTranslator(language);
+  const nl = language === "nl";
+  const dateFormat = new Intl.DateTimeFormat(nl ? "nl-NL" : "en-GB", { day: "numeric", month: "long" });
 
   return (
     <main className="app-shell welcome-shell">
@@ -169,6 +184,56 @@ export function WelcomeScreen({
             </span>
           </button>
         </div>
+
+        <section className="template-gallery no-drag" aria-label={nl ? "Sjablonen" : "Templates"}>
+          <h2 className="recent-projects__title">{nl ? "Of begin met een sjabloon" : "Or start from a template"}</h2>
+          <div className="template-gallery__list">
+            {CARD_TEMPLATES.map((template) => (
+              <button key={template.id} type="button" className="template-card" onClick={() => onStartTemplate(template)}>
+                <span className="template-card__preview" aria-hidden="true"
+                  dangerouslySetInnerHTML={{ __html: buildTemplatePreviewSvg(template, language) }} />
+                <span className="template-card__text">
+                  <strong>{template.name[language]}</strong>
+                  <small>{template.description[language]}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {recentProjects.length > 0 || recentProjectError ? (
+          <section className="recent-projects no-drag" aria-label={nl ? "Recente projecten" : "Recent projects"}>
+            <h2 className="recent-projects__title">{nl ? "Verder met een recent project" : "Continue a recent project"}</h2>
+            {recentProjectError ? (
+              <p className="recent-projects__error" role="alert">
+                {nl
+                  ? `"${recentProjectName(recentProjectError)}" is niet meer te vinden. Het bestand is verplaatst of verwijderd; open het via "Open project".`
+                  : `"${recentProjectName(recentProjectError)}" can't be found anymore. The file was moved or deleted; open it with "Open project".`}
+              </p>
+            ) : null}
+            <div className="recent-projects__list">
+              {recentProjects.map((project) => {
+                const opened = new Date(project.openedAt);
+                return (
+                  <button key={project.path} type="button" className="recent-project" title={project.path}
+                    disabled={projectOpening} onClick={() => onOpenRecentProject(project.path)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" />
+                    </svg>
+                    <span className="recent-project__text">
+                      <strong>{recentProjectName(project.path)}</strong>
+                      <small>
+                        {recentProjectFolder(project.path)}
+                        {Number.isNaN(opened.getTime()) ? "" : ` · ${dateFormat.format(opened)}`}
+                      </small>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
 
         <aside className={`setup-panel setup-bar setup-panel--${statusCopy.tone} no-drag`} aria-live="polite">
           <ConnectionBadge tone={statusCopy.tone} />

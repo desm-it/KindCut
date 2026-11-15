@@ -80,6 +80,7 @@ export function ungroupWorkspaceObject(input: {
       frame: { ...input.group.frame },
       transform: { ...input.group.transform },
       penFill: input.group.penFill ? { ...input.group.penFill } : undefined,
+      dashed: input.group.dashed ? { ...input.group.dashed } : undefined,
     };
     if (cleanedPaths.length === 1) {
       return { ...base, type: "path" as const, paths: [cleanedPaths[0]!] as [WorkspacePathData] };
@@ -132,6 +133,7 @@ export function splitCompoundPathItem(input: {
     transform: { ...item.transform },
     paths: [{ ...path, id: "path-1", d }] as [WorkspacePathData],
     penFill: item.penFill ? { ...item.penFill } : undefined,
+    dashed: item.dashed ? { ...item.dashed } : undefined,
   }));
 }
 

@@ -4,10 +4,18 @@ import {
   type WorkspaceItemFrame,
   type WorkspaceItemTransform,
   CARD_SIZES,
+  alignWorkspaceItems,
+  distributeWorkspaceItems,
+  getSnapTargets,
+  nudgeStepPx,
+  snapDragDelta,
   buildInsertSlotsPaths,
   getInsertSlots,
   isCardSize,
   getWorkspaceSelectionBounds,
+  findFreePlacement,
+  fitMatToView,
+  getMatBorder,
   getMatDimensionsInches,
   getMeasurementTicks,
   getViewportTransform,
@@ -285,5 +293,132 @@ describe("workspace measurement helpers", () => {
       expect(svg).toContain("#8f4f2b");
       expect(svg).toContain("rotate(");
     });
+  });
+});
+
+describe("fitMatToView", () => {
+  it("shows the whole long mat, border included, centred in the canvas", () => {
+    const paper = { width: 360, height: 960 };
+    const border = getMatBorder("standard");
+    const available = { width: 880, height: 687 };
+    const { zoom, pan } = fitMatToView({ paper, border, available });
+    const top = pan.y - border.top * zoom;
+    const bottom = pan.y + (paper.height + border.bottom) * zoom;
+    expect(top).toBeGreaterThanOrEqual(19.9);
+    expect(bottom).toBeLessThanOrEqual(available.height - 19.9);
+    expect(top).toBeCloseTo(available.height - bottom);
+    const left = pan.x - border.side * zoom;
+    const right = pan.x + (paper.width + border.side) * zoom;
+    expect(left).toBeCloseTo(available.width - right);
+  });
+
+  it("does not blow a small mat up beyond a comfortable size", () => {
+    const { zoom } = fitMatToView({ paper: { width: 360, height: 520 }, border: getMatBorder("standard"), available: { width: 3000, height: 2000 } });
+    expect(zoom).toBe(1.25);
+  });
+});
+
+describe("findFreePlacement", () => {
+  const area = { x: 0, y: 0, width: 360, height: 520 };
+
+  it("puts the first object in the middle of the area", () => {
+    expect(findFreePlacement({ size: { width: 100, height: 60 }, area, occupied: [] })).toEqual({ x: 130, y: 230 });
+  });
+
+  it("puts the next object beside the first instead of on top of it", () => {
+    const first = { x: 130, y: 230, width: 100, height: 60 };
+    const spot = findFreePlacement({ size: { width: 100, height: 60 }, area, occupied: [first] });
+    const overlapsX = spot.x < first.x + first.width && spot.x + 100 > first.x;
+    const overlapsY = spot.y < first.y + first.height && spot.y + 60 > first.y;
+    expect(overlapsX && overlapsY).toBe(false);
+    expect(spot.x).toBeGreaterThanOrEqual(0);
+    expect(spot.x + 100).toBeLessThanOrEqual(360);
+    expect(spot.y).toBeGreaterThanOrEqual(0);
+    expect(spot.y + 60).toBeLessThanOrEqual(520);
+  });
+
+  it("uses a tight fit against the edge when that avoids covering anything", () => {
+    // A 170 px shape in the middle leaves exactly 175 px below it on a 520 px sheet.
+    const first = { x: 95, y: 175, width: 170, height: 170 };
+    const second = findFreePlacement({ size: { width: 170, height: 170 }, area, occupied: [first] });
+    expect(second.y >= 345 || second.y + 170 <= 175).toBe(true);
+    const third = findFreePlacement({ size: { width: 170, height: 170 }, area, occupied: [first, { ...second, width: 170, height: 170 }] });
+    const overlaps = (a: { x: number; y: number }, b: { x: number; y: number }) => a.x < b.x + 170 && b.x < a.x + 170 && a.y < b.y + 170 && b.y < a.y + 170;
+    expect(overlaps(third, first)).toBe(false);
+    expect(overlaps(third, second)).toBe(false);
+  });
+
+  it("centres an object that is bigger than the area", () => {
+    expect(findFreePlacement({ size: { width: 400, height: 600 }, area, occupied: [] })).toEqual({ x: -20, y: -40 });
+  });
+
+  it("takes the least covered spot when the area is full", () => {
+    const spot = findFreePlacement({ size: { width: 100, height: 100 }, area, occupied: [{ x: 0, y: 0, width: 360, height: 400 }] });
+    expect(spot.y).toBeGreaterThan(380);
+  });
+});
+
+describe("align, distribute, snap and nudge", () => {
+  const box = (id: string, x: number, y: number, width: number, height: number, rotation = 0) => ({
+    id,
+    frame: { width, height },
+    transform: { x, y, scaleX: 1, scaleY: 1, rotation },
+  });
+  const paper = { x: 0, y: 0, width: 400, height: 600 };
+
+  it("centres a single object on the paper", () => {
+    const [update] = alignWorkspaceItems([box("a", 10, 10, 100, 50)], "center", paper);
+    expect(update?.transform.x).toBe(150);
+    expect(update?.transform.y).toBe(10);
+    const [middle] = alignWorkspaceItems([box("a", 10, 10, 100, 50)], "middle", paper);
+    expect(middle?.transform.y).toBe(275);
+    const [right] = alignWorkspaceItems([box("a", 10, 10, 100, 50)], "right", paper);
+    expect(right?.transform.x).toBe(300);
+  });
+
+  it("aligns several objects to each other, not to the paper", () => {
+    const updates = alignWorkspaceItems([box("a", 20, 0, 100, 50), box("b", 60, 100, 40, 40)], "left", paper);
+    expect(updates.map((update) => update.transform.x)).toEqual([20, 20]);
+    const centred = alignWorkspaceItems([box("a", 20, 0, 100, 50), box("b", 60, 100, 40, 40)], "center", paper);
+    // The pair spans 20..120, so both centres go to 70.
+    expect(centred.map((update) => update.transform.x)).toEqual([20, 50]);
+  });
+
+  it("aligns a rotated object by the box around it", () => {
+    // 100×20 turned a quarter: it occupies x from -20 to 0 around its origin.
+    const [update] = alignWorkspaceItems([box("a", 50, 50, 100, 20, 90)], "left", paper);
+    expect(update?.transform.x).toBeCloseTo(20, 6);
+  });
+
+  it("distributes with equal gaps and keeps the outer objects in place", () => {
+    const updates = distributeWorkspaceItems([box("a", 0, 0, 20, 20), box("c", 180, 0, 20, 20), box("b", 30, 0, 40, 20)], "x");
+    const byId = Object.fromEntries(updates.map((update) => [update.id, update.transform.x]));
+    expect(byId).toEqual({ a: 0, b: 80, c: 180 });
+    expect(distributeWorkspaceItems([box("a", 0, 0, 20, 20), box("b", 30, 0, 40, 20)], "x")).toEqual([]);
+  });
+
+  it("snaps a dragged box to the nearest line within reach", () => {
+    const targets = getSnapTargets(paper, [box("other", 300, 500, 50, 50)]);
+    expect(targets.x).toEqual([0, 200, 400, 300, 325, 350]);
+    const bounds = { left: 0, right: 100, top: 0, bottom: 50 };
+    // Centre at 153 → snaps to the paper's middle (200) by moving 3 further.
+    const snapped = snapDragDelta({ bounds, delta: { x: 147, y: 200 }, targets, threshold: 5 });
+    expect(snapped.delta).toEqual({ x: 150, y: 200 });
+    expect(snapped.guides).toEqual([{ axis: "x", position: 200 }]);
+    // Out of reach: untouched.
+    const free = snapDragDelta({ bounds, delta: { x: 120, y: 200 }, targets, threshold: 5 });
+    expect(free.delta).toEqual({ x: 120, y: 200 });
+    expect(free.guides).toEqual([]);
+    // Both axes: bottom edge onto the other object's top (500), left edge onto its left (300).
+    const both = snapDragDelta({ bounds, delta: { x: 298, y: 452 }, targets, threshold: 5 });
+    expect(both.delta).toEqual({ x: 300, y: 450 });
+    expect(both.guides).toHaveLength(2);
+  });
+
+  it("nudges by a millimetre, or a sixteenth of an inch", () => {
+    expect(nudgeStepPx("mm", "normal")).toBeCloseTo(80 / 25.4, 6);
+    expect(nudgeStepPx("cm", "large")).toBeCloseTo(800 / 25.4, 6);
+    expect(nudgeStepPx("in", "normal")).toBe(5);
+    expect(nudgeStepPx("mm", "fine")).toBeLessThan(nudgeStepPx("mm", "normal"));
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, MouseEvent, PointerEvent, ReactNode } from "react";
+import type { ChangeEvent, MouseEvent, MutableRefObject, PointerEvent, ReactNode } from "react";
 import Moveable from "react-moveable";
 import type {
   OnClick,
@@ -39,11 +39,17 @@ import {
   PEN_FILL_DENSITY_MAX,
   PEN_FILL_DENSITY_MIN,
   PEN_FILL_PATTERNS,
+  DOT_STYLES,
+  type DashSettings,
+  type DotPrintSettings,
+  type OutlineSettings,
   type PenFillPattern,
   type PenFillSettings,
   penFillPatternTile,
 } from "@cricut-companion/craft-core";
 import { canPenFill } from "../../pen-fill-render";
+import { canDash } from "../../dash-render";
+import { canOutline } from "../../outline-render";
 import {
   MOVEABLE_CENTER_DIRECTION,
   ROTATION_SNAP_INTERVAL_DEGREES,
@@ -63,6 +69,16 @@ import {
   CARD_SIZES,
   CARD_SIZE_ORDER,
   buildInsertSlotsPaths,
+  type WorkspaceRect,
+  type AlignMode,
+  type SnapTargets,
+  getSnapTargets,
+  nudgeStepPx,
+  snapDragDelta,
+  fitMatToView,
+  formatLength,
+  formatLengthPx,
+  getMatBorder,
   getMeasurementTicks,
   getViewportTransform,
   getWorkspaceItemTransform,
@@ -83,12 +99,26 @@ import { isUngroupablePath } from "../../utils/workspace-geometry";
 import { MatIcon, MaterialIcon, materialCategoryOf, PAPER_MATERIAL_IDS, MATERIAL_INSERT_ID, MATERIAL_VINYL_ID } from "./CraftIcons";
 import { Ruler } from "./Ruler";
 import { WorkspaceToolbar } from "./WorkspaceToolbar";
+import { SelectionActionBar } from "./SelectionActionBar";
 import { TextEditOverlay } from "./TextEditOverlay";
 import { PenFillPatternDef, WorkspaceObjectArtwork } from "./WorkspaceObjectArtwork";
 import { ImageLibraryPanel } from "../panels/ImageLibraryPanel";
 import { ShapeLibraryPanel } from "../panels/ShapeLibraryPanel";
 import { SpotifyCodePanel } from "../panels/SpotifyCodePanel";
+import { DotPrintSettingsPanel } from "../panels/DotPrintSettingsPanel";
+import { DOT_STYLE_LABELS } from "../panels/dot-style-labels";
+import { MoreOptions } from "../panels/MoreOptions";
+import { AlignPanel, FoldLinePanel, OutlinePanel } from "../panels/ArrangePanels";
 import { EmptyImportState } from "../screens/ImportPanel";
+
+const ARROW_DIRECTIONS: Record<string, Point | undefined> = {
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 },
+  ArrowUp: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 },
+};
+
+const SNAP_ALL_DIRECTIONS = { top: true, left: true, bottom: true, right: true, center: true, middle: true };
 
 // ── Small presentational helpers for the Card-colors / Pens / picker UI ───────
 
@@ -104,7 +134,7 @@ const PEN_FILL_LABELS: Record<PenFillPattern, { nl: string; en: string }> = {
 
 /** A small live sample of a fill pattern, drawn with the same tile as the canvas. */
 function PenFillSwatch({ pattern }: { pattern: PenFillPattern }) {
-  const tile = penFillPatternTile({ enabled: true, pattern, density: 30, angle: 45 }, 1.25);
+  const tile = penFillPatternTile({ enabled: true, pattern, density: 30, angle: 45, dotStyle: "circle" }, 1.25);
   if (!tile) return null;
   const id = `pen-fill-swatch-${pattern}`;
   return (
@@ -122,6 +152,9 @@ function PaperIcon() {
 }
 function BehindIcon() {
   return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="2" width="9" height="9" rx="1.5"/><path d="M6 11v2.5A1.5 1.5 0 0 0 7.5 15H13a1.5 1.5 0 0 0 1.5-1.5V8A1.5 1.5 0 0 0 13 6.5h-2"/></svg>;
+}
+function PenIcon() {
+  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 2l3 3-8.5 8.5L2 14l.5-3.5z"/><path d="M9.5 3.5l3 3"/></svg>;
 }
 function ScissorsIcon() {
   return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="3.5" cy="4.5" r="1.8"/><circle cx="3.5" cy="11.5" r="1.8"/><path d="M5.2 5.6 14 11M5.2 10.4 14 5"/></svg>;
@@ -143,15 +176,15 @@ function HexShape({ color, add, warn }: { color?: string; add?: boolean; warn?: 
     ];
     return pts.map(([x, y]) => `${Number(x.toFixed(2))},${Number(y.toFixed(2))}`).join(" ");
   };
-  const borderColor = warn ? "#d9a300" : add ? "rgba(121,82,51,0.45)" : "rgba(121,82,51,0.4)";
+  const borderColor = warn ? "#d9a300" : add ? "rgba(41,37,33,0.45)" : "rgba(41,37,33,0.4)";
   return (
     <svg className="pen-hex__svg" viewBox="0 0 38 44" width="38" height="44" aria-hidden="true">
       {/* Outer border (2px), rounded joins; the transparent ring to the fill is the 1px gap */}
-      <polygon points={hex(20)} fill={add ? "rgba(121,82,51,0.07)" : "none"} stroke={borderColor} strokeWidth="2" strokeLinejoin="round" />
+      <polygon points={hex(20)} fill={add ? "rgba(41,37,33,0.07)" : "none"} stroke={borderColor} strokeWidth="2" strokeLinejoin="round" />
       {!add && color && (
         <polygon points={hex(17)} fill={color} stroke={color} strokeWidth="2" strokeLinejoin="round" />
       )}
-      {add && <path d="M19 14.5v15M11.5 22h15" stroke="rgba(121,82,51,0.7)" strokeWidth="2" strokeLinecap="round" />}
+      {add && <path d="M19 14.5v15M11.5 22h15" stroke="rgba(41,37,33,0.7)" strokeWidth="2" strokeLinecap="round" />}
     </svg>
   );
 }
@@ -180,6 +213,10 @@ function ColorRow({ icon, label, color, onChange, title }: {
  * shown as selectable hexagons below — mirroring the workpiece pen palette.
  * Picking sets the object's colour.
  */
+/**
+ * The most important choice per object: is it cut out, or drawn with a pen?
+ * Two big labelled options; the pen colours only show once "Draw" is chosen.
+ */
 function SwatchPicker({ tools, selectedColor, onPick, language }: {
   tools: WorkspaceTool[];
   selectedColor: string;
@@ -190,39 +227,56 @@ function SwatchPicker({ tools, selectedColor, onPick, language }: {
   const pens = getPens(tools);
   const behind = getBehindColor(tools);
   const sel = (selectedColor ?? "").toLowerCase();
-  const cutActive = behind.toLowerCase() === sel;
+  const activePen = pens.find((pen) => pen.color.toLowerCase() === sel) ?? null;
+  const cutActive = !activePen && behind.toLowerCase() === sel;
   return (
     <div className="tool-picker" role="group">
-      <button
-        type="button"
-        className={`swatch-btn${cutActive ? " swatch-btn--active" : ""}`}
-        onClick={() => onPick(behind)}
-        aria-pressed={cutActive}
-        title={nl ? "Snijden" : "Cut"}
-      >
-        <span className="swatch-btn__chip" style={{ backgroundColor: behind }} />
-        <span className="swatch-btn__icon" aria-hidden="true"><ScissorsIcon /></span>
-        <span className="swatch-btn__label">{nl ? "Snijden" : "Cut"}</span>
-      </button>
-
-      <p className="tool-picker__label">{nl ? "Pennen" : "Pens"}</p>
-      <div className="tool-picker__pens">
-        {pens.map((pen, i) => {
-          const active = pen.color.toLowerCase() === sel;
-          return (
-            <button
-              key={pen.id}
-              type="button"
-              className={`pen-hex-btn${active ? " pen-hex-btn--active" : ""}`}
-              onClick={() => onPick(pen.color)}
-              aria-pressed={active}
-              title={`${nl ? "Pen" : "Pen"} ${i + 1}`}
-            >
-              <HexShape color={pen.color} />
-            </button>
-          );
-        })}
+      <div className="tool-choice">
+        <button
+          type="button"
+          className={`tool-choice__btn${cutActive ? " tool-choice__btn--active" : ""}`}
+          onClick={() => onPick(behind)}
+          aria-pressed={cutActive}
+        >
+          <ScissorsIcon />
+          <strong>{nl ? "Snijden" : "Cut"}</strong>
+          <span>{nl ? "Het mesje snijdt de vorm uit" : "The blade cuts the shape out"}</span>
+        </button>
+        <button
+          type="button"
+          className={`tool-choice__btn${activePen ? " tool-choice__btn--active" : ""}`}
+          onClick={() => { if (!activePen && pens[0]) onPick(pens[0].color); }}
+          aria-pressed={Boolean(activePen)}
+          disabled={pens.length === 0}
+        >
+          <PenIcon />
+          <strong>{nl ? "Tekenen" : "Draw"}</strong>
+          <span>{nl ? "Een pen tekent de lijnen" : "A pen draws the lines"}</span>
+        </button>
       </div>
+
+      {activePen ? (
+        <div className="tool-picker__pens-row">
+          <span className="object-settings__label">{nl ? "Penkleur" : "Pen colour"}</span>
+          <div className="tool-picker__pens">
+            {pens.map((pen, i) => {
+              const active = pen === activePen;
+              return (
+                <button
+                  key={pen.id}
+                  type="button"
+                  className={`pen-dot${active ? " pen-dot--active" : ""}`}
+                  onClick={() => onPick(pen.color)}
+                  aria-pressed={active}
+                  aria-label={`${nl ? "Pen" : "Pen"} ${i + 1}`}
+                  title={`${nl ? "Pen" : "Pen"} ${i + 1}`}
+                  style={{ backgroundColor: pen.color }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -236,9 +290,7 @@ function SwatchPicker({ tools, selectedColor, onPick, language }: {
  * paper's pixel size; the mat extends beyond it by fixed bands.
  */
 function WorkspaceMat({ kind, width, height }: { kind: "standard" | "card"; width: number; height: number }) {
-  const SIDE = 33;
-  const TOP = kind === "card" ? 90 : 80;
-  const BOTTOM = kind === "card" ? 78 : 80;
+  const { side: SIDE, top: TOP, bottom: BOTTOM } = getMatBorder(kind);
   const style = {
     top: -TOP,
     left: -SIDE,
@@ -339,7 +391,8 @@ export function DesignWorkspace({
   projectOpening,
   cutSession: _cutSession,
   cutBusy,
-  canPaste,
+  canUndo,
+  canRedo,
   onBackWelcome,
   onMaterialChange,
   cardSize,
@@ -360,6 +413,16 @@ export function DesignWorkspace({
   onTextContentChange,
   onShapeCornerRadiusChange,
   onPenFillChange,
+  onDashChange,
+  onHollowChange,
+  onOutlineChange,
+  onOutlineDetach,
+  onAlign,
+  onDistribute,
+  onNudge,
+  onDotPrintChange,
+  onDotPrintImport,
+  visibleAreaRef,
   onSelectSvg,
   onSelectSvgGroup,
   onSelectAllSvgs,
@@ -420,7 +483,8 @@ export function DesignWorkspace({
   projectOpening: boolean;
   cutSession: CutSessionSnapshot | null;
   cutBusy: boolean;
-  canPaste: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
   onBackWelcome: () => void;
   onMaterialChange: (materialId: number) => void;
   cardSize: CardSize | null;
@@ -433,7 +497,7 @@ export function DesignWorkspace({
   paperColor: string;
   onPaperColorChange: (color: string) => void;
   onSvgFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  onAddShape: (shapeKind: WorkspaceShapeKind) => void;
+  onAddShape: (shapeKind: WorkspaceShapeKind, options?: { fold?: boolean }) => void;
   onSelectSvg: (id: string | null) => void;
   onSelectSvgGroup: (ids: string[]) => void;
   onSelectAllSvgs: () => void;
@@ -480,6 +544,18 @@ export function DesignWorkspace({
   onTextContentChange: (ids: string | string[], patch: Partial<WorkspaceTextContent>) => void;
   onShapeCornerRadiusChange: (ids: string | string[], radius: number) => void;
   onPenFillChange: (ids: string[], patch: Partial<PenFillSettings>) => void;
+  onDashChange: (ids: string[], patch: Partial<DashSettings>) => void;
+  onHollowChange: (ids: string[], hollow: boolean) => void;
+  onOutlineChange: (ids: string[], patch: Partial<OutlineSettings>) => void;
+  onOutlineDetach: (ids: string[]) => void;
+  onAlign: (mode: AlignMode) => void;
+  onDistribute: (axis: "x" | "y") => void;
+  /** Moves the selection by an offset in workspace pixels. */
+  onNudge: (dx: number, dy: number) => boolean;
+  onDotPrintChange: (ids: string[], patch: Partial<DotPrintSettings>) => void;
+  onDotPrintImport: (event: ChangeEvent<HTMLInputElement>) => void;
+  /** Filled with a function that returns the part of the workspace currently on screen. */
+  visibleAreaRef?: MutableRefObject<(() => WorkspaceRect | null) | null>;
 }) {
   const { t } = createTranslator(language);
   const [zoom, setZoom] = useState(0.85);
@@ -512,6 +588,7 @@ export function DesignWorkspace({
   const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
   const pendingRenameRef = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const selectionBarRef = useRef<HTMLDivElement | null>(null);
   const workpieceTransformRef = useRef<HTMLDivElement | null>(null);
   // Panning (right/middle/space-drag) and marquee (left-drag on empty) gestures.
   const panRef = useRef<null | { pointerId: number; start: Point; pan: Point; button: number; moved: boolean }>(null);
@@ -533,7 +610,12 @@ export function DesignWorkspace({
     pointer: Point;
     transform: WorkspaceItemTransform;
     moved: boolean;
+    snapTargets: SnapTargets;
   }>(null);
+  const snapGuideLayerRef = useRef<HTMLDivElement | null>(null);
+  // Holding Cmd/Ctrl while dragging lets an object sit right next to a line without jumping onto it.
+  const [snapSuspended, setSnapSuspended] = useState(false);
+  const [snapElements, setSnapElements] = useState<HTMLElement[]>([]);
   const moveableTransformStart = useRef(new Map<string, WorkspaceItemTransform>());
   const moveableGroupCenterStart = useRef<Point | null>(null);
   const latestMoveableTransforms = useRef(new Map<string, WorkspaceItemTransform>());
@@ -587,18 +669,49 @@ export function DesignWorkspace({
   // Ungroup also applies to a single traced/compound path with 2+ top-level shapes.
   // Memoized because the check measures path bboxes in the DOM.
   const canUngroupSelection = useMemo(() => {
+    // A dot photo is one picture, not a group of parts.
+    if (selectedItems.some((item) => item.dotPrint)) return false;
     if (selectedGroup !== null) return true;
     return selectedItems.length === 1 && !!selectedItems[0] && isUngroupablePath(selectedItems[0]);
   }, [selectedGroup, selectedItems]);
+
+  // Where the action bar for the selection goes (viewport pixels): centred just below
+  // the selection, or above it (clear of the rotate handle) when there is no room below.
+  const selectionBarPosition = (() => {
+    if (selectedItems.length === 0 || isDirectItemDragging || editingTextId) return null;
+    const bounds = getWorkspaceSelectionBounds(selectedItems);
+    if (!bounds) return null;
+    const BAR_HEIGHT = 58;
+    const toScreenY = (y: number) => WORKSPACE_STAGE_TOP_OFFSET + pan.y + y * zoom;
+    const viewportHeight = viewportRef.current?.clientHeight ?? Infinity;
+    const below = toScreenY(bounds.bottom) + 14;
+    const above = toScreenY(bounds.top) - BAR_HEIGHT - 44;
+    const minTop = WORKSPACE_STAGE_TOP_OFFSET + 8;
+    const maxTop = viewportHeight - BAR_HEIGHT - 8;
+    const top = below <= maxTop ? below : above >= minTop ? above : maxTop;
+    // Keep the whole bar inside the canvas when the selection sits near an edge.
+    const groupable = selectedItems.length >= 2 && !selectedItems.some((item) => item.textContent || item.dotPrint || item.dashed?.enabled);
+    const buttonCount = 4 + (selectedItems.length === 1 && importedSvgs.length > 1 ? 2 : 0) + (groupable ? 1 : 0) + (canUngroupSelection ? 1 : 0);
+    const halfWidth = buttonCount * 40 + 8;
+    const viewportWidth = viewportRef.current?.clientWidth ?? Infinity;
+    const center = WORKSPACE_STAGE_LEFT_OFFSET + pan.x + bounds.center.x * zoom;
+    return {
+      left: Math.max(WORKSPACE_STAGE_LEFT_OFFSET + 8 + halfWidth, Math.min(viewportWidth - 8 - halfWidth, center)),
+      top: Math.max(minTop, top),
+    };
+  })();
   // Text renders with preserveAspectRatio="meet" (never stretches) and is cut from a
   // re-measured frame, so a non-uniform scale would make display, edit overlay, and cut
   // disagree. Force uniform scaling whenever the whole selection is text.
   const selectionIsAllText = selectedItems.length > 0 && selectedItems.every((item) => Boolean(item.textContent));
+  // A line only has a length, so it only gets the two end handles.
+  const selectionIsAllLines = selectedItems.length > 0 && selectedItems.every((item) => item.shapeKind === "line");
 
   useEffect(() => {
     const root = workpieceTransformRef.current;
     if (!root || selectedItems.length === 0) {
       setMoveableTargets([]);
+      setSnapElements([]);
       return;
     }
     setMoveableTargets(
@@ -606,7 +719,27 @@ export function DesignWorkspace({
         .map((item) => root.querySelector<HTMLElement>(`[data-workspace-item-id="${cssEscape(item.id)}"]`))
         .filter((target): target is HTMLElement => Boolean(target)),
     );
-  }, [selectedItems]);
+    // Everything that isn't selected is something to line the selection up with.
+    setSnapElements(
+      Array.from(root.querySelectorAll<HTMLElement>("[data-workspace-item-id]"))
+        .filter((element) => !selectedSvgIdSet.has(element.dataset.workspaceItemId ?? "")),
+    );
+  }, [selectedItems, selectedSvgIdSet, importedSvgs.length]);
+
+  useEffect(() => {
+    function onKey(event: globalThis.KeyboardEvent) {
+      setSnapSuspended(event.metaKey || event.ctrlKey);
+    }
+    const release = () => setSnapSuspended(false);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+      window.removeEventListener("blur", release);
+    };
+  }, []);
 
   useEffect(() => {
     requestAnimationFrame(() => { moveableRef.current?.updateRect(); });
@@ -667,6 +800,7 @@ export function DesignWorkspace({
   function zoomAroundPoint(nextZoomRaw: number, cx: number, cy: number) {
     const nextZoom = clampZoom(nextZoomRaw);
     if (nextZoom === zoom) return;
+    viewIsAutoFit.current = false;
     const worldX = (cx - pan.x) / zoom;
     const worldY = (cy - pan.y) / zoom;
     setZoom(nextZoom);
@@ -691,6 +825,7 @@ export function DesignWorkspace({
   }
 
   function resetZoomToActualSize() {
+    viewIsAutoFit.current = false;
     setZoom(1);
     centerMatInViewport(1);
   }
@@ -711,12 +846,53 @@ export function DesignWorkspace({
     };
   }
 
-  // Centre the mat when the workspace first opens (after layout is measured).
+  // Show the whole mat when the workspace opens and whenever another mat is chosen
+  // (after layout is measured), so the paper never starts half out of view.
+  // While the user hasn't zoomed or panned themselves, the view also refits when the
+  // canvas changes size (a drawer opening, the window resizing).
+  const viewIsAutoFit = useRef(true);
+  const fitMatRef = useRef<() => void>(() => {});
+  fitMatRef.current = () => {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const fit = fitMatToView({
+      paper: { width: workpieceWidth, height: workpieceHeight },
+      border: getMatBorder(getMatKind(selectedMatPreset)),
+      available: { width: rect.width - WORKSPACE_STAGE_LEFT_OFFSET, height: rect.height - WORKSPACE_STAGE_TOP_OFFSET },
+    });
+    viewIsAutoFit.current = true;
+    setZoom(fit.zoom);
+    setPan(fit.pan);
+  };
   useEffect(() => {
-    const id = requestAnimationFrame(() => centerMatInViewport(zoom));
+    const id = requestAnimationFrame(() => fitMatRef.current());
     return () => cancelAnimationFrame(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMatPreset]);
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (viewIsAutoFit.current) fitMatRef.current();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
+
+  // Lets the app place new objects where the user is looking.
+  useEffect(() => {
+    if (!visibleAreaRef) return;
+    visibleAreaRef.current = () => {
+      const rect = viewportRef.current?.getBoundingClientRect();
+      if (!rect) return null;
+      return {
+        x: -pan.x / zoom,
+        y: -pan.y / zoom,
+        width: (rect.width - WORKSPACE_STAGE_LEFT_OFFSET) / zoom,
+        height: (rect.height - WORKSPACE_STAGE_TOP_OFFSET) / zoom,
+      };
+    };
+    return () => { visibleAreaRef.current = null; };
+  }, [visibleAreaRef, zoom, pan]);
 
   // Wheel handling lives on a native, non-passive listener (attached below). React's own
   // onWheel is passive, so calling preventDefault() there (to stop ctrl/⌘-zoom from also
@@ -734,6 +910,7 @@ export function DesignWorkspace({
     recentScrollRef.current = true;
     if (recentScrollTimerRef.current) clearTimeout(recentScrollTimerRef.current);
     recentScrollTimerRef.current = setTimeout(() => { recentScrollRef.current = false; }, 300);
+    viewIsAutoFit.current = false;
     setPan((current) => clampPan({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
   };
   useEffect(() => {
@@ -745,6 +922,7 @@ export function DesignWorkspace({
   }, []);
 
   const DRAG_THRESHOLD = 4; // px before a press becomes a drag (vs a click)
+  const SNAP_SCREEN_PX = 6; // how close (on screen) an edge must come to a line to snap onto it
 
   // Viewport pointer model:
   //  • Right / middle button, or Space+left → pan (anywhere, even over objects).
@@ -809,6 +987,7 @@ export function DesignWorkspace({
       const dx = event.clientX - panState.start.x;
       const dy = event.clientY - panState.start.y;
       if (!panState.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) panState.moved = true;
+      viewIsAutoFit.current = false;
       setPan(clampPan({ x: panState.pan.x + dx, y: panState.pan.y + dy }));
       return;
     }
@@ -933,6 +1112,10 @@ export function DesignWorkspace({
         pointer: { x: event.clientX, y: event.clientY },
         transform: item.transform,
         moved: false,
+        snapTargets: getSnapTargets(
+          { x: 0, y: 0, width: cardWidth, height: cardHeight },
+          importedSvgs.filter((other) => other.id !== item.id),
+        ),
       };
       setIsDirectItemDragging(true);
     }
@@ -943,17 +1126,47 @@ export function DesignWorkspace({
     if (!drag || drag.pointerId !== event.pointerId || drag.id !== item.id) {
       return;
     }
-    const deltaX = (event.clientX - drag.pointer.x) / zoom;
-    const deltaY = (event.clientY - drag.pointer.y) / zoom;
-    if (Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5) {
+    const rawX = (event.clientX - drag.pointer.x) / zoom;
+    const rawY = (event.clientY - drag.pointer.y) / zoom;
+    if (Math.abs(rawX) > 0.5 || Math.abs(rawY) > 0.5) {
       drag.moved = true;
     }
+    const { x: deltaX, y: deltaY } = snapDirectDrag(drag, item, { x: rawX, y: rawY }, event.metaKey || event.ctrlKey);
     const next = clampWorkspaceItemTransform({
       ...drag.transform,
       x: drag.transform.x + deltaX,
       y: drag.transform.y + deltaY,
     });
     event.currentTarget.style.transform = getWorkspaceItemTransform(next);
+  }
+
+  // Pulls a dragged object onto a nearby line (paper edge or middle, or another object's
+  // edge or middle) and shows that line while it holds.
+  function snapDirectDrag(
+    drag: NonNullable<typeof directItemDragStart.current>,
+    item: WorkspaceSvgItem,
+    delta: Point,
+    suspended: boolean,
+  ): Point {
+    const bounds = suspended || !drag.moved ? null : getWorkspaceSelectionBounds([{ frame: item.frame, transform: drag.transform }]);
+    const snapped = bounds
+      ? snapDragDelta({ bounds, delta, targets: drag.snapTargets, threshold: SNAP_SCREEN_PX / zoom })
+      : { delta, guides: [] };
+    showSnapGuides(snapped.guides);
+    return snapped.delta;
+  }
+
+  function showSnapGuides(guides: Array<{ axis: "x" | "y"; position: number }>) {
+    const layer = snapGuideLayerRef.current;
+    if (!layer) return;
+    layer.replaceChildren(...guides.map((guide) => {
+      const line = document.createElement("div");
+      line.className = `snap-guide snap-guide--${guide.axis}`;
+      line.style[guide.axis === "x" ? "left" : "top"] = `${guide.position}px`;
+      // Keep the line one screen pixel wide at any zoom.
+      line.style[guide.axis === "x" ? "width" : "height"] = `${1 / zoom}px`;
+      return line;
+    }));
   }
 
   function stopDirectItemDrag(event: PointerEvent<HTMLDivElement>, item: WorkspaceSvgItem) {
@@ -966,8 +1179,13 @@ export function DesignWorkspace({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    const deltaX = (event.clientX - drag.pointer.x) / zoom;
-    const deltaY = (event.clientY - drag.pointer.y) / zoom;
+    const { x: deltaX, y: deltaY } = snapDirectDrag(
+      drag,
+      item,
+      { x: (event.clientX - drag.pointer.x) / zoom, y: (event.clientY - drag.pointer.y) / zoom },
+      event.metaKey || event.ctrlKey,
+    );
+    showSnapGuides([]);
     const next = clampWorkspaceItemTransform({
       ...drag.transform,
       x: drag.transform.x + deltaX,
@@ -986,6 +1204,8 @@ export function DesignWorkspace({
     });
     moveableTransformStart.current = new Map(startEntries);
     latestMoveableTransforms.current = new Map(moveableTransformStart.current);
+    // The action bar would lag behind the moving object, so hide it until the gesture ends.
+    if (selectionBarRef.current) selectionBarRef.current.style.visibility = "hidden";
     const startItems = startEntries.flatMap(([id, transform]) => {
       const item = importedSvgs.find((candidate) => candidate.id === id);
       return item ? [{ frame: item.frame, transform }] : [];
@@ -1230,6 +1450,7 @@ export function DesignWorkspace({
   }
 
   function commitMoveableTransforms() {
+    if (selectionBarRef.current) selectionBarRef.current.style.visibility = "";
     const updates = Array.from(latestMoveableTransforms.current, ([id, transform]) => ({ id, transform }));
     moveableTransformStart.current = new Map();
     moveableGroupCenterStart.current = null;
@@ -1378,12 +1599,21 @@ export function DesignWorkspace({
         if (onDeleteSvgs()) {
           event.preventDefault();
         }
+        return;
+      }
+      // Arrow keys move the selection: 1 mm, Shift for 1 cm, Alt for a tenth of a millimetre.
+      const direction = ARROW_DIRECTIONS[event.key];
+      if (direction && !usesModifier) {
+        const step = nudgeStepPx(measurementUnit, event.shiftKey ? "large" : event.altKey ? "fine" : "normal");
+        if (onNudge(direction.x * step, direction.y * step)) {
+          event.preventDefault();
+        }
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCopySvgs, onCutSvgs, onDeleteSvgs, onPasteSvgs, onRedoSvgs, onSelectAllSvgs, onUndoSvgs]);
+  }, [onCopySvgs, onCutSvgs, onDeleteSvgs, onPasteSvgs, onRedoSvgs, onSelectAllSvgs, onUndoSvgs, onNudge, measurementUnit]);
 
   return (
     <main className="app-shell design-shell">
@@ -1407,29 +1637,14 @@ export function DesignWorkspace({
 
         <WorkspaceToolbar
           language={language}
-          canCopy={selectedSvgIds.length > 0}
-          canCut={selectedSvgIds.length > 0}
-          canPaste={canPaste}
-          canDelete={selectedSvgIds.length > 0}
-          canGroup={selectedItems.length >= 2 && !selectedItems.some((item) => item.textContent)}
-          canUngroup={canUngroupSelection}
-          canFlip={selectedSvgIds.length > 0}
-          canReorder={selectedSvgIds.length === 1 && importedSvgs.length > 1}
+          canUndo={canUndo}
+          canRedo={canRedo}
           projectSaving={projectSaving}
           projectOpening={projectOpening}
           onOpen={onOpenProject}
           onSave={onSaveProject}
-          onSaveAs={onSaveProjectAs}
-          onCopy={onCopySvgs}
-          onCut={onCutSvgs}
-          onPaste={onPasteSvgs}
-          onDelete={onDeleteSvgs}
-          onGroup={onGroupSvgs}
-          onUngroup={onUngroupSvg}
-          onFlipX={onFlipX}
-          onFlipY={onFlipY}
-          onBringForward={() => onMoveLayer("forward")}
-          onSendBackward={() => onMoveLayer("backward")}
+          onUndo={onUndoSvgs}
+          onRedo={onRedoSvgs}
         />
 
         <div className="design-topbar__controls no-drag">
@@ -1499,6 +1714,7 @@ export function DesignWorkspace({
             loading={imageLibraryLoading}
             onAskAi={() => { onOpenAiGenerate(); }}
             onFileImport={onSvgFileChange}
+            onDotPrintImport={(event) => { onDotPrintImport(event); setActiveDrawer(null); }}
             onUseImage={(img) => { onAddLibraryImageToWorkspace(img); setActiveDrawer(null); }}
             onRenameImage={onRenameLibraryImage}
             onDeleteImage={onDeleteLibraryImage}
@@ -1508,8 +1724,8 @@ export function DesignWorkspace({
         {activeDrawer === "shapes" ? (
           <ShapeLibraryPanel
             language={language}
-            onAddShape={(shapeKind) => {
-              onAddShape(shapeKind);
+            onAddShape={(shapeKind, options) => {
+              onAddShape(shapeKind, options);
               setActiveDrawer(null);
             }}
           />
@@ -1533,7 +1749,7 @@ export function DesignWorkspace({
           <div className="stage-statusbar">
             <strong>{matName}</strong>
             <span>{materialName}</span>
-            <span>{matDimensions.width} × {matDimensions.height} in</span>
+            <span>{formatLength(matDimensions.width, measurementUnit, language).replace(/ \S+$/, "")} × {formatLength(matDimensions.height, measurementUnit, language)}</span>
           </div>
           <div className="ruler-corner">0</div>
           <Ruler axis="x" ticks={xTicks} unit={measurementUnit} />
@@ -1549,6 +1765,30 @@ export function DesignWorkspace({
             onContextMenu={(e) => e.preventDefault()}
           >
             <div className="infinite-grid" />
+            {selectionBarPosition ? (
+              <div
+                ref={selectionBarRef}
+                className="selection-bar"
+                style={{ left: selectionBarPosition.left, top: selectionBarPosition.top }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onContextMenu={(event) => event.stopPropagation()}
+              >
+                <SelectionActionBar
+                  language={language}
+                  canGroup={selectedItems.length >= 2 && !selectedItems.some((item) => item.textContent || item.dotPrint || item.dashed?.enabled)}
+                  canUngroup={canUngroupSelection}
+                  canReorder={selectedSvgIds.length === 1 && importedSvgs.length > 1}
+                  onDuplicate={() => { if (onCopySvgs()) onPasteSvgs(); }}
+                  onDelete={onDeleteSvgs}
+                  onGroup={onGroupSvgs}
+                  onUngroup={onUngroupSvg}
+                  onFlipX={onFlipX}
+                  onFlipY={onFlipY}
+                  onBringForward={() => onMoveLayer("forward")}
+                  onSendBackward={() => onMoveLayer("backward")}
+                />
+              </div>
+            ) : null}
             {marqueeRect ? (
               <div
                 className="marquee-box"
@@ -1568,7 +1808,7 @@ export function DesignWorkspace({
                     ? WORKSPACE_PIXELS_PER_INCH * 0.5 / 2.54
                     : WORKSPACE_PIXELS_PER_INCH * 5 / 25.4;
                 const gridStyle = {
-                  backgroundImage: "linear-gradient(rgba(127,96,66,0.08) 1px,transparent 1px),linear-gradient(90deg,rgba(127,96,66,0.08) 1px,transparent 1px)",
+                  backgroundImage: "linear-gradient(rgba(41,37,33,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(41,37,33,0.06) 1px,transparent 1px)",
                   backgroundSize: `${gridPx}px ${gridPx}px`,
                   backgroundPosition: "-1px -1px",
                 };
@@ -1588,7 +1828,7 @@ export function DesignWorkspace({
                       borderRadius: squareCorners ? 0 : undefined,
                       // With a card size chosen, only that area is paper; the rest of the
                       // sheet shows the plain workspace background — but the grid spans both.
-                      backgroundColor: activeCardSize ? "rgb(247,240,229)" : paperColor,
+                      backgroundColor: activeCardSize ? "rgb(243,242,239)" : paperColor,
                       ...gridStyle,
                     }}
                   >
@@ -1660,6 +1900,7 @@ export function DesignWorkspace({
                   ))
                     )
                   : null}
+                <div ref={snapGuideLayerRef} className="snap-guides" aria-hidden="true" />
                 {moveableTargets.length > 0 && !isDirectItemDragging && !editingTextId ? (
                   <Moveable
                     ref={moveableRef}
@@ -1674,7 +1915,17 @@ export function DesignWorkspace({
                     throttleScale={0}
                     throttleRotate={0}
                     zoom={1 / Math.max(0.01, zoom)}
-                    renderDirections={["nw", "n", "ne", "w", "e", "sw", "s", "se"]}
+                    renderDirections={selectionIsAllLines ? ["w", "e"] : ["nw", "n", "ne", "w", "e", "sw", "s", "se"]}
+                    snappable={!snapSuspended}
+                    snapThreshold={SNAP_SCREEN_PX / Math.max(0.01, zoom)}
+                    snapDirections={SNAP_ALL_DIRECTIONS}
+                    elementSnapDirections={SNAP_ALL_DIRECTIONS}
+                    elementGuidelines={snapElements}
+                    verticalGuidelines={[0, cardWidth / 2, cardWidth]}
+                    horizontalGuidelines={[0, cardHeight / 2, cardHeight]}
+                    snapGap={false}
+                    isDisplaySnapDigit={false}
+                    isDisplayInnerSnapDigit={false}
                     onClick={handleMoveableModifierClick}
                     onClickGroup={handleMoveableModifierClick}
                     onDragStart={handleMoveableDragStart}
@@ -1950,6 +2201,8 @@ export function DesignWorkspace({
               const allCorners = selectedObjs.every((o) => o.shapeKind && shapeHasCorners(o.shapeKind));
               // Fill is a pen option: offered only when everything selected is drawn with a pen.
               const allPenFillable = selectedObjs.every((o) => canPenFill(o, tools));
+              // Dot prints pick their pens per ink, so they have their own panel instead of a tool.
+              const allDotPrint = selectedObjs.every((o) => o.dotPrint);
               const primaryColor = primary.textContent ? primary.textContent.color : (primary.paths[0]?.stroke ?? "#000000");
 
               // Apply a tool/pen colour to the whole selection (text stores it in its
@@ -1971,10 +2224,15 @@ export function DesignWorkspace({
                   <div className="object-settings">
                     {!multi && !allText ? <p className="object-settings__name">{primary.fileName}</p> : null}
 
-                    <div className="object-settings__row object-settings__row--swatches">
-                      <label className="object-settings__label">{t("object.tool")}</label>
-                      <SwatchPicker tools={tools} selectedColor={primaryColor} onPick={applyColor} language={language} />
-                    </div>
+                    {allDotPrint ? (
+                      <DotPrintSettingsPanel language={language} items={selectedObjs} tools={tools}
+                        onChange={(patch) => onDotPrintChange(ids, patch)} />
+                    ) : (
+                      <div className="object-settings__row object-settings__row--swatches">
+                        <label className="object-settings__label">{t("object.tool")}</label>
+                        <SwatchPicker tools={tools} selectedColor={primaryColor} onPick={applyColor} language={language} />
+                      </div>
+                    )}
 
                     {!multi && primary.spotify ? (
                       <div className="object-settings__row object-settings__row--swatches">
@@ -2061,14 +2319,24 @@ export function DesignWorkspace({
                             </div>
                           </div>
                           <div className="object-settings__row">
-                            <label className="object-settings__label" htmlFor="txt-size">{nl ? "Grootte" : "Size"} <em>{tc.fontSize}px</em></label>
+                            <label className="object-settings__label" htmlFor="txt-size">{nl ? "Grootte" : "Size"} <em>{formatLengthPx(tc.fontSize, measurementUnit, language)}</em></label>
                             <input id="txt-size" type="range" min={10} max={200} step={1} value={tc.fontSize}
                               onChange={(e) => onTextContentChange(ids, { fontSize: Number(e.target.value) })}
                               className="text-slider"
                             />
                           </div>
+                          {/* Editing content is single-object only — you wouldn't retype two texts at once. */}
+                          {!multi ? (
+                            <button type="button" className="object-settings__edit-btn"
+                              onClick={() => onEnterTextEdit(primary.id)}
+                            >
+                              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M11 2l3 3-8 8H3v-3z"/></svg>
+                              {nl ? "Tekst bewerken" : "Edit text"}
+                            </button>
+                          ) : null}
+                          <MoreOptions id="text" language={language}>
                           <div className="object-settings__row">
-                            <label className="object-settings__label" htmlFor="txt-ls">{nl ? "Letterafstand" : "Letter spacing"} <em>{tc.letterSpacing}px</em></label>
+                            <label className="object-settings__label" htmlFor="txt-ls">{nl ? "Letterafstand" : "Letter spacing"} <em>{formatLengthPx(tc.letterSpacing, measurementUnit === "in" ? "in" : "mm", language)}</em></label>
                             <input id="txt-ls" type="range" min={-5} max={30} step={0.5} value={tc.letterSpacing}
                               onChange={(e) => onTextContentChange(ids, { letterSpacing: Number(e.target.value) })}
                               className="text-slider"
@@ -2096,18 +2364,14 @@ export function DesignWorkspace({
                               <span className="toggle-switch__knob" />
                             </button>
                           </div>
-                          {/* Editing content is single-object only — you wouldn't retype two texts at once. */}
-                          {!multi ? (
-                            <button type="button" className="object-settings__edit-btn"
-                              onClick={() => onEnterTextEdit(primary.id)}
-                            >
-                              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M11 2l3 3-8 8H3v-3z"/></svg>
-                              {nl ? "Tekst bewerken" : "Edit text"}
-                            </button>
-                          ) : null}
+                          </MoreOptions>
                         </>
                       );
                     })() : null}
+
+                    {!editingTextId ? (
+                      <AlignPanel language={language} count={selectedObjs.length} onAlign={onAlign} onDistribute={onDistribute} />
+                    ) : null}
 
                     {allCorners ? (() => {
                       const maxRadius = Math.round(Math.min(primary.frame.width, primary.frame.height) / 2);
@@ -2115,7 +2379,7 @@ export function DesignWorkspace({
                       return (
                         <div className="object-settings__row">
                           <label className="object-settings__label" htmlFor="shape-radius">
-                            {nl ? "Hoekronding" : "Corner radius"} <em>{radius}px</em>
+                            {nl ? "Hoekronding" : "Corner radius"} <em>{formatLengthPx(radius, measurementUnit === "in" ? "in" : "mm", language)}</em>
                           </label>
                           <input id="shape-radius" type="range" min={0} max={maxRadius} step={1} value={Math.min(radius, maxRadius)}
                             onChange={(e) => onShapeCornerRadiusChange(ids, Number(e.target.value))}
@@ -2171,6 +2435,24 @@ export function DesignWorkspace({
                                   className="text-slider"
                                 />
                               </div>
+                              <MoreOptions id="pen-fill" language={language}>
+                              {fill.pattern === "dots" ? (
+                                <div className="object-settings__row">
+                                  <span className="object-settings__label">{nl ? "Stip" : "Dot"}</span>
+                                  <div className="weight-seg" role="radiogroup" aria-label={nl ? "Stipvorm" : "Dot style"}>
+                                    {DOT_STYLES.map((style) => (
+                                      <button key={style} type="button" role="radio"
+                                        aria-checked={fill.dotStyle === style}
+                                        className={`weight-seg__btn${fill.dotStyle === style ? " weight-seg__btn--active" : ""}`}
+                                        title={nl ? DOT_STYLE_LABELS[style].hintNl : DOT_STYLE_LABELS[style].hintEn}
+                                        onClick={() => onPenFillChange(ids, { dotStyle: style })}
+                                      >
+                                        {DOT_STYLE_LABELS[style][nl ? "nl" : "en"]}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
                               <div className="object-settings__row">
                                 <label className="object-settings__label" htmlFor="pen-fill-angle">
                                   {nl ? "Hoek" : "Angle"} <em>{fill.angle}°</em>
@@ -2181,11 +2463,39 @@ export function DesignWorkspace({
                                   className="text-slider"
                                 />
                               </div>
+                              </MoreOptions>
                             </>
                           ) : null}
                         </>
                       );
                     })() : null}
+
+                    {/* A cut shape is normally a hole in the paper. One you keep (a card, a label) is just a cut line. */}
+                    {selectedObjs.every((o) => canDash(o) && o.shapeKind !== "line" && !o.dashed?.enabled
+                      && o.paths.every((path) => (path.stroke ?? "").toLowerCase() === behindColor.toLowerCase())) ? (
+                      <div className="object-settings__row object-settings__row--toggle">
+                        <label className="object-settings__label" htmlFor="hollow-toggle">{nl ? "Dit stuk bewaar ik" : "I keep this piece"}</label>
+                        <button id="hollow-toggle" type="button" role="switch" aria-checked={Boolean(primary.hollow)}
+                          className={`toggle-switch${primary.hollow ? " toggle-switch--on" : ""}`}
+                          onClick={() => onHollowChange(ids, !primary.hollow)}
+                          title={nl
+                            ? "Aan: je snijdt de vorm uit en bewaart hem (een kaart of label), dus hij wordt als snijlijn getoond. Uit: de vorm wordt een gat in het papier."
+                            : "On: you cut the shape out and keep it (a card or label), so it shows as a cut line. Off: the shape becomes a hole in the paper."}
+                        >
+                          <span className="toggle-switch__knob" />
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {selectedObjs.every((o) => canDash(o)) ? (
+                      <FoldLinePanel language={language} measurementUnit={measurementUnit} dashed={primary.dashed}
+                        onChange={(patch) => onDashChange(ids, patch)} />
+                    ) : null}
+
+                    {selectedObjs.every((o) => canOutline(o)) ? (
+                      <OutlinePanel language={language} measurementUnit={measurementUnit} outline={primary.outline} tools={tools}
+                        onChange={(patch) => onOutlineChange(ids, patch)} onDetach={() => onOutlineDetach(ids)} />
+                    ) : null}
                   </div>
                 </>
               );

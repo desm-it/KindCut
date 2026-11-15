@@ -42,8 +42,8 @@ const translations = {
     "buttons.tryBirthdayCard": "Probeer de verjaardagskaart",
     "buttons.preparingPreview": "Voorbeeld voorbereiden...",
     "buttons.checking": "Controleren...",
-    "buttons.checkSetupAgain": "Controleer instellingen opnieuw",
-    "buttons.setupCricutHelper": "Cricut-hulpje instellen",
+    "buttons.checkSetupAgain": "Opnieuw controleren",
+    "buttons.setupCricutHelper": "Cricut instellen",
     "buttons.settingUp": "Instellen...",
     "buttons.chooseSvg": "Kies afbeelding",
     "buttons.preparing": "Voorbereiden...",
@@ -61,12 +61,12 @@ const translations = {
     "status.readyTitle": "Klaar voor Cricut-projecten",
     "status.readyMessage":
       "Alles is klaar. Begin met een kaart en bewaar je werk lokaal.",
-    "status.warningTitle": "Een hulpje heeft aandacht nodig",
+    "status.warningTitle": "Snijden werkt nog niet",
     "status.warningMessage":
-      "KindCut kan het voorbeeldproject nog tonen, maar kan pas een Cricut-overdracht voorbereiden als het hulpje is ingesteld.",
-    "status.bootstrapTitle": "Cricut-hulpje nog niet ingesteld",
+      "Ontwerpen en opslaan kan gewoon. KindCut kan het snijprogramma niet vinden: klik op \"Opnieuw controleren\", en installeer KindCut opnieuw als dat niet helpt.",
+    "status.bootstrapTitle": "Nog één keer instellen voor je kunt snijden",
     "status.bootstrapMessage":
-      "KindCut heeft SliceBug gevonden. Stel het eenmalig in met Cricut Design Space voordat je naar de snijder stuurt.",
+      "Ontwerpen kan al. Om te snijden haalt KindCut eenmalig de gegevens van je Cricut op uit Cricut Design Space. Klik op \"Cricut instellen\".",
     "status.bootstrapLoadingTitle": "Cricut-hulpje instellen",
     "status.bootstrapLoadingMessage":
       "KindCut haalt lokaal de benodigde Cricut Design Space-profielen op. Dit kan even duren.",
@@ -292,8 +292,8 @@ const translations = {
     "buttons.tryBirthdayCard": "Try the birthday card",
     "buttons.preparingPreview": "Preparing preview...",
     "buttons.checking": "Checking...",
-    "buttons.checkSetupAgain": "Check setup again",
-    "buttons.setupCricutHelper": "Set up Cricut helper",
+    "buttons.checkSetupAgain": "Check again",
+    "buttons.setupCricutHelper": "Set up Cricut",
     "buttons.settingUp": "Setting up...",
     "buttons.chooseSvg": "Choose image",
     "buttons.preparing": "Preparing...",
@@ -311,12 +311,12 @@ const translations = {
     "status.readyTitle": "Ready for Cricut projects",
     "status.readyMessage":
       "Everything KindCut needs is available. You can start with a simple card and save your work locally.",
-    "status.warningTitle": "One helper needs attention",
+    "status.warningTitle": "Cutting doesn't work yet",
     "status.warningMessage":
-      "KindCut can still show the sample project, but it cannot prepare a Cricut handoff until the helper app is set up.",
-    "status.bootstrapTitle": "Cricut helper is not set up yet",
+      "You can still design and save. KindCut can't find its cutting program: click \"Check again\", and reinstall KindCut if that doesn't help.",
+    "status.bootstrapTitle": "One-time setup before you can cut",
     "status.bootstrapMessage":
-      "KindCut found SliceBug. Set it up once with Cricut Design Space before sending to the cutter.",
+      "You can already design. To cut, KindCut fetches your Cricut's details from Cricut Design Space once. Click \"Set up Cricut\".",
     "status.bootstrapLoadingTitle": "Setting up the Cricut helper",
     "status.bootstrapLoadingMessage":
       "KindCut is importing the local Cricut Design Space profiles it needs. This may take a moment.",

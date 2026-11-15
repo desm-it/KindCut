@@ -99,6 +99,7 @@ describe("normalizePenFill", () => {
       pattern: "lines",
       density: 100,
       angle: 135,
+      dotStyle: "circle",
     });
     expect(normalizePenFill(null)).toBeNull();
   });
@@ -207,7 +208,7 @@ describe("generatePenFill", () => {
       expect(fill.length, pattern).toBeGreaterThan(0);
       for (const polyline of fill.slice(0, 40)) {
         if (pattern === "dots") {
-          const ring = polyline.points.slice(0, -1);
+          const ring = polyline.points;
           const centre = toTile({
             x: ring.reduce((sum, point) => sum + point.x, 0) / ring.length,
             y: ring.reduce((sum, point) => sum + point.y, 0) / ring.length,
@@ -227,5 +228,22 @@ describe("generatePenFill", () => {
     const huge: FillRegion = { rings: [rectRing(0, 0, 10_000, 10_000)], fillRule: "nonzero" };
     const fill = generatePenFill([huge], settings({ pattern: "dots", density: 100 }), { penWidth: 1, maxElements: 2_000 });
     expect(fill.length).toBeLessThan(2_600);
+  });
+});
+
+describe("dot styles in the dots pattern", () => {
+  it("draws taps, 0.1 mm dashes or the smallest circle, and spaces them for the same ink", () => {
+    const unitsPerMm = 10;
+    const fills = (["tap", "dash", "circle"] as const).map((dotStyle) =>
+      generatePenFill([square], settings({ pattern: "dots", density: 20, dotStyle }), { penWidth: 4, unitsPerMm }),
+    );
+    const [taps, dashes, circles] = fills;
+    expect(taps?.[0]?.points).toHaveLength(2);
+    expect(taps?.[0]?.points[0]).toEqual(taps?.[0]?.points[1]);
+    const dash = dashes?.[0]?.points ?? [];
+    expect(Math.hypot((dash[1]?.x ?? 0) - (dash[0]?.x ?? 0), (dash[1]?.y ?? 0) - (dash[0]?.y ?? 0))).toBeCloseTo(1); // 0.1 mm
+    expect(circles?.[0]?.closed).toBe(true);
+    // Bigger marks need fewer of them for the same density.
+    expect((taps?.length ?? 0)).toBeGreaterThan(circles?.length ?? 0);
   });
 });

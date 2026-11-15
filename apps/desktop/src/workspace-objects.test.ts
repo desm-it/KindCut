@@ -89,7 +89,7 @@ describe("pen fill in the cut SVG", () => {
     ...obj,
     paths: [{ id: "p1", d: "M0 0H40V40H0Z", fill: "none", stroke: "#1f6feb", strokeWidth: "1.5" }],
     transform: { x: 20, y: 30, scaleX: 2, scaleY: 2, rotation: 0 },
-    penFill: { enabled: true, pattern: "lines", density: 25, angle: 45 },
+    penFill: { enabled: true, pattern: "lines", density: 25, angle: 45, dotStyle: "circle" },
   };
 
   function pathCount(svg: string): number {
@@ -164,7 +164,7 @@ describe("cropping the cut SVG to the paper", () => {
     const filled = at(MAT_W - 20, 40, {
       paths: [{ id: "p1", d: "M0 0H40V40H0Z", fill: "none", stroke: "#1f6feb", strokeWidth: "1.5" }],
       transform: { x: MAT_W - 20, y: 40, scaleX: 1, scaleY: 1, rotation: 30 },
-      penFill: { enabled: true, pattern: "lines", density: 30, angle: 45 },
+      penFill: { enabled: true, pattern: "lines", density: 30, angle: 45, dotStyle: "circle" },
     } as Partial<WorkspaceObject>);
     const svg = buildWorkspaceCutSvg([filled], MAT_W, MAT_H, tools, 80, "", paper);
     expect(svg.match(/<path\b/g)?.length).toBe(2);

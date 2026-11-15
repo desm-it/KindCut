@@ -24,6 +24,9 @@ type ToolLike = { color: string; type: "pen" | "cut" };
 /** Pen line width in workspace pixels: about 0.4 mm at 80 px per inch, same as the on-screen pen outline. */
 export const PEN_LINE_WIDTH_PX = 1.25;
 
+/** Workspace pixels per millimetre (80 px per inch). */
+export const WORKSPACE_PX_PER_MM = 80 / 25.4;
+
 /** Curves are flattened to within this distance (real-size workspace pixels) before filling. */
 const FLATTEN_TOLERANCE_PX = 0.1;
 
@@ -104,7 +107,7 @@ export function buildPenFillStrokes(item: WorkspaceObject, tools: ToolLike[] | u
   const { sx, sy } = itemScale(item);
   return penFillRegions(item, tools)
     .map(({ color, regions }) => {
-      const polylines = generatePenFill(regions, fill, { penWidth: PEN_LINE_WIDTH_PX }).map((polyline) => ({
+      const polylines = generatePenFill(regions, fill, { penWidth: PEN_LINE_WIDTH_PX, unitsPerMm: WORKSPACE_PX_PER_MM }).map((polyline) => ({
         ...polyline,
         points: polyline.points.map((point) => ({ x: point.x / sx, y: point.y / sy })),
       }));
@@ -114,5 +117,5 @@ export function buildPenFillStrokes(item: WorkspaceObject, tools: ToolLike[] | u
 }
 
 export function penFillTileFor(item: WorkspaceObject): PenFillTile | null {
-  return item.penFill ? penFillPatternTile(item.penFill, PEN_LINE_WIDTH_PX) : null;
+  return item.penFill ? penFillPatternTile(item.penFill, PEN_LINE_WIDTH_PX, WORKSPACE_PX_PER_MM) : null;
 }

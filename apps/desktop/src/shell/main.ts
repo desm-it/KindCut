@@ -247,6 +247,16 @@ async function openProjectFile(): Promise<ProjectFileResult> {
   const content = await fs.readFile(filePath, "utf8");
   return { canceled: false, path: filePath, content };
 }
+
+// Reopens a project from the welcome screen's recent list (no file dialog).
+async function openProjectFileAtPath(filePath: string): Promise<ProjectFileResult> {
+  if (typeof filePath !== "string" || !path.isAbsolute(filePath) || path.extname(filePath).toLowerCase() !== ".kindcut") {
+    throw new Error("That is not a KindCut project file.");
+  }
+  const content = await fs.readFile(filePath, "utf8");
+  return { canceled: false, path: filePath, content };
+}
+
 function sendRendererAction(action: RendererAction, value?: string): void {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send("app:action", { action, value });
@@ -1295,6 +1305,7 @@ ipcMain.handle("workspace:show-context-menu", (event) => {
 });
 ipcMain.handle("project:save", async (_event, input: ProjectSaveInput): Promise<ProjectFileResult> => saveProjectFile(input));
 ipcMain.handle("project:open", async (): Promise<ProjectFileResult> => openProjectFile());
+ipcMain.handle("project:open-path", async (_event, filePath: string): Promise<ProjectFileResult> => openProjectFileAtPath(filePath));
 ipcMain.handle("app:close-confirmed", (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win) {

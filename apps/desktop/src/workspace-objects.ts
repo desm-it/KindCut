@@ -2,8 +2,10 @@ import type { WorkspaceShapeKind } from "./workspace-shapes";
 import type { WorkspaceItemFrame, WorkspaceItemTransform } from "./workspace-utils";
 import { traceCenterlinePathD } from "./centerline-trace";
 import { buildShapePath } from "./workspace-shapes";
-import type { PenFillSettings } from "@cricut-companion/craft-core";
+import type { DashSettings, DotPrintSettings, OutlineSettings, PenFillSettings } from "@cricut-companion/craft-core";
 import { buildPenFillStrokes } from "./pen-fill-render";
+import { activeDash, dashedFramePath } from "./dash-render";
+import { activeOutline, outlineFramePath, outlineTool } from "./outline-render";
 import {
   type Point,
   type Rect,
@@ -61,6 +63,18 @@ export type WorkspaceObjectBase = {
   cornerRadius?: number; // corner-rounding for shapes (frame units, radius at scale 1)
   penFill?: PenFillSettings; // infill pattern for pen-drawn objects; strokes are generated, never stored
   spotify?: WorkspaceSpotifyRef; // set on Spotify codes, so the song can be swapped in place
+  dotPrint?: WorkspaceDotPrint; // a picture printed as pen dots; has no paths of its own
+  dashed?: DashSettings; // cut or drawn as dashes (a fold line); the dashes are generated, never stored
+  outline?: OutlineSettings; // a border at a distance around the object; generated, never stored
+  /** A cut shape you keep (a card, a label): shown as just its cut line instead of a hole in the paper. */
+  hollow?: boolean;
+};
+
+/** A picture drawn as dots by up to four pens. The dots are generated, never stored. */
+export type WorkspaceDotPrint = {
+  /** The (downscaled) picture as a data URL. */
+  image: string;
+  settings: DotPrintSettings;
 };
 
 export type WorkspaceSpotifyRef = { uri: string; name: string };
@@ -122,7 +136,7 @@ export function buildWorkspaceObjectSvg(item: WorkspaceObject): string {
     .join("")}</svg>`;
 }
 
-type CutTool = { color: string; type: "pen" | "cut" };
+type CutTool = { id?: string; color: string; type: "pen" | "cut" };
 
 /** One path headed for the cutter, kept as data so it can be cropped before it is written out. */
 type CutPathElement = {
@@ -148,7 +162,32 @@ function renderCutElement(element: CutElement): string {
   return `<path d="${escapeXml(element.d)}" fill="${escapeXml(element.fill)}"${fillRule} stroke="${escapeXml(element.stroke)}" stroke-width="${escapeXml(element.strokeWidth)}"${strokeLinecap}${strokeLinejoin}${transform}/>`;
 }
 
+/**
+ * The border around an object, as a real closed path in its own tool's colour.
+ * It goes after the object's own lines, so a pen-drawn design is finished
+ * before its outline frees it from the sheet.
+ */
+function buildOutlineCutElements(item: WorkspaceObject, tools?: CutTool[]): CutElement[] {
+  const outline = activeOutline(item);
+  if (!outline) return [];
+  const d = outlineFramePath(item);
+  if (!d) return [];
+  const tool = outlineTool(outline, tools);
+  return [{
+    d,
+    fill: "none",
+    stroke: tool.color,
+    strokeWidth: tool.isPen ? "1.25" : "0.5",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  }];
+}
+
 function buildItemCutElements(item: WorkspaceObject, tools?: CutTool[]): CutElement[] {
+  return buildItemOwnCutElements(item, tools).concat(buildOutlineCutElements(item, tools));
+}
+
+function buildItemOwnCutElements(item: WorkspaceObject, tools?: CutTool[]): CutElement[] {
   // Text items with no paths: emit <text> elements (or stroke paths for single-line text)
   if (item.textContent && item.paths.length === 0) {
     const tc = item.textContent;
@@ -185,17 +224,31 @@ function buildItemCutElements(item: WorkspaceObject, tools?: CutTool[]): CutElem
     strokeLinecap: "round",
     strokeLinejoin: "round",
   }));
+  const dash = activeDash(item);
   return fillStrokes.concat(item.paths.map((path) => {
     // Determine cut vs pen using the tools list (same logic as WorkspaceObjectArtwork).
     const matchedTool = tools?.find((t) => t.color.toLowerCase() === (path.stroke ?? "").toLowerCase());
     const isPen = matchedTool?.type === "pen";
     const toolColor = path.stroke && path.stroke !== "none" ? path.stroke : path.fill;
 
+    // A dashed line goes out as separate short strokes: the gaps between them are
+    // never cut, which is what lets a fold line bend without coming apart.
+    if (dash) {
+      return {
+        d: dashedFramePath(item, shapeD ?? path.d, shapeD ? undefined : path.pathTransform, dash),
+        fill: "none",
+        stroke: toolColor,
+        strokeWidth: isPen ? path.strokeWidth : "0.5",
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+      };
+    }
+
     // Pen paths: outline only — fill=none, stroke=tool colour (slicebug reads stroke for tool detection)
     // Cut paths: filled shape  — fill=tool colour AND stroke=tool colour so slicebug can detect the colour
     return {
       d: shapeD ?? path.d,
-      fill: isPen ? "none" : toolColor,
+      fill: isPen || item.hollow ? "none" : toolColor,
       fillRule: path.fillRule,
       stroke: toolColor, // always keep stroke so slicebug can read the tool colour
       strokeWidth: isPen ? path.strokeWidth : "0.5", // thin stroke for cut paths (visual only)

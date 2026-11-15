@@ -1,8 +1,8 @@
 import { type CardSize, type MeasurementUnit, type WorkspaceItemTransform, isCardSize } from "./workspace-utils";
 import { type WorkspaceShapeKind, isWorkspaceShapeKind } from "./workspace-shapes";
-import type { WorkspacePathData, WorkspaceSpotifyRef } from "./workspace-objects";
+import type { WorkspaceDotPrint, WorkspacePathData, WorkspaceSpotifyRef } from "./workspace-objects";
 import { extractWorkspacePathsFromSvg } from "./workspace-svg-import";
-import { type PenFillSettings, normalizePenFill } from "@cricut-companion/craft-core";
+import { type DashSettings, type OutlineSettings, type PenFillSettings, normalizeDash, normalizeDotPrintSettings, normalizeOutline, normalizePenFill } from "@cricut-companion/craft-core";
 
 export const KINDCUT_PROJECT_FORMAT = "kindcut-project";
 export const KINDCUT_PROJECT_VERSION = 1;
@@ -119,6 +119,11 @@ export type SavedWorkspaceObject = {
   // Pen fill is saved as settings only and regenerated when drawn, so it stays editable.
   penFill?: PenFillSettings;
   spotify?: WorkspaceSpotifyRef;
+  dotPrint?: WorkspaceDotPrint;
+  // Fold lines and outlines are saved as settings too, and regenerated when drawn or cut.
+  dashed?: DashSettings;
+  outline?: OutlineSettings;
+  hollow?: boolean;
 };
 
 export type KindCutProjectFile = {
@@ -305,7 +310,19 @@ function parseWorkspaceObject(value: unknown, fallbackId: string): SavedWorkspac
     cornerRadius: typeof value.cornerRadius === "number" ? value.cornerRadius : undefined,
     penFill: normalizePenFill(value.penFill) ?? undefined,
     spotify: normalizeSpotifyRef(value.spotify),
+    dotPrint: normalizeDotPrint(value.dotPrint),
+    dashed: normalizeDash(value.dashed) ?? undefined,
+    outline: normalizeOutline(value.outline) ?? undefined,
+    hollow: value.hollow === true ? true : undefined,
   });
+}
+
+function normalizeDotPrint(value: unknown): WorkspaceDotPrint | undefined {
+  if (!isRecord(value) || typeof value.image !== "string" || !/^data:image\/(png|jpeg|webp);base64,/.test(value.image)) {
+    return undefined;
+  }
+  const settings = normalizeDotPrintSettings(value.settings);
+  return settings ? { image: value.image, settings } : undefined;
 }
 
 function normalizeSpotifyRef(value: unknown): WorkspaceSpotifyRef | undefined {
@@ -347,8 +364,9 @@ function normalizeSavedWorkspaceObject(value: SavedWorkspaceObject): SavedWorksp
     pathTransform: path.pathTransform,
     sourceLabel: path.sourceLabel,
   }));
-  // Text items have no paths (they render live from textContent) — that is valid
-  if (!isTextItem && (paths.length === 0 || (value.type === "path" && paths.length !== 1))) {
+  // Text items and dot prints have no paths (they render live from their content) — that is valid
+  const hasLiveContent = isTextItem || Boolean(value.dotPrint);
+  if (!hasLiveContent && (paths.length === 0 || (value.type === "path" && paths.length !== 1))) {
     throw new Error("This is not a valid KindCut project file.");
   }
   const kind = value.kind === "shape" ? "shape" : value.kind === "text" ? "text" : "image";
@@ -371,6 +389,10 @@ function normalizeSavedWorkspaceObject(value: SavedWorkspaceObject): SavedWorksp
     cornerRadius: typeof value.cornerRadius === "number" ? value.cornerRadius : undefined,
     penFill: normalizePenFill(value.penFill) ?? undefined,
     spotify: normalizeSpotifyRef(value.spotify),
+    dotPrint: normalizeDotPrint(value.dotPrint),
+    dashed: normalizeDash(value.dashed) ?? undefined,
+    outline: normalizeOutline(value.outline) ?? undefined,
+    hollow: value.hollow === true ? true : undefined,
   };
 }
 

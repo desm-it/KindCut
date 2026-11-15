@@ -6,9 +6,9 @@ import { extractWorkspacePathsFromSvg } from "../workspace-svg-import";
 import { getSvgSizeCopy, getSvgSizeInfo } from "../svg-import";
 import type { WorkspaceShapeKind } from "../workspace-shapes";
 import {
-  DEFAULT_SHAPE_SIZE,
   ROUNDED_SQUARE_DEFAULT_RADIUS,
   buildShapePath,
+  defaultShapeFrame,
   getWorkspaceShapeDefinition,
 } from "../workspace-shapes";
 import { computeSnugFrame } from "./workspace-geometry";
@@ -70,6 +70,10 @@ export function createWorkspaceObjectItem({
   cornerRadius,
   penFill,
   spotify,
+  dotPrint,
+  dashed,
+  outline,
+  hollow,
 }: {
   id: string;
   type: "path" | "group";
@@ -87,6 +91,10 @@ export function createWorkspaceObjectItem({
   cornerRadius?: number;
   penFill?: WorkspaceObject["penFill"];
   spotify?: WorkspaceObject["spotify"];
+  dotPrint?: WorkspaceObject["dotPrint"];
+  dashed?: WorkspaceObject["dashed"];
+  outline?: WorkspaceObject["outline"];
+  hollow?: boolean;
 }): WorkspaceSvgItem {
   return {
     id,
@@ -104,6 +112,10 @@ export function createWorkspaceObjectItem({
     cornerRadius,
     penFill: penFill ? { ...penFill } : undefined,
     spotify: spotify ? { ...spotify } : undefined,
+    dotPrint: dotPrint ? { ...dotPrint } : undefined,
+    dashed: dashed ? { ...dashed } : undefined,
+    outline: outline ? { ...outline } : undefined,
+    hollow: hollow || undefined,
   } as WorkspaceSvgItem;
 }
 
@@ -123,10 +135,10 @@ export function createWorkspaceShapeItem({
   // Shapes are generated bounds-tight in their frame, so no snug pass is needed.
   // "Rounded square" is just a square with a preset corner radius.
   const cornerRadius = shapeKind === "rounded-square" ? ROUNDED_SQUARE_DEFAULT_RADIUS : 0;
-  const size = DEFAULT_SHAPE_SIZE;
+  const frame = defaultShapeFrame(shapeKind);
   const path: WorkspacePathData = {
     id: "path-1",
-    d: buildShapePath(shapeKind, size, size, cornerRadius),
+    d: buildShapePath(shapeKind, frame.width, frame.height, cornerRadius),
     fill: "none",
     stroke: "#000000",
     strokeWidth: "1.5",
@@ -141,7 +153,7 @@ export function createWorkspaceShapeItem({
     shapeKind,
     fileName: label,
     fileSize: language === "nl" ? "KindCut-vorm" : "KindCut shape",
-    frame: { width: size, height: size },
+    frame,
     paths: [path],
     language,
     index,

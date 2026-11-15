@@ -30,7 +30,7 @@ function errorMessage(code: SpotifyCodeErrorCode, nl: boolean): string {
 
 function codePreviewSrc(svg: string): string {
   try {
-    const styled = svg.replace(/\sfill="[^"]*"/gi, ' fill="#5a3a1a"');
+    const styled = svg.replace(/\sfill="[^"]*"/gi, ' fill="#2f2a26"');
     return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(styled)))}`;
   } catch {
     return "";

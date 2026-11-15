@@ -15,6 +15,11 @@ export type WorkspaceClipboardSvgItem = {
   textContent?: WorkspaceTextContent;
   penFill?: WorkspaceObject["penFill"];
   spotify?: WorkspaceObject["spotify"];
+  dotPrint?: WorkspaceObject["dotPrint"];
+  cornerRadius?: number;
+  dashed?: WorkspaceObject["dashed"];
+  outline?: WorkspaceObject["outline"];
+  hollow?: boolean;
 };
 
 export type PastedWorkspaceSvgItemInput = WorkspaceClipboardSvgItem & {
@@ -44,6 +49,11 @@ export function getSelectedWorkspaceClipboardItems(
       textContent: item.textContent ? { ...item.textContent } : undefined,
       penFill: item.penFill ? { ...item.penFill } : undefined,
       spotify: item.spotify ? { ...item.spotify } : undefined,
+      dotPrint: item.dotPrint ? { ...item.dotPrint } : undefined,
+      cornerRadius: item.cornerRadius,
+      dashed: item.dashed ? { ...item.dashed } : undefined,
+      outline: item.outline ? { ...item.outline } : undefined,
+      hollow: item.hollow,
     }));
 }
 

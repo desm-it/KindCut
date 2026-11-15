@@ -6,6 +6,8 @@ export const WORKSPACE_SHAPE_KINDS = [
   "hexagon",
   "octagon",
   "rounded-square",
+  "heart",
+  "line",
 ] as const;
 
 export type WorkspaceShapeKind = (typeof WORKSPACE_SHAPE_KINDS)[number];
@@ -25,6 +27,8 @@ export const WORKSPACE_SHAPES: WorkspaceShapeDefinition[] = [
   { kind: "hexagon", labelNl: "Zeshoek", labelEn: "Hexagon", icon: "⬡" },
   { kind: "octagon", labelNl: "Achthoek", labelEn: "Octagon", icon: "⬣" },
   { kind: "rounded-square", labelNl: "Afgerond vierkant", labelEn: "Rounded square", icon: "▢" },
+  { kind: "heart", labelNl: "Hart", labelEn: "Heart", icon: "♡" },
+  { kind: "line", labelNl: "Lijn", labelEn: "Line", icon: "─" },
 ];
 
 const SHAPE_VIEWBOX_SIZE = 200;
@@ -80,6 +84,10 @@ export function getWorkspaceShapePath(kind: WorkspaceShapeKind): string {
       return polygonPath(pointsOnCircle(8, -90 + 22.5));
     case "rounded-square":
       return "M 56 20 H 144 Q 180 20 180 56 V 144 Q 180 180 144 180 H 56 Q 20 180 20 144 V 56 Q 20 20 56 20 Z";
+    case "heart":
+      return polygonPath(fitToBox(unitHeart(), SHAPE_RADIUS * 2, SHAPE_RADIUS * 2).map((p) => ({ x: p.x + SHAPE_MARGIN, y: p.y + SHAPE_MARGIN })));
+    case "line":
+      return "M 20 100 H 180";
   }
 }
 
@@ -87,9 +95,17 @@ export function getWorkspaceShapePath(kind: WorkspaceShapeKind): string {
 export const DEFAULT_SHAPE_SIZE = 170;
 export const ROUNDED_SQUARE_DEFAULT_RADIUS = 40;
 
-// Every shape except the circle has corners that can take a radius.
+// A line has no height of its own; its box is this tall so it can be grabbed.
+export const LINE_SHAPE_HEIGHT = 14;
+
+/** The frame a freshly placed shape gets (workspace px). */
+export function defaultShapeFrame(kind: WorkspaceShapeKind): { width: number; height: number } {
+  return kind === "line" ? { width: DEFAULT_SHAPE_SIZE, height: LINE_SHAPE_HEIGHT } : { width: DEFAULT_SHAPE_SIZE, height: DEFAULT_SHAPE_SIZE };
+}
+
+// Shapes with straight edges meeting in corners can take a corner radius.
 export function shapeHasCorners(kind: WorkspaceShapeKind): boolean {
-  return kind !== "circle";
+  return kind !== "circle" && kind !== "heart" && kind !== "line";
 }
 
 // Build a shape path filling the box [0,0,w,h] (bounds-tight — no margin/offset).
@@ -119,7 +135,28 @@ export function buildShapePath(
       return roundedPolygonPath(fitToBox(unitPolygon(8, -90 + 22.5), w, h), cornerRadius);
     case "star":
       return roundedPolygonPath(fitToBox(unitStar(5, 0.44, -90), w, h), cornerRadius);
+    case "heart":
+      return polygonPath(fitToBox(unitHeart(), w, h));
+    case "line":
+      // A straight line through the middle of its box.
+      return `M 0 ${formatNumber(h / 2)} H ${formatNumber(w)}`;
   }
+}
+
+let heartPoints: Point[] | null = null;
+
+// The classic heart curve, sampled finely enough to cut as a smooth outline.
+function unitHeart(): Point[] {
+  if (!heartPoints) {
+    heartPoints = Array.from({ length: 96 }, (_v, index) => {
+      const t = (index / 96) * Math.PI * 2;
+      return {
+        x: 16 * Math.sin(t) ** 3,
+        y: -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)),
+      };
+    });
+  }
+  return heartPoints;
 }
 
 function ellipsePath(w: number, h: number): string {

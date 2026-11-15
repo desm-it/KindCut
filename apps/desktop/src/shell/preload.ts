@@ -149,6 +149,7 @@ const desktopApi = {
   project: {
     save: (input: ProjectSaveInput): Promise<ProjectFileResult> => ipcRenderer.invoke("project:save", input),
     open: (): Promise<ProjectFileResult> => ipcRenderer.invoke("project:open"),
+    openPath: (filePath: string): Promise<ProjectFileResult> => ipcRenderer.invoke("project:open-path", filePath),
   },
   projectState: {
     setProvider: (provider: (() => ProjectState) | null): (() => void) => {

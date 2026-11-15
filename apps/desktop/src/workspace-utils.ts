@@ -519,3 +519,240 @@ export function saveMeasurementUnitPreference(unit: MeasurementUnit): void {
     // localStorage can be unavailable in constrained renderer contexts.
   }
 }
+
+// ── Fitting the mat in view and placing new objects ────────────────────────────
+
+export type WorkspaceRect = { x: number; y: number; width: number; height: number };
+
+/** The mat's coloured border around the paper, in workspace pixels. */
+export function getMatBorder(kind: MatKind): { side: number; top: number; bottom: number } {
+  return kind === "card" ? { side: 33, top: 90, bottom: 78 } : { side: 33, top: 80, bottom: 80 };
+}
+
+/**
+ * Zoom and pan that show the whole mat (paper plus its border) centred in the
+ * visible canvas. `available` is the canvas size without the rulers.
+ */
+export function fitMatToView(input: {
+  paper: MatDimensions; // workspace pixels
+  border: { side: number; top: number; bottom: number };
+  available: MatDimensions;
+  padding?: number;
+  maxZoom?: number;
+}): { zoom: number; pan: Point } {
+  const padding = input.padding ?? 20;
+  const totalWidth = input.paper.width + input.border.side * 2;
+  const totalHeight = input.paper.height + input.border.top + input.border.bottom;
+  const fit = Math.min(
+    (input.available.width - padding * 2) / totalWidth,
+    (input.available.height - padding * 2) / totalHeight,
+  );
+  const zoom = clamp(Number.isFinite(fit) ? fit : 1, WORKSPACE_MIN_ZOOM, input.maxZoom ?? 1.25);
+  return {
+    zoom,
+    pan: {
+      x: (input.available.width - totalWidth * zoom) / 2 + input.border.side * zoom,
+      y: (input.available.height - totalHeight * zoom) / 2 + input.border.top * zoom,
+    },
+  };
+}
+
+export function intersectRects(a: WorkspaceRect, b: WorkspaceRect): WorkspaceRect | null {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const right = Math.min(a.x + a.width, b.x + b.width);
+  const bottom = Math.min(a.y + a.height, b.y + b.height);
+  return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
+}
+
+/**
+ * Where to put a new object (its top-left corner): as close to the middle of
+ * `area` as possible without covering objects that are already there. When
+ * there is no free spot, it takes the spot that covers the least.
+ */
+export function findFreePlacement(input: {
+  size: MatDimensions;
+  area: WorkspaceRect;
+  occupied: WorkspaceRect[];
+  gap?: number;
+  step?: number;
+}): Point {
+  const { size, area, occupied } = input;
+  const gap = input.gap ?? 8;
+  const step = input.step ?? 16;
+  const center = { x: area.x + area.width / 2, y: area.y + area.height / 2 };
+  const centered = { x: center.x - size.width / 2, y: center.y - size.height / 2 };
+
+  // Positions that keep the object fully inside the area (just the centre when it doesn't fit),
+  // including flush against each edge so a tight fit isn't missed between grid steps.
+  const range = (start: number, room: number, middle: number): number[] => {
+    if (room <= 0) return [middle];
+    const values = [middle, start, start + room];
+    for (let offset = step; offset < room / 2; offset += step) {
+      values.push(middle - offset, middle + offset);
+    }
+    return values;
+  };
+  const xs = range(area.x, area.width - size.width, centered.x);
+  const ys = range(area.y, area.height - size.height, centered.y);
+  const coveredArea = (box: WorkspaceRect) =>
+    occupied.reduce((total, other) => {
+      const overlap = intersectRects(box, other);
+      return overlap ? total + overlap.width * overlap.height : total;
+    }, 0);
+
+  // Best spot: covers the least, then keeps the most breathing room, then is nearest the middle.
+  let best = centered;
+  let bestScore = [Infinity, Infinity, Infinity];
+  for (const y of ys) {
+    for (const x of xs) {
+      const score = [
+        coveredArea({ x, y, width: size.width, height: size.height }),
+        coveredArea({ x: x - gap, y: y - gap, width: size.width + gap * 2, height: size.height + gap * 2 }),
+        Math.hypot(x - centered.x, y - centered.y),
+      ];
+      const better = score.findIndex((value, index) => Math.abs(value - (bestScore[index] ?? 0)) > 0.5);
+      if (better >= 0 && (score[better] ?? 0) < (bestScore[better] ?? 0)) {
+        best = { x, y };
+        bestScore = score;
+      }
+    }
+  }
+  return { x: roundCss(best.x), y: roundCss(best.y) };
+}
+
+/**
+ * A length for display in the user's unit, e.g. "1,5 cm". Workspace sizes are
+ * stored in pixels (80 per inch) and mats in inches; people think in cm.
+ */
+export function formatLength(inches: number, unit: MeasurementUnit, language: "nl" | "en" = "en"): string {
+  const value = unit === "in" ? inches : unit === "cm" ? inches * 2.54 : inches * 25.4;
+  const decimals = unit === "mm" ? (Math.abs(value) < 10 ? 1 : 0) : unit === "cm" ? 1 : 2;
+  const text = String(Number(value.toFixed(decimals)));
+  return `${language === "nl" ? text.replace(".", ",") : text} ${unit}`;
+}
+
+export function formatLengthPx(pixels: number, unit: MeasurementUnit, language: "nl" | "en" = "en"): string {
+  return formatLength(pixels / WORKSPACE_PIXELS_PER_INCH, unit, language);
+}
+
+// ── Align, distribute, snap and nudge ───────────────────────────────────────
+
+export type AlignMode = "left" | "center" | "right" | "top" | "middle" | "bottom";
+
+type IdentifiedItem = WorkspaceTransformableItem & { id: string };
+type TransformUpdate = { id: string; transform: WorkspaceItemTransform };
+
+function boundsOf(item: WorkspaceTransformableItem): WorkspaceBounds {
+  return getWorkspaceSelectionBounds([item]) as WorkspaceBounds;
+}
+
+/**
+ * Lines objects up. One object is aligned to the paper (so "centre" puts it in
+ * the middle of the card); several objects are aligned to each other.
+ * Rotated objects are aligned by the box around them.
+ */
+export function alignWorkspaceItems(items: IdentifiedItem[], mode: AlignMode, paper: WorkspaceRect): TransformUpdate[] {
+  if (items.length === 0) return [];
+  const group = getWorkspaceSelectionBounds(items) as WorkspaceBounds;
+  const reference = items.length === 1
+    ? { left: paper.x, top: paper.y, right: paper.x + paper.width, bottom: paper.y + paper.height }
+    : group;
+  return items.map((item) => {
+    const bounds = boundsOf(item);
+    let dx = 0;
+    let dy = 0;
+    if (mode === "left") dx = reference.left - bounds.left;
+    else if (mode === "right") dx = reference.right - bounds.right;
+    else if (mode === "center") dx = (reference.left + reference.right) / 2 - bounds.center.x;
+    else if (mode === "top") dy = reference.top - bounds.top;
+    else if (mode === "bottom") dy = reference.bottom - bounds.bottom;
+    else dy = (reference.top + reference.bottom) / 2 - bounds.center.y;
+    return { id: item.id, transform: { ...item.transform, x: item.transform.x + dx, y: item.transform.y + dy } };
+  });
+}
+
+/** Spreads three or more objects so the gaps between them are equal; the outer two stay put. */
+export function distributeWorkspaceItems(items: IdentifiedItem[], axis: "x" | "y"): TransformUpdate[] {
+  if (items.length < 3) return [];
+  const start = (bounds: WorkspaceBounds) => (axis === "x" ? bounds.left : bounds.top);
+  const size = (bounds: WorkspaceBounds) => (axis === "x" ? bounds.width : bounds.height);
+  const entries = items
+    .map((item) => ({ item, bounds: boundsOf(item) }))
+    .sort((a, b) => (axis === "x" ? a.bounds.center.x - b.bounds.center.x : a.bounds.center.y - b.bounds.center.y));
+  const first = entries[0] as (typeof entries)[number];
+  const last = entries[entries.length - 1] as (typeof entries)[number];
+  const span = start(last.bounds) + size(last.bounds) - start(first.bounds);
+  const gap = (span - entries.reduce((sum, entry) => sum + size(entry.bounds), 0)) / (entries.length - 1);
+  let cursor = start(first.bounds);
+  return entries.map(({ item, bounds }) => {
+    const delta = cursor - start(bounds);
+    cursor += size(bounds) + gap;
+    return {
+      id: item.id,
+      transform: axis === "x"
+        ? { ...item.transform, x: item.transform.x + delta }
+        : { ...item.transform, y: item.transform.y + delta },
+    };
+  });
+}
+
+export type SnapTargets = { x: number[]; y: number[] };
+export type SnapGuide = { axis: "x" | "y"; position: number };
+
+/** The lines a dragged object can snap to: the paper's edges and middle, and those of the other objects. */
+export function getSnapTargets(paper: WorkspaceRect, others: WorkspaceTransformableItem[]): SnapTargets {
+  const x = [paper.x, paper.x + paper.width / 2, paper.x + paper.width];
+  const y = [paper.y, paper.y + paper.height / 2, paper.y + paper.height];
+  for (const other of others) {
+    const bounds = boundsOf(other);
+    x.push(bounds.left, bounds.center.x, bounds.right);
+    y.push(bounds.top, bounds.center.y, bounds.bottom);
+  }
+  return { x, y };
+}
+
+function nearestSnap(edges: number[], targets: number[], threshold: number): { shift: number; position: number } | null {
+  let best: { shift: number; position: number } | null = null;
+  for (const edge of edges) {
+    for (const target of targets) {
+      const shift = target - edge;
+      if (Math.abs(shift) <= threshold && (!best || Math.abs(shift) < Math.abs(best.shift))) {
+        best = { shift, position: target };
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Adjusts a drag so the moved box lands exactly on a nearby snap line.
+ * `bounds` is the box before the drag, `delta` how far it was dragged.
+ */
+export function snapDragDelta(input: {
+  bounds: Pick<WorkspaceBounds, "left" | "right" | "top" | "bottom">;
+  delta: Point;
+  targets: SnapTargets;
+  threshold: number;
+}): { delta: Point; guides: SnapGuide[] } {
+  const { bounds, delta, targets, threshold } = input;
+  const left = bounds.left + delta.x;
+  const right = bounds.right + delta.x;
+  const top = bounds.top + delta.y;
+  const bottom = bounds.bottom + delta.y;
+  const snapX = nearestSnap([left, (left + right) / 2, right], targets.x, threshold);
+  const snapY = nearestSnap([top, (top + bottom) / 2, bottom], targets.y, threshold);
+  const guides: SnapGuide[] = [];
+  if (snapX) guides.push({ axis: "x", position: snapX.position });
+  if (snapY) guides.push({ axis: "y", position: snapY.position });
+  return { delta: { x: delta.x + (snapX?.shift ?? 0), y: delta.y + (snapY?.shift ?? 0) }, guides };
+}
+
+/** How far one press of an arrow key moves the selection, in workspace pixels. */
+export function nudgeStepPx(unit: MeasurementUnit, size: "fine" | "normal" | "large"): number {
+  if (unit === "in") {
+    const inches = size === "fine" ? 1 / 64 : size === "large" ? 0.25 : 1 / 16;
+    return inches * WORKSPACE_PIXELS_PER_INCH;
+  }
+  return mmToWorkspacePx(size === "fine" ? 0.1 : size === "large" ? 10 : 1);
+}
