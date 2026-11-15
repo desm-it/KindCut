@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.4.0 - 2026-11-15
+
+### Added
+
+- Add **Photo as dots** in the Image drawer: a photo is rebuilt from pen dots in cyan, magenta, yellow and black, or in black only. Brightness, contrast, pen tip, resolution and the preview's ink bleed are adjustable (separately for the colours and for black), and each ink can be switched off.
+- Add three dot styles for dot fills and dot photos: a tap, a 0.1 mm dash or a tiny circle.
+- Add **templates** on the welcome screen: insert card with heart, folded card, gift tag and place card. Each sets the mat and material and places ordinary objects you can change.
+- Add an **Outline** around any object, at a distance you choose, cut or drawn with a pen. It follows when the object changes and can be turned into a shape of its own.
+- Add **fold lines**: any shape can be cut as dashes so the paper folds along it but stays in one piece. The Shapes drawer has new **Line**, **Fold line** and **Heart** shapes.
+- Add **Align** buttons (one object to the paper, several to each other) and **Space evenly** for three or more objects.
+- Objects snap to the edges and middle of the paper and of other objects while dragging; hold Cmd/Ctrl to switch it off.
+- Arrow keys move the selection by 1 mm, by 1 cm with Shift and by 0.1 mm with Alt.
+- Add **I keep this piece** for cut shapes such as a card or label: they show as a cut line instead of a hole.
+- Add recent projects to the welcome screen.
+- Add an action bar next to the selection with Duplicate, Mirror, Flip, order, Group and Delete.
+
+### Changed
+
+- Give the app a calmer look with one accent colour, larger text, and sizes shown in the chosen unit.
+- The mat fits the window when a project opens and when the window or a drawer changes size; new objects are placed on a free spot in view. New projects start on the short mat.
+- Choosing a tool is now two labelled options, **Cut** and **Draw**; rarely used settings sit behind **More options**.
+- The Image drawer explains its three choices, and the setup warning says what to do.
+
+### Fixed
+
+- Fix duplicating a rounded shape losing its corner rounding.
+
 ## 1.3.0 - 2026-10-18
 
 ### Added
