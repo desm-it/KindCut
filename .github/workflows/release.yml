@@ -24,6 +24,8 @@ jobs:
   mac:
     name: macOS arm64
     runs-on: macos-15
+    env:
+      TMPDIR: ${{ runner.temp }}
     steps:
       - name: Check out KindCut
         uses: actions/checkout@v4
@@ -84,6 +86,8 @@ jobs:
   windows:
     name: Windows x64
     runs-on: windows-2022
+    env:
+      TMPDIR: ${{ runner.temp }}
     steps:
       - name: Check out KindCut
         uses: actions/checkout@v4
@@ -158,6 +162,8 @@ jobs:
       - windows
     if: github.event_name == 'release' || inputs.release_tag != ''
     runs-on: ubuntu-latest
+    env:
+      TMPDIR: ${{ runner.temp }}
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
