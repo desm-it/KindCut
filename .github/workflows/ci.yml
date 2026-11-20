@@ -54,8 +54,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
+      - name: Test full suite (POSIX)
+        if: runner.os != 'Windows'
         run: npm run test
+
+      - name: Test Windows-supported contracts
+        if: runner.os == 'Windows'
+        run: node scripts/run-windows-release-tests.cjs
 
       - name: Build
         run: npm run build
