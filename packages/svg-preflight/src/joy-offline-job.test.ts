@@ -27,7 +27,8 @@ from joy_tool_geometry import compile_tool_aware_candidate
 result=compile_tool_aware_candidate(json.load(sys.stdin),batch_limit=3)
 print(json.dumps(result))
 `;
-  const result = spawnSync(fileURLToPath(new URL("../../joy-runtime/.venv/bin/python", import.meta.url)),
+  const python = fileURLToPath(new URL(`../../joy-runtime/.venv/${process.platform === "win32" ? "Scripts/python.exe" : "bin/python"}`, import.meta.url));
+  const result = spawnSync(python,
     ["-I", "-c", program, fileURLToPath(new URL("../../joy-runtime/runtime", import.meta.url))],
     { input: JSON.stringify(plan), encoding: "utf8", timeout: 10_000, maxBuffer: 10_000_000 });
   expect(result.error).toBeUndefined();

@@ -112,10 +112,10 @@ jobs:
           node-version: "24"
           cache: npm
 
-      - name: Set up Python
+      - name: Set up native runtime Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
       - name: Install dependencies
         shell: bash
@@ -129,6 +129,19 @@ jobs:
 
       - name: Set up Joy runtime Python environment
         run: npm run setup --workspace @cricut-companion/joy-runtime
+
+      - name: Provide legacy POSIX-style Python path for tagged test suite
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force packages/joy-runtime/.venv/bin | Out-Null
+          $python = Resolve-Path packages/joy-runtime/.venv/Scripts/python.exe
+          New-Item -ItemType SymbolicLink -Force -Path packages/joy-runtime/.venv/bin/python -Target $python | Out-Null
+          New-Item -ItemType SymbolicLink -Force -Path packages/joy-runtime/.venv/bin/python.exe -Target $python | Out-Null
+
+      - name: Set up legacy SliceBug Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
       - name: Check
         run: npm run typecheck && npm run test
