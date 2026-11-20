@@ -11,6 +11,7 @@ function fixture(){
 }
 afterEach(()=>{vi.useRealTimers();});
 describe('native Joy panel lifecycle and truthful progress',()=>{
+ it('deliberate make entry calls host even when metadata already has a ready session',async()=>{const f=fixture();let calls=0;f.api.connectForMake=async()=>{calls++;return{status:'connected',devices:[]};};await f.c.mount();await f.c.connectForMake();expect(calls).toBe(1);f.c.dispose();});
  it('mount reads local setup only; discovery requires explicit action',async()=>{
   vi.useFakeTimers();const f=fixture();await f.c.mount();await vi.advanceTimersByTimeAsync(1500);
   expect(f.calls).toEqual(['metadata','status']);await f.c.run('refresh');expect(f.calls.filter(x=>x==='devices')).toHaveLength(1);f.c.dispose();
@@ -67,3 +68,5 @@ it('failed connection gets power-cycle guidance without automatic retries or dev
 it('a completed empty search shows power and pairing guidance, never on initial mount',async()=>{const f=fixture();await f.c.mount();expect(f.c.snapshot.connectionNotice).toBeNull();await f.c.run('refresh');expect(f.c.snapshot.connectionNotice).toBe('not_found');expect(f.c.snapshot.address).toBe('');f.api.devices=async()=>[{id:'00:11:22:33:44:55',name:'Joy',paired:true,connected:false}];await f.c.run('refresh');expect(f.c.snapshot.connectionNotice).toBeNull();expect(f.c.snapshot.address).toBe('00:11:22:33:44:55');f.c.dispose();});
 it('search errors have their own guidance instead of pretending no paired device exists',async()=>{const f=fixture();f.api.devices=async()=>{throw Error('SECRET must never be rendered');};await f.c.mount();await f.c.run('refresh');expect(f.c.snapshot).toMatchObject({connectionNotice:'search_failed',error:''});f.c.dispose();});
 it('cancelled approval is not a connection failure and successful retry clears the notice',async()=>{const f=fixture();await f.c.mount();f.api.connect=async()=>{throw Error('fail');};await f.c.run('connect');f.api.connect=async()=>({canceled:true});await f.c.run('connect');expect(f.c.snapshot.connectionNotice).toBeNull();expect(f.c.snapshot.message).toMatch(/Canceled/);f.api.connect=async()=>session;await f.c.run('connect');expect(f.c.snapshot.connectionNotice).toBeNull();expect(f.c.snapshot.message).toContain('connected');f.c.dispose();});
+
+it('does not report onboarding ready when a reused-session setup is canceled or fails',async()=>{for(const kind of ['canceled','failure']){const api:any={getSetupStatus:async()=>({session:{}}),connectForMake:async()=>{if(kind==='failure')throw Error('setup failed');return{canceled:true};}};const c=new NativeJoyPanelController(api,()=>{});await c.mount();expect(await c.connectForMake()).toBe(false);c.dispose();}});

@@ -9,11 +9,12 @@ export class JoyConfigurationService {
  constructor(private readonly o:Options){}
  private summary(d:JoyConfigurationLibrary):NativeConfigurationCatalog{return {profiles:d.profiles.map(p=>({id:p.id,name:p.name,materialId:Number(p.settings.materialId),tool:p.settings.tool as 'pen'|'fine_point_blade',mode:'precision',pressureRequest:Number(p.settings.pressureRequest),provenance:p.provenance,...(p.recipe?{passCount:p.recipe.passCount,pressureRequests:p.recipe.pressureRequests,sourceMaterialId:p.recipe.sourceMaterialId,workspaceMaterialName:p.recipe.workspaceMaterialName}:{})})),calibrations:d.calibrations.map(c=>({id:c.id,capturedAt:c.capturedAt,firmwareSelector:c.firmwareSelector,source:c.source,physicalCalibrationVerified:false})),selection:d.selection,materials:materialData.materials.map(({settings,...m})=>({...m,tool:m.tool as 'pen'|'fine_point_blade',mode:'precision' as const}))};}
  async list(){return this.summary(await this.o.store.load());}
- async ensureMakeSelection(materialId:number,tools:ReadonlyArray<'pen'|'fine_point_blade'>):Promise<{profileId:string;calibrationId:string}>{
+ async ensureMakeSelection(materialId:number,tools:ReadonlyArray<'pen'|'fine_point_blade'>,device?:{deviceFingerprint:string;firmwareSelector:number}):Promise<{profileId:string;calibrationId:string}>{
   if(!Number.isSafeInteger(materialId)||materialId<1||!Array.isArray(tools)||!tools.length||new Set(tools).size!==tools.length||tools.some(t=>t!=='pen'&&t!=='fine_point_blade'))throw error();
   const matches=tools.map(tool=>{const candidates=materialData.materials.filter(m=>m.sourceMaterialId===materialId&&m.tool===tool&&m.mode==='precision');if(candidates.length!==1)throw error();return candidates[0]!;});
+  const chooseCalibration=(d:JoyConfigurationLibrary)=>{const candidates=device?d.calibrations.filter(c=>c.deviceFingerprint===device.deviceFingerprint&&c.firmwareSelector===device.firmwareSelector):d.calibrations;return candidates.find(c=>c.id===d.selection?.calibrationId)?.id??(candidates.length===1?candidates[0]!.id:null);};
   const initial=library(await this.o.store.load());
-  if(!(initial.selection?.calibrationId??(initial.calibrations.length===1?initial.calibrations[0]!.id:null)))throw Error('A saved Joy calibration is required. Enable advanced info in Settings, then select or capture calibration in Make.');
+  if(!(chooseCalibration(initial)))throw Error('A saved Joy calibration is required. Enable advanced info in Settings, then select or capture calibration in Make.');
   const updated=await this.o.store.transact(d=>{
    const chosen=new Map<string,JoyConfigurationLibrary['profiles'][number]>();
    for(const source of matches){
@@ -26,7 +27,7 @@ export class JoyConfigurationService {
     const profile={id,name:source.name,provenance:'recovered_pass83_source_defaults',settings:{...source.settings,profileId:id},recipe:{catalogId:source.id,sourceMaterialId:source.sourceMaterialId,workspaceMaterialName:source.name,passCount:source.passCount,pressureRequests:[...source.pressureRequests]}};
     d.profiles.push(profile);chosen.set(source.tool,profile);
    }
-   const calibrationId=d.selection&&d.calibrations.some(c=>c.id===d.selection!.calibrationId)?d.selection.calibrationId:d.calibrations.length===1?d.calibrations[0]!.id:'';
+   const calibrationId=chooseCalibration(d);
    if(!calibrationId)throw Error('A saved Joy calibration is required. Enable advanced info in Settings, then select or capture calibration in Make.');
    const profileId=d.selection&&[...chosen.values()].some(p=>p.id===d.selection!.profileId)?d.selection.profileId:chosen.get(tools[0]!)!.id;
    return library({...d,selection:{profileId,calibrationId}});

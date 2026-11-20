@@ -63,6 +63,7 @@ export class NativeJoyService {
  private jobBinding:Record<string,unknown>|null=null;
  get ownsJob(){return this.jobReserved||this.jobStarting||this.jobState.active;}
  get ownsHardware(){return this.session!==null||this.connecting||this.loading.active||this.loadingReserved||this.offlineReserved||this.jobReserved||this.jobStarting||this.jobState.active||this.disconnecting;}
+ get currentDeviceFingerprint():string|null{return this.deviceFingerprint;}
  loadingApprovalContext():number{
    this.hardware();this.noLoading();
    if(this.busy||!this.session||!this.client||this.session.firmwareSelector!==8.164000001||this.session.fallbackUsed)throw new Error('An exact initialized original Joy session is required.');

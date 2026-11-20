@@ -100,16 +100,17 @@ export class NativeJoyPanelController {
     finally{if(epoch===this.connectionEpoch)this.set({busy:false,connectionCancelling:false});}
   }
   async connectForMake(){
-    if(!this.live||this.state.busy||this.state.setup?.session||this.state.loading?.active)return;
-    if(!this.api?.connectForMake){this.set({error:'Automatic connection needs the updated desktop runtime.'});return;}
+    if(!this.live||this.state.busy||this.state.loading?.active)return false;
+    if(!this.api?.connectForMake){this.set({error:'Automatic connection needs the updated desktop runtime.'});return false;}
     const epoch=++this.connectionEpoch;this.connectionPending=true;this.set({busy:true,error:'',message:'',connectionNotice:null,connectionCancelling:false});
     try{
       const result=await this.api.connectForMake(this.state.devices.length>1&&this.state.address?this.state.address:undefined);
-      if(!this.live||epoch!==this.connectionEpoch)return;
-      if('canceled'in result){this.set({message:'Connection canceled.'});return;}
+      if(!this.live||epoch!==this.connectionEpoch)return false;
+      if('canceled'in result){this.set({message:'Connection canceled.'});return false;}
       const devices=result.devices,address=devices.some(d=>d.id===this.state.address)?this.state.address:devices.length===1?devices[0]!.id:'';
       this.set({devices,address,connectionNotice:result.status==='not_found'?'not_found':null});await this.metadata(epoch);
-    }catch{if(this.live&&epoch===this.connectionEpoch){this.set({connectionNotice:'connect_failed',error:''});await this.metadata(epoch);}}
+      return this.live&&epoch===this.connectionEpoch&&result.status==='connected'&&Boolean(this.state.setup?.session);
+    }catch{if(this.live&&epoch===this.connectionEpoch){this.set({connectionNotice:'connect_failed',error:''});await this.metadata(epoch);}return false;}
     finally{if(epoch===this.connectionEpoch){this.connectionPending=false;this.set({busy:false});}}
   }
   async run(action:NativeJoyPanelAction){

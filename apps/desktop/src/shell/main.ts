@@ -1,3 +1,4 @@
+import{ensureConnectedJoyCalibration}from'./native-joy-onboarding';
 import {NativeJoyInlineIntent,isNativeIntent,type NativeIntent} from './native-joy-inline-intent';
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
@@ -122,7 +123,7 @@ let nativeJobJournal:NativeJoyJobJournal|null=null;
 const legacyOwnsCutter=()=>legacyCutterStarting||Boolean(activeCutSession&&!['finished','stopped','blocked'].includes(activeCutSession.getSnapshot().status));
 function getNativeJobJournal(){return nativeJobJournal??=new NativeJoyJobJournal(path.join(app.getPath('userData'),'native-joy','job-diagnostics'));}
 function getNativeJobService(){
- return nativeJobService??=new NativeJoyJobService({ensureMakeSelection:(materialId,tools)=>getJoyConfigurationService().ensureMakeSelection(materialId,tools),loadLibrary:()=>getJoyConfigurationService().exportLibrary(),native:getNativeJoyService(),legacyBusy:legacyOwnsCutter,
+ return nativeJobService??=new NativeJoyJobService({ensureMakeSelection:async(materialId,tools)=>{const native=getNativeJoyService(),status=await native.getStatus(),deviceFingerprint=native.currentDeviceFingerprint;if(!status.session||!deviceFingerprint)throw Error('Connect your Joy before preparation.');return getJoyConfigurationService().ensureMakeSelection(materialId,tools,{deviceFingerprint,firmwareSelector:status.session.firmwareSelector});},loadLibrary:()=>getJoyConfigurationService().exportLibrary(),native:getNativeJoyService(),legacyBusy:legacyOwnsCutter,
   journal:{preflight:()=>getNativeJobJournal().preflight(),observe:s=>getNativeJobJournal().observe(s)},
   // The isolated preload captures the single intentional button click; IPC
   // consumes its frame/state-bound receipt before this host-only approval.
@@ -1856,6 +1857,14 @@ app.whenReady().then(async () => {
       if(process.platform!=="darwin")return [];
       const folder=app.isPackaged?path.join(process.resourcesPath,"joy"):path.resolve(app.getAppPath(),"../../packages/joy-runtime/dist/kindcut-joy-runtime");
       return discoverJoyDevices(path.join(folder,"_internal/bluetooth/joy_rfcomm"));
+    },
+    ensureDeviceSettings:async(currentAttempt)=>{
+      const native=getNativeJoyService(),generation=native.loadingApprovalContext(),deviceFingerprint=native.currentDeviceFingerprint,status=await native.getStatus();
+      if(!deviceFingerprint||!status.session||status.session.firmwareSelector!==8.164000001||status.session.fallbackUsed)throw Error('Connect a supported original Joy.');
+      await ensureConnectedJoyCalibration({generation,deviceFingerprint,firmwareSelector:status.session.firmwareSelector},{
+       current:()=>{try{return currentAttempt()&&getNativeJoyService()===native&&native.loadingApprovalContext()===generation&&native.currentDeviceFingerprint===deviceFingerprint;}catch{return false;}},
+       load:()=>getJoyConfigurationService().exportLibrary(),read:()=>native.captureCalibration(true,generation),save:value=>getJoyConfigurationService().storeCalibration(value),
+      });
     },
     cutterBusy: () => legacyCutterStarting || Boolean(activeCutSession && !["finished", "stopped", "blocked"].includes(activeCutSession.getSnapshot().status)),
     assertCurrent:action=>{nativeInlineIntents.assertCurrent(action);},

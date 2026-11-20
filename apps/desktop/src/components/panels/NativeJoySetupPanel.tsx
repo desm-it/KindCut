@@ -1,3 +1,4 @@
+import{NativeMakeSetupGate}from'./native-make-setup-gate';
 import{nativeMakeFinishedForSource}from'./native-make-completion';
 import{isNativeMakeMaterial}from'../../workspace-materials';
 import{nativeMakePreviewFocus}from'./native-make-preview-focus';
@@ -71,27 +72,29 @@ export function NativeJoySetupPanel({mode='settings',makeVisible=true,actionCont
  const runSource=useRef<unknown>(null),wasActiveInMake=useRef(false);
  useEffect(()=>{if(!makeVisible){wasActiveInMake.current=false;runSource.current=null;}else{const active=Boolean(liveJob?.active&&!liveJob.historical);if(active&&!wasActiveInMake.current)runSource.current=source;wasActiveInMake.current=active;}},[makeVisible,liveJob?.active,liveJob?.historical,source]);
  const finishedForFooter=nativeMakeFinishedForSource(liveJob,source,runSource.current,makeVisible);
- const connectionAttempted=useRef(false),preparedSource=useRef<unknown>(null),nextAttempted=useRef<number|null>(null);
+ const connectionAttempted=useRef(false),preparedSource=useRef<unknown>(null),nextAttempted=useRef<number|null>(null);const [makeSetupDone,setMakeSetupDone]=useState(false);const setupGate=useRef(new NativeMakeSetupGate());
+ const connectMake=useCallback(()=>setupGate.current.run(async()=>{const c=owner.current;if(!c)return false;const ready=await c.connectForMake();return ready===true&&owner.current===c&&Boolean(c.snapshot.setup?.session)&&!c.snapshot.error;},setMakeSetupDone),[]);
+ useEffect(()=>{setupGate.current.reset();setMakeSetupDone(false);return()=>setupGate.current.reset();},[makeVisible,mode,api]);
  useEffect(()=>{if(!state.setup?.session)preparedSource.current=null;},[state.setup?.session]);
  useEffect(()=>{
-  if(!makeVisible){connectionAttempted.current=false;preparedSource.current=null;return;}
-  if(mode!=='make'||!state.setup||!jobReady||state.busy||liveJob?.active||state.loading?.active)return;
-  if(!state.setup.session&&!connectionAttempted.current){connectionAttempted.current=true;void owner.current?.connectForMake();}
- },[makeVisible,mode,state.setup,state.busy,state.loading?.active,jobReady,liveJob?.active]);
+  if(!makeVisible){connectionAttempted.current=false;preparedSource.current=null;setMakeSetupDone(false);return;}
+  if(mode!=='make'||!jobReady||state.busy||liveJob?.active||state.loading?.active)return;
+  if(!connectionAttempted.current){connectionAttempted.current=true;void connectMake();}
+ },[makeVisible,mode,state.busy,state.loading?.active,jobReady,liveJob?.active]);
  useEffect(()=>{
-  const c=jobOwner.current;if(mode!=='make'||!makeVisible||!jobReady||!state.setup?.session||state.busy||state.loading?.active||!c||c.state.busy||c.state.cancelPending||c.state.stale||!workspaceMaterial||!isNativeMakeMaterial(workspaceMaterial.id))return;
+  const c=jobOwner.current;if(mode!=='make'||!makeVisible||!makeSetupDone||!jobReady||!state.setup?.session||state.busy||state.loading?.active||!c||c.state.busy||c.state.cancelPending||c.state.stale||!workspaceMaterial||!isNativeMakeMaterial(workspaceMaterial.id))return;
   const j=c.state.job;
   if(j?.active){if(j.phase!=='retained_ready'||!j.workflow||j.workflow.actionIndex+1>=j.workflow.actionCount||nextAttempted.current===j.operationId)return;
    nextAttempted.current=j.operationId;void(async()=>{await c.run('prepare');if(jobOwner.current===c&&c.state.preview&&!c.state.error&&!c.state.stale)await c.run('arm-next');})();return;}
   if(!c.state.preview&&preparedSource.current!==source){preparedSource.current=source;void c.run('prepare');}
- },[mode,makeVisible,jobReady,state.setup?.session,state.busy,jobState,source]);
+ },[mode,makeVisible,makeSetupDone,jobReady,state.setup?.session,state.busy,jobState,source]);
  const next=workspaceMaterial&&!isNativeMakeMaterial(workspaceMaterial.id)?{action:null,label:language==='nl'?'Kies materiaal':'Choose material',disabled:true,intent:undefined}:makeNextAction(jobState??initialJobPanel(),Boolean(state.setup?.session),state.busy,language,plannedTools?.[liveJob?.workflow?.actionIndex??0]?.color,!finishedForFooter);
- const footerAction=actionContainer?createPortal(<button type="button" className="cut-modal__btn cut-modal__btn--primary" data-native-intent={next.intent} disabled={next.disabled||!api||Boolean(state.loading?.active)||Boolean(state.setup&&(!state.setup.enabled||!state.setup.runtimeAvailable))} onClick={()=>{if(next.action==='connect')void owner.current?.connectForMake();else if(next.action)void jobOwner.current?.run(next.action);}}>{next.label}</button>,actionContainer):null;
+ const footerAction=actionContainer?createPortal(<button type="button" className="cut-modal__btn cut-modal__btn--primary" data-native-intent={next.intent} disabled={next.disabled||!api||Boolean(state.loading?.active)||Boolean(state.setup&&(!state.setup.enabled||!state.setup.runtimeAvailable))} onClick={()=>{if(next.action==='connect')void connectMake();else if(next.action)void jobOwner.current?.run(next.action);}}>{next.label}</button>,actionContainer):null;
  const updateJobBusy=useCallback((busy:boolean)=>{setJobBusy(busy);if(priorJobBusy.current&&!busy)void owner.current?.mount();priorJobBusy.current=busy;},[]);
  const setup=<NativeJoySetupView {...state} seamless={mode==='make'} language={language} showAdvancedInfo={showAdvancedInfo} compact={mode==='make'} allowConnect={Boolean(jobState?.preview)} busy={state.busy||jobBusy} onHeight={height=>owner.current?.setHeight(height)} onAddress={address=>owner.current?.setAddress(address)} onAction={action=>{void owner.current?.run(action);}}/>;
  const config=<NativeJoyConfigurationPanel api={configurationApi} setup={state.setup} busy={state.busy||jobBusy||Boolean(state.loading?.active)} source={source} workspaceMaterial={workspaceMaterial}/>;
  const unsupportedMaterial=Boolean(workspaceMaterial&&!isNativeMakeMaterial(workspaceMaterial.id));
- const makeConnection={onOpenSettings,busy:state.busy,cancelling:state.connectionCancelling,onRetry:()=>{void owner.current?.connectForMake();},onCancel:api?.cancelMakeConnection?()=>{void owner.current?.cancelConnection();}:undefined,notice:state.connectionNotice,connectionError:state.error,error:state.error||designError||(unsupportedMaterial?(language==='nl'?'Kies een ondersteund materiaal voor dit gereedschapsplan.':'Choose a supported material for this tool plan.') : ''),preparing:Boolean((jobState?.busy&&(!liveJob?.active||liveJob.phase==='retained_ready'))||(state.setup?.session&&!liveJob?.active&&!jobState?.preview&&!jobState?.error&&!designError&&!state.error&&!unsupportedMaterial&&!finishedForFooter)),finished:finishedForFooter};
+ const makeConnection={onOpenSettings,busy:state.busy,cancelling:state.connectionCancelling,onRetry:()=>{void connectMake();},onCancel:api?.cancelMakeConnection?()=>{void owner.current?.cancelConnection();}:undefined,notice:state.connectionNotice,connectionError:state.error,error:state.error||designError||(unsupportedMaterial?(language==='nl'?'Kies een ondersteund materiaal voor dit gereedschapsplan.':'Choose a supported material for this tool plan.') : ''),preparing:Boolean((jobState?.busy&&(!liveJob?.active||liveJob.phase==='retained_ready'))||(state.setup?.session&&!liveJob?.active&&!jobState?.preview&&!jobState?.error&&!designError&&!state.error&&!unsupportedMaterial&&!finishedForFooter)),finished:finishedForFooter};
  const job=<NativeJoyJobPanel makeConnection={mode==='make'?makeConnection:undefined} matVariant={displayDesign?.matVariant} seamless={mode==='make'} language={language} onControllerReady={onJobController} showAdvancedInfo={showAdvancedInfo} compact={mode==='make'} setup={state.setup} source={source} onBusyChange={updateJobBusy} onStateChange={setJobState} plannedTools={plannedTools}/>;
  if(mode==='make')return <div className="native-make__workspace">{footerAction}<NativeMakePreview design={displayDesign} selected={previewFocus} language={language}/><div className="native-make__plan cut-modal__info"><fieldset className="native-make__material-lock" disabled={jobBusy||Boolean(state.loading?.active)}>{materialControl}</fieldset>{setup}{job}<NativeMakeToolPlans showAdvancedInfo={showAdvancedInfo} design={displayDesign} selected={previewFocus} onHover={setHovered} language={language} job={liveJob?.active||!jobState?.preview?liveJob:null} workflow={jobState?.job?.workflow??jobState?.preview?.workflow}/>{showAdvancedInfo&&<details className="native-make__advanced"><summary>{language==='nl'?'Materiaal- en kalibratie-instellingen':'Material & calibration settings'}</summary>{config}</details>}</div></div>;
  return <>{setup}{config}{job}</>;

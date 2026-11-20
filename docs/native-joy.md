@@ -9,8 +9,10 @@ CardMat is explicit4.5×6.25 inches, not the ordinary4.5×6.5-inch short mat. In
 
 Recipes identify actual source materials. On-mat vinyl types are Premium, Stencil, Holographic, Chalkboard and Dry Erase. Existing source20 projects remain Chalkboard Vinyl, not generic vinyl. Stock suitability, blade condition and cut depth require operator verification; catalog pressure values are not measured physical force.
 
-## Device settings in2.0
-For a device without saved settings, enable Show advanced info in Settings, return to Make and expand Material & calibration settings. Connect the supported Joy and explicitly read its calibration data, choose/save the applicable settings, then retry preparation. This reads device data; it is not a demonstrated mechanical calibration procedure. Never import another device's calibration or synthetic test data. Profiles and calibration persist locally in the app's normal data directory.
+## Automatic setup in2.1
+On a new Mac, pair your original Joy once in macOS Bluetooth settings and allow KindCut's Bluetooth permission when macOS asks. Open Make: KindCut connects once, reuses matching saved device data or reads and saves the Joy's stored pressure-table data, then selects the exact material recipe and prepares your design. No Design Space installation, key import, calibration-file import or advanced-information toggle is required. If multiple paired Joys are found, choose yours; the app does not guess.
+
+The setup read does not load a mat, start a tool, move the carriage or perform a mechanical calibration. Those actions remain separate deliberate controls. Matching custom material adjustments are preserved. Shared Joy initialization/decoder/catalog settings are bundled; per-device/session data is obtained from the connection and kept local, never included in release assets. On failure, setup stops and offers explicit retry; it does not repeatedly reconnect or power-cycle the machine. Advanced settings remain optional diagnostics.
 
 ## Installation / known limits
 The macOS artifact is ad-hoc signed, not Developer ID notarized; Gatekeeper can require explicit approval. This release does not claim certified physical CardMat alignment, universally suitable stock recipes, emergency stopping, or unobserved fault recovery. Inert software tests are distinct from operator-observed trials. Existing production dependency advisories remain a separate tracked release-hardening task.

@@ -5,7 +5,7 @@ export interface NativeJoyIpcDependencies {
  chooseCache():Promise<string|null>;
  confirmImport():Promise<boolean>;confirmHardware():Promise<boolean>;
  confirmMat?(action:'load'|'unload'):Promise<boolean>;
- assertCurrent?(action:'connect'):void;
+ assertCurrent?(action:'connect'):void;ensureDeviceSettings?(current:()=>boolean):Promise<void>;
  confirmLoading?(heightInches:6.5|12):Promise<boolean>;
  diagnostics?:{prepare(height:6.5|12):Promise<void>;record(state:unknown):Promise<void>;restore?():Promise<unknown|null>;export():Promise<{canceled:boolean}>};
  service():{readonly inlineActionIdentity?:string;getLoadingState?():{active:boolean};loadingApprovalContext?():number;startLoading?(heightInches:6.5|12,approved:boolean,bladeRemovedConfirmed:boolean,approvalContext?:number):Promise<unknown>;loadingStatus?():Promise<unknown>;controlLoading?(action:'go'|'cancel'):Promise<unknown>;getStatus():Promise<{enabled:boolean;session?:unknown}>;importProvisioning(input:{sourcePath:string;approved:boolean}):Promise<unknown>;connect(input:{address:string;hardwareApproved:boolean;cryptoResetApproved:boolean},owner?:object):Promise<unknown>;cancelMakeConnection?(owner:object):Promise<boolean>;controlMat?(action:'load'|'unload',approved:boolean):Promise<unknown>;pollStatus():Promise<unknown>;disconnect():Promise<void>};
@@ -74,9 +74,10 @@ export function registerNativeJoyIpc(deps:NativeJoyIpcDependencies){
   try{
    const status=await service.getStatus();if(attempt.canceled)return{canceled:true};idle();if(deps.service()!==service)throw Error('Native Joy session changed.');
    if(!status.enabled)throw Error('Native Joy is unavailable.');
-   if(status.session)return{status:'connected',devices:[]};
    const context=service.inlineActionIdentity;
    const approved=await deps.confirmHardware();if(attempt.canceled||!approved)return{canceled:true};deps.assertCurrent?.('connect');
+   const ensure=async(expectedIdentity=service.inlineActionIdentity)=>{if(attempt.canceled||deps.service()!==service||expectedIdentity!==service.inlineActionIdentity)throw Error('Native Joy session changed during device setup.');idle();await deps.ensureDeviceSettings?.(()=>!attempt.canceled&&deps.service()===service&&expectedIdentity===service.inlineActionIdentity&&!deps.cutterBusy());if(attempt.canceled||deps.service()!==service||expectedIdentity!==service.inlineActionIdentity)throw Error('Native Joy session changed during device setup.');};
+   if(status.session){await ensure();return{status:'connected',devices:[]};}
    const devices=await deps.listDevices?.()??[];if(attempt.canceled)return{canceled:true};
    idle();if(deps.service()!==service||context!==service.inlineActionIdentity)throw Error('Native Joy session changed during discovery.');deps.assertCurrent?.('connect');
    const compatible=devices.filter(d=>d.paired),chosen=(input as {address?:string}|undefined)?.address;
@@ -85,7 +86,7 @@ export function registerNativeJoyIpc(deps:NativeJoyIpcDependencies){
    if(!candidates.length)return{status:'not_found',devices:[]};if(candidates.length>1)return{status:'choose_device',devices:candidates};
    idle();deps.assertCurrent?.('connect');attempt.started=true;
    await service.connect({address:candidates[0]!.id,hardwareApproved:true,cryptoResetApproved:true},attempt.owner);
-   if(attempt.canceled)return{canceled:true};return{status:'connected',devices:candidates};
+   if(attempt.canceled)return{canceled:true};await ensure();return{status:'connected',devices:candidates};
   }catch(error){if(attempt.canceled)return{canceled:true};throw error;}
   finally{attempt.pending=false;if((!attempt.started||attempt.canceled)&&makeAttempt===attempt)makeAttempt=null;}
  });
