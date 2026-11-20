@@ -51,6 +51,15 @@ jobs:
       - name: Set up Joy runtime Python environment
         run: npm run setup --workspace @cricut-companion/joy-runtime
 
+      - name: Provide POSIX-style interpreter alias for native integration fixtures
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force packages/joy-runtime/.venv/bin | Out-Null
+          $python = Resolve-Path packages/joy-runtime/.venv/Scripts/python.exe
+          New-Item -ItemType SymbolicLink -Force -Path packages/joy-runtime/.venv/bin/python -Target $python | Out-Null
+          New-Item -ItemType SymbolicLink -Force -Path packages/joy-runtime/.venv/bin/python.exe -Target $python | Out-Null
+
       - name: Typecheck
         run: npm run typecheck
 
