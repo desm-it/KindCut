@@ -14,7 +14,11 @@ env:
 jobs:
   check:
     name: Typecheck, Test, Build
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-2022]
     steps:
       - name: Check out KindCut
         uses: actions/checkout@v4
@@ -34,6 +38,14 @@ jobs:
             sleep $((attempt * 15))
           done
           exit 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Joy runtime Python environment
+        run: npm run setup --workspace @cricut-companion/joy-runtime
 
       - name: Typecheck
         run: npm run typecheck

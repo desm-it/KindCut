@@ -63,9 +63,9 @@ If Windows SmartScreen warns about the app, choose **More info**, then **Run any
 
 1. Pick a language.
 2. Start a new project or open an existing `.kindcut` file.
-3. Open **Settings** and check the helper status.
-4. If prompted, choose the installed design app location.
-5. Run the one-time bootstrap from KindCut so local keys and materials can be detected.
+3. On macOS Apple Silicon with an original Joy, use the app-owned Native Make workflow; see [Native Joy setup and limits](docs/native-joy.md). No Design Space installation/import is needed for that native route.
+4. The separately selected legacy SliceBug route retains its own helper/bootstrap requirements.
+5. Read the current release notes before device use; loading, every tool Start and unloading remain explicit.
 
 After that, KindCut can prepare project handoff locally. It will not start a real machine action without an explicit preview and confirmation flow.
 
@@ -104,7 +104,8 @@ The installer updates the app while keeping local projects and settings in place
 Install dependencies:
 
 ```bash
-npm install
+npm ci
+npm run setup --workspace @cricut-companion/joy-runtime
 ```
 
 Run the development app:

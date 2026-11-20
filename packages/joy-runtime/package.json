@@ -1,0 +1,12 @@
+{
+  "name": "@cricut-companion/joy-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KindCut-owned experimental macOS Joy runtime; no SliceBug or CricutDevice execution.",
+  "scripts": {
+    "build": "node scripts/build-runtime.cjs",
+    "setup": "node scripts/setup-runtime.cjs",
+    "test": "node scripts/run-tests.cjs",
+    "test:setup": "node --test scripts/setup-runtime.test.cjs"
+  }
+}

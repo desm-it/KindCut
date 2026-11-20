@@ -7,10 +7,6 @@ on:
         description: Existing GitHub release tag to attach builds to; leave blank for smoke artifacts only
         required: false
         default: ""
-      slicebug_ref:
-        description: SliceBug git ref to bundle
-        required: false
-        default: main
   release:
     types:
       - published
@@ -20,8 +16,8 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  SLICEBUG_REPOSITORY: ${{ vars.SLICEBUG_REPOSITORY || 'desm-it/slicebug' }}
-  SLICEBUG_REF: ${{ inputs.slicebug_ref || vars.SLICEBUG_REF || 'main' }}
+  SLICEBUG_REPOSITORY: desm-it/slicebug
+  SLICEBUG_REF: f00348732cc6501b987a39cff0a1982d8b35cad7
   RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag || github.ref_name }}
 
 jobs:
@@ -62,6 +58,9 @@ jobs:
             sleep $((attempt * 15))
           done
           exit 1
+
+      - name: Set up Joy runtime Python environment
+        run: npm run setup --workspace @cricut-companion/joy-runtime
 
       - name: Check
         run: npm run typecheck && npm run test
@@ -119,6 +118,9 @@ jobs:
             sleep $((attempt * 15))
           done
           exit 1
+
+      - name: Set up Joy runtime Python environment
+        run: npm run setup --workspace @cricut-companion/joy-runtime
 
       - name: Check
         run: npm run typecheck && npm run test

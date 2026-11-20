@@ -1,0 +1,5 @@
+import{it,expect}from'vitest';import{renderToStaticMarkup}from'react-dom/server';import{NativeMakeStage}from'./native-make-stage';
+it.each([['bluetooth','lucide-bluetooth-searching'],['bluetooth-failed','lucide-bluetooth'],['refresh','lucide-refresh-cw'],['error','lucide-circle-alert'],['done','lucide-circle-check']])('uses the open-source Lucide set for %s',(kind,icon)=>{const h=renderToStaticMarkup(<NativeMakeStage kind={kind as any} searching title="Status"/>);expect(h).toContain(icon);expect(h).toContain('viewBox="0 0 24 24"');});
+it('adds a separate clear circular failure badge rather than crossing the Bluetooth shape',()=>{const h=renderToStaticMarkup(<NativeMakeStage kind="bluetooth-failed" title="Failed"/>);expect(h).toContain('lucide-circle-x');expect(h).toContain('native-make-stage__failure-badge');});
+
+it('uses plain Bluetooth while disconnected, without implying an active search',()=>{const h=renderToStaticMarkup(<NativeMakeStage kind="bluetooth" title="Not connected"/>);expect(h).toContain('lucide-bluetooth');expect(h).not.toContain('lucide-bluetooth-searching');});

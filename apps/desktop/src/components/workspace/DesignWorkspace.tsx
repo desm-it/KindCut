@@ -1,3 +1,4 @@
+import{workspaceHasCutContent}from'../../workspace-materials';
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, MouseEvent, MutableRefObject, PointerEvent, ReactNode } from "react";
 import Moveable from "react-moveable";
@@ -96,7 +97,7 @@ import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult, SpotifyCode 
 import { cssEscape, isEditableKeyboardTarget } from "../../utils/dom-utils";
 import { FONT_GROUPS } from "../../font-catalog";
 import { isUngroupablePath } from "../../utils/workspace-geometry";
-import { MatIcon, MaterialIcon, materialCategoryOf, PAPER_MATERIAL_IDS, MATERIAL_INSERT_ID, MATERIAL_VINYL_ID } from "./CraftIcons";
+import { WeightIcon, MatIcon, MaterialIcon, materialCategoryOf, PAPER_MATERIAL_IDS, MATERIAL_INSERT_ID, MATERIAL_VINYL_ID } from "./CraftIcons";
 import { Ruler } from "./Ruler";
 import { WorkspaceToolbar } from "./WorkspaceToolbar";
 import { SelectionActionBar } from "./SelectionActionBar";
@@ -360,20 +361,12 @@ function InsertSlotsOverlay({ width, height, color }: { width: number; height: n
   );
 }
 
-/** Stacked-sheet thickness glyph for a paper weight. */
-function WeightIcon({ level }: { level: "light" | "medium" | "heavy" }) {
-  const layers = level === "light" ? 1 : level === "medium" ? 2 : 3;
-  return (
-    <span className="weight-icon" aria-hidden="true">
-      {Array.from({ length: layers }).map((_, i) => <span key={i} className="weight-icon__layer" />)}
-    </span>
-  );
-}
 
 export function DesignWorkspace({
   language,
   measurementUnit,
   selectedMaterialId,
+  nativeMaterials=[],
   selectedMatPreset,
   importedSvg,
   importedSvgs,
@@ -466,6 +459,7 @@ export function DesignWorkspace({
   language: Language;
   measurementUnit: MeasurementUnit;
   selectedMaterialId: number;
+  nativeMaterials?:Array<{id:number;name:string}>;
   selectedMatPreset: string;
   importedSvg: WorkspaceSvgItem | null;
   importedSvgs: WorkspaceSvgItem[];
@@ -629,6 +623,7 @@ export function DesignWorkspace({
   const activeCardSize = isInsertCard ? cardSize : null;
   const activeDims = activeCardSize ? CARD_SIZES[activeCardSize] : matDimensions;
   const materialName =
+    nativeMaterials.find(m=>m.id===selectedMaterialId)?.name ??
     getMaterialName(selectedMaterialId, language) ??
     MATERIAL_OPTIONS.find((material) => material.id === selectedMaterialId)?.name ??
     "Material";
@@ -655,7 +650,7 @@ export function DesignWorkspace({
     pan,
     pixelsPerInch: WORKSPACE_PIXELS_PER_INCH,
   });
-  const canCut = importedSvgs.length > 0 && !importedPlanLoading && !cutBusy;
+  const canCut = workspaceHasCutContent(importedSvgs.length,selectedMaterialId,insertSlots) && !importedPlanLoading && !cutBusy;
   const selectedSvgIdSet = useMemo(() => new Set(selectedSvgIds), [selectedSvgIds]);
   const lastPointerDownItemId = useRef<{ id: string; time: number } | null>(null);
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
@@ -1660,7 +1655,7 @@ export function DesignWorkspace({
               <path d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.22 4.22l1.06 1.06M14.72 14.72l1.06 1.06M4.22 15.78l1.06-1.06M14.72 5.28l1.06-1.06"/>
             </svg>
           </button>
-          <button className="cut-button" type="button" disabled={!canCut} onClick={onStartCut}>
+          <button className="cut-button" type="button" data-native-intent="connect" disabled={!canCut} onClick={onStartCut}>
             <span aria-hidden="true">▶</span>
             {cutBusy ? t("buttons.starting") : t("buttons.startCut")}
           </button>
@@ -1991,7 +1986,7 @@ export function DesignWorkspace({
                               key={c.key}
                               type="button"
                               className={`material-btn${active ? " material-btn--active" : ""}`}
-                              onClick={() => onMaterialChange(c.key === "paper" && PAPER_MATERIAL_IDS.includes(selectedMaterialId) ? selectedMaterialId : c.defaultId)}
+                              onClick={() => onMaterialChange(active ? selectedMaterialId : c.defaultId)}
                               aria-pressed={active}
                               title={c.label}
                             >

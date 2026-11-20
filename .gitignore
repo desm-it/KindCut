@@ -18,3 +18,10 @@ coverage/
 # proper submodule/subtree without churning KindCut history.
 vendor/slicebug/
 apps/desktop/resources/slicebug/
+apps/desktop/resources/joy/
+
+# Local reverse-engineering inputs, private captures and caches; never release.
+/.cache/
+/main.js
+/native-tests/
+/docs/research/

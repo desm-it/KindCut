@@ -1,0 +1,38 @@
+.native-make__preview-heading,.native-make__preview-caption{display:none!important}
+.native-make__icon-plan .cut-step__tile{cursor:default}
+.native-make__icon-plan .cut-step__tile:focus-visible{outline:2px solid #1e8b55;outline-offset:3px}
+
+.native-make__preview .native-make__mat-wrap { position:relative; display:block; height:auto; max-width:100%; margin:12px auto; background:#a8c98d; border-radius:8px; box-shadow:0 3px 12px #29392420; }
+.native-make__mat-art { position:absolute; display:grid; place-items:center; }
+.native-make__preview .native-make__mat { height:100%; width:100%; max-width:100%; max-height:100%; object-fit:contain; border:0; border-radius:0; box-shadow:none;  }
+.native-make__preview .native-make__mat-art img,.native-make__preview .native-make__mat-art svg { width:100%; height:100%; max-width:100%; max-height:100%; }
+@media(max-width:720px){.native-make__preview .native-make__mat-wrap{transform:scale(.8);transform-origin:top center;margin-bottom:-58px;}}
+
+.native-make__preview .native-make__mat-wrap--card { background:#c2e1ef; }
+.native-make__card-backing { inset:0; width:100%; height:100%; border-radius:8px; }
+.native-make__card-backing .workpiece-mat__label { font-size:12px; right:8px; }
+.native-make__card-backing .workpiece-mat__arrow { font-size:16px; }
+.native-make__card-paper { position:absolute; left:0; top:0; pointer-events:none; }
+.native-make__mat-art>.native-make__mat { position:relative; z-index:1; }
+.native-make__preview .native-make__card-guides { position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; overflow:visible; }
+.native-make__card-guide { stroke:rgba(46,100,132,.5); stroke-width:1; stroke-dasharray:3 3; vector-effect:non-scaling-stroke; }
+
+.native-make__workspace,.native-make__workspace>* { min-width:0; max-width:100%; }
+.native-make__icon-plan { min-width:0; width:100%; max-width:100%; }
+.native-make__plan-scroll { box-sizing:border-box; width:100%; min-width:0; max-width:100%; overflow-x:auto; overflow-y:hidden; overscroll-behavior:contain; padding:4px 2px 8px; scrollbar-width:thin; }
+.native-make__icon-plan .native-make__plan-scroll .cut-steps { box-sizing:border-box; width:max-content; min-width:100%; }
+.native-make__icon-plan .native-make__plan-scroll .cut-step { flex:1 0 76px; min-width:76px; max-width:104px; }
+.cut-modal__body.native-make__body { overflow-x:hidden; overflow-y:auto; }
+
+.native-make .native-make__material-kinds { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.native-make .native-make__material-kind { min-width:0; flex-direction:column; gap:5px; padding:8px 5px; text-align:center; }
+.native-make__vinyl-type { display:grid; gap:5px; font-size:12px; color:#5e6557; }
+.native-make__vinyl-type select { width:100%; min-width:0; padding:8px 10px; border:1px solid #dce0d5; border-radius:8px; background:#fff; color:inherit; font:inherit; }
+
+.native-make__card-options { display:grid; gap:8px; }
+.native-make__card-sizes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.native-make__card-sizes button { display:grid; gap:3px; padding:7px 3px; border:1px solid #dce0d5; border-radius:8px; background:#fff; font:inherit; font-size:11px; color:#5e6557; }
+.native-make__card-sizes button[aria-pressed=true] { border-color:#73915e; background:#edf3e5; color:#3b5830; }
+.native-make__card-sizes span { font-size:10px; }
+.native-make__corner-toggle { display:flex; align-items:center; gap:7px; font-size:12px; }
+.native-make__corner-toggle input { accent-color:#73915e; }

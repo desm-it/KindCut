@@ -26,3 +26,5 @@ export function preflightSvg(svg: string): SvgPreflightResult {
 
   return { ok: issues.length === 0, issues, warnings };
 }
+
+export * from "./joy-svg-plan";

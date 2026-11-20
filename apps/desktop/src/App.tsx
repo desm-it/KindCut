@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import{workspaceMaterialSelection,workspaceHasCutContent}from'./workspace-materials';
+import{buildNativeWorkspaceBundle}from'./native-joy-workspace-bundle';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import {
   DEFAULT_DASH,
@@ -136,6 +138,14 @@ import type { UpdateState } from "./shell/preload";
 import { DesignWorkspace } from "./components/workspace/DesignWorkspace";
 import { WelcomeScreen } from "./components/screens/WelcomeScreen";
 import { SettingsModal } from "./components/modals/SettingsModal";
+import { loadAdvancedInfoPreference, saveAdvancedInfoPreference } from "./advanced-info-preference";
+import { NativeMakeModal } from "./components/modals/NativeMakeModal";
+import {resolveMakeRoute} from "./native-make-route";
+import {nativeJoyConfigurationApi} from './components/panels/NativeJoyConfigurationPanel';
+import type {NativeConfigurationSource} from './native-joy-configuration-types';
+import { normalizeWorkspaceSvgForJoy } from './native-joy-workspace-normalize';
+import {nativeJoyMaterialOptions,type NativeJoyMaterialOption} from './native-joy-material-options';
+import {readCutterStartupSnapshot} from './cutter-startup-snapshot';
 import { AiGenerateModal } from "./components/modals/AiGenerateModal";
 import { LocalImageTraceModal } from "./components/modals/LocalImageTraceModal";
 import type { LocalRasterImport } from "./components/modals/LocalImageTraceModal";
@@ -280,6 +290,14 @@ export function App() {
   const [projectOpening, setProjectOpening] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [selectedMaterialId, setSelectedMaterialId] = useState(218);
+  const [nativeMaterialOptions, setNativeMaterialOptions] = useState<NativeJoyMaterialOption[]>([]);
+  useEffect(() => {
+    let current=true;
+    const api=nativeJoyConfigurationApi(window.cricutCompanion?.nativeJoy);
+    // Local catalog metadata only: never starts the worker, discovers, or connects.
+    if(api)void api.configurationList().then(c=>{if(current)setNativeMaterialOptions(nativeJoyMaterialOptions(c.materials??[]));}).catch(()=>{if(current)setNativeMaterialOptions([]);});
+    return()=>{current=false;};
+  }, []);
   // Start on the short mat: it fits the screen whole and suits most first projects.
   const [selectedMatPreset, setSelectedMatPreset] = useState("joy-standard-short");
   // Insert-card sub-options (only meaningful for the insert-card material).
@@ -298,6 +316,12 @@ export function App() {
   const [imageLibrary, setImageLibrary] = useState<LibraryImage[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [nativeMakeOpen, setNativeMakeOpen] = useState(false);
+  const [showAdvancedInfo, setShowAdvancedInfo] = useState(() => loadAdvancedInfoPreference());
+  const [nativeMakeEverOpened, setNativeMakeEverOpened] = useState(false);
+  const [cutterBackend, setCutterBackend] = useState<"auto" | "native" | "slicebug">("auto");
+  const [backendLoadError, setBackendLoadError] = useState("");
+  useEffect(() => { void window.cricutCompanion?.cutterBackend.get().then(setCutterBackend).catch(() => setBackendLoadError("Could not load the saved cutter backend. Re-select a backend before cutting.")); }, []);
   const [aiGenerateOpen, setAiGenerateOpen] = useState(false);
   const [activeRasterImport, setActiveRasterImport] = useState<LocalRasterImport | null>(null);
   const [rasterImportQueue, setRasterImportQueue] = useState<LocalRasterImport[]>([]);
@@ -1641,11 +1665,8 @@ export function App() {
   // Card-size + insert-slot options only apply to the insert-card material; clear them
   // when switching to another material.
   function handleMaterialChange(materialId: number) {
-    setSelectedMaterialId(materialId);
-    if (materialId !== MATERIAL_INSERT_ID) {
-      setCardSize(null);
-      setInsertSlots(false);
-    }
+    const next=workspaceMaterialSelection({materialId:selectedMaterialId,matPreset:selectedMatPreset,cardSize,insertSlots},materialId);
+    setSelectedMaterialId(next.materialId);setSelectedMatPreset(next.matPreset);setCardSize(next.cardSize);setInsertSlots(next.insertSlots);
   }
 
   function handleCardSizeChange(size: CardSize) {
@@ -1771,12 +1792,17 @@ export function App() {
 
     setSlicebugLoading(true);
     try {
-      const [status, setup] = await Promise.all([
-        window.cricutCompanion.slicebug.getStatus(),
-        window.cricutCompanion.slicebug.getSetupStatus?.(),
-      ]);
-      setSlicebugStatus(status);
-      setSlicebugSetupStatus(setup ?? null);
+      const api=window.cricutCompanion;
+      const snapshot=await readCutterStartupSnapshot({
+        preference:()=>api.cutterBackend.get(),
+        nativeSetup:api.nativeJoy?()=>api.nativeJoy!.getSetupStatus():undefined,
+        legacyStatus:()=>api.slicebug.getStatus(),
+        legacySetup:async()=>await api.slicebug.getSetupStatus?.()??null,
+      });
+      if(snapshot.kind==='native'){
+        setSlicebugStatus({ok:snapshot.setup.runtimeAvailable,executable:null,version:null,message:snapshot.setup.runtimeAvailable?'Native Joy runtime available. No device connection has been opened.':'Native Joy runtime is unavailable. No legacy fallback was started.'});
+        setSlicebugSetupStatus(null);
+      }else{setSlicebugStatus(snapshot.status);setSlicebugSetupStatus(snapshot.setup);}
     } catch (error) {
       setSlicebugStatus({
         ok: false,
@@ -1965,8 +1991,23 @@ export function App() {
     return [...list.filter((t) => t.tool === "pen"), ...list.filter((t) => t.tool !== "pen")];
   }, [importedSvgs, tools, selectedMaterialId, insertSlots, cutPlanColors]);
 
+  const getNativeWorkspaceBundle = useCallback(async () => {
+    const matDims = getMatDimensionsInches(selectedMatPreset);
+    const resolvedItems = await resolveDotPrintItemsForCutting(await resolveTextItemsForCutting(importedSvgs));
+    return buildNativeWorkspaceBundle({items:resolvedItems,matPreset:selectedMatPreset,mat:matDims,tools,materialId:selectedMaterialId,cardSize,insertSlots,behindColor:getBehindColor(tools),colorMap:buildToolColorMap()});
+  }, [importedSvgs, selectedMaterialId, selectedMatPreset, tools, insertSlots, cardSize]);
+  const getNativeWorkspaceSource=useCallback(async():Promise<NativeConfigurationSource>=>(await getNativeWorkspaceBundle()).source,[getNativeWorkspaceBundle]);
+  const getNativeConfigurationSource=useCallback(async():Promise<NativeConfigurationSource>=>{const src=await getNativeWorkspaceSource();return {...src,svg:normalizeWorkspaceSvgForJoy(src.svg,src.mat,src.strokeTools)};},[getNativeWorkspaceSource]);
+  const getNativePreviewSource=useCallback(async()=>{const b=await getNativeWorkspaceBundle();return{...b.source,previewOnly:true as const,matPreset:selectedMatPreset,cardSize:selectedMaterialId===MATERIAL_INSERT_ID?cardSize:null,insertSlots:selectedMaterialId===MATERIAL_INSERT_ID&&insertSlots,visualSvg:b.visualSvg,paperColor,behindColor:getBehindColor(tools)};},[getNativeWorkspaceBundle,selectedMatPreset,selectedMaterialId,cardSize,insertSlots,paperColor,tools]);
+
   async function handleOpenCutPreview() {
-    if (importedSvgs.length === 0) return;
+    if (!workspaceHasCutContent(importedSvgs.length,selectedMaterialId,insertSlots)) return;
+    try {
+      const api=window.cricutCompanion;
+      if(!api)throw Error('Open the desktop app to make this design.');
+      const route=await resolveMakeRoute({preference:()=>api.cutterBackend.get(),nativeSetup:api.nativeJoy?()=>api.nativeJoy!.getSetupStatus():undefined});
+      if(route==='native'){setNativeMakeEverOpened(true);setNativeMakeOpen(true);return;}
+    }catch(error){setImportMessage(error instanceof Error?error.message:'Could not resolve the cutter backend.');return;}
     // Clear any finished/stopped/errored session so reopening starts a fresh cut.
     setCutSession(null);
     const matDims = getMatDimensionsInches(selectedMatPreset);
@@ -2332,6 +2373,7 @@ export function App() {
   return (
     <>
     <DesignWorkspace
+      nativeMaterials={nativeMaterialOptions}
       language={language}
       measurementUnit={measurementUnit}
       selectedMaterialId={selectedMaterialId}
@@ -2427,12 +2469,19 @@ export function App() {
     />
     {settingsOpen ? (
       <SettingsModal
+        showAdvancedInfo={showAdvancedInfo}
+        onShowAdvancedInfoChange={(value) => { setShowAdvancedInfo(value); saveAdvancedInfoPreference(value); }}
+        onOpenNativeMake={() => { setSettingsOpen(false); setNativeMakeEverOpened(true); setNativeMakeOpen(true); }}
         language={language}
         settings={aiSettings}
+        backend={cutterBackend}
+        backendLoadError={backendLoadError}
+        onBackendChange={async (value) => { if (!window.cricutCompanion) throw new Error("Desktop API unavailable"); await window.cricutCompanion.cutterBackend.set(value); setCutterBackend(value); setBackendLoadError(""); }}
         onSave={(updated) => { saveAiSettings(updated); setAiSettings(updated); setSettingsOpen(false); }}
         onClose={() => setSettingsOpen(false)}
       />
     ) : null}
+    {nativeMakeEverOpened && <div style={{ display: nativeMakeOpen ? undefined : "none" }}><NativeMakeModal onOpenSettings={()=>{setNativeMakeOpen(false);setSettingsOpen(true);}} showAdvancedInfo={showAdvancedInfo} visible={nativeMakeOpen} onClose={() => setNativeMakeOpen(false)} language={language} configurationApi={nativeJoyConfigurationApi(window.cricutCompanion?.nativeJoy)} previewSource={getNativePreviewSource} source={getNativeConfigurationSource} nativeMaterials={nativeMaterialOptions} onWorkspaceMaterialChange={handleMaterialChange} workspaceCard={{size:cardSize,slots:insertSlots,onSize:setCardSize,onSlots:setInsertSlots}} workspaceMaterial={{id:selectedMaterialId,name:nativeMaterialOptions.find(m=>m.id===selectedMaterialId)?.name??MATERIAL_OPTIONS.find(m=>m.id===selectedMaterialId)?.name??`Material #${selectedMaterialId}`}} /></div>}
     {aiGenerateOpen ? (
       <AiGenerateModal
         language={language}

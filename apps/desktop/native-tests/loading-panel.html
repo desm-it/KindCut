@@ -1,0 +1,17 @@
+<!doctype html><html><head><meta charset="utf-8"><title>KindCut inert loading UI fixture</title></head><body style="background:#16191f;color:#eee;padding:24px"><p><strong>INERT UI TEST — no Electron IPC, Bluetooth or hardware.</strong></p><div id="root" style="max-width:800px"></div><script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {NativeJoySetupPanel} from '/src/components/panels/NativeJoySetupPanel.tsx';
+import '/src/styles.css';
+const calls=window.fixtureCalls=[];const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const session={state:'ready',machine:'cricut_joy',firmwareSelector:8.164000001,materialRecord:0,fallbackUsed:false,status:{status_byte_1:96,status_byte_2:1,extra_u16_raw:0,extra_u16_native:0,value_be32:0}};
+let connected=true;let state={operationId:0,phase:'idle',active:false,sessionRetired:false,physicalLoadingVerified:false,physicalAlignmentVerified:false,motionStoppedVerified:false,jobStarted:false};
+const terminal=phase=>{state={...state,phase,active:false,sessionRetired:true};connected=false;};
+const api={getSetupStatus:async()=>{calls.push('metadata');return{experimental:true,enabled:true,runtimeAvailable:true,provisioned:true,provisioningSource:'bundled',platform:'darwin',session:connected?session:null};},devices:async()=>{calls.push('devices');return[];},importProvisioning:async()=>({canceled:true}),connect:async()=>session,pollStatus:async()=>session,disconnect:async()=>{calls.push('disconnect');terminal('cancelled');},mat:async()=>({canceled:true}),
+loadingStart:async height=>{calls.push('start:'+height);state={...state,operationId:state.operationId+1,phase:'loading_and_aligning',active:true,sessionRetired:false};setTimeout(()=>{state={...state,phase:'waiting_for_go'};},100);return{...state};},
+loadingStatus:async()=>{calls.push('loading-status');return{...state};},
+loadingGo:async()=>{calls.push('go');state={...state,phase:'releasing'};const reply={...state};await wait(800);setTimeout(()=>terminal('completed'),800);return reply;},
+loadingCancel:async()=>{calls.push('cancel');setTimeout(()=>terminal('cancelled'),300);return{...state};}};
+window.fixtureState=()=>({...state});
+createRoot(document.getElementById('root')).render(React.createElement(NativeJoySetupPanel,{api}));
+</script></body></html>

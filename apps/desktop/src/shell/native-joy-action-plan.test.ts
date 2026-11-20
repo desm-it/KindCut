@@ -1,0 +1,4 @@
+import{it,expect}from'vitest';import{partitionNativeJoyActions}from'./native-joy-action-plan';
+const path=(id:string,color:string)=>({id,color,steps:[{op:'M',points:[{x:20,y:20}]},{op:'L',points:[{x:40,y:40}]}]})as any;
+it('keeps one complete pen action per colour in first appearance order, blade last',()=>{const a=path('a','#112233'),b=path('b','#445566'),c=path('c','#112233'),d=path('d','#778899');const source:any=[{tool:'fine_point_blade',operation:'cut',paths:[d]},{tool:'pen',operation:'draw',paths:[a,b,c]}];const out=partitionNativeJoyActions(source);expect(out.map(g=>[g.tool,g.paths.map(p=>p.id)])).toEqual([['pen',['a','c']],['pen',['b']],['fine_point_blade',['d']]]);expect(source[1].paths).toEqual([a,b,c]);});
+it('rejects a pen with no identifiable colour rather than omitting it',()=>{expect(()=>partitionNativeJoyActions([{tool:'pen',operation:'draw',paths:[{...path('a','#112233'),color:undefined}]}])).toThrow();});

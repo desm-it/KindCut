@@ -39,3 +39,19 @@ npm run dev
 ## Safety
 
 Never run `slicebug cut` or any machine-control command from this repo without explicit user approval. Tests should use command builders/fakes only.
+
+### Current native Joy development authorization
+
+Joel has explicitly authorized relevant Bluetooth discovery, pairing/connection,
+real-device protocol testing, and reading local Cricut settings/key material for
+this integration. Earlier research-only blanket prohibitions are superseded.
+Keep automated tests inert; normal OS permissions and deliberate cut/firmware
+confirmation remain in place. Do not operate unrelated devices or start device
+work automatically at app launch.
+
+The installed KindCut app must be standalone: it must not read, load or execute
+CricutDevice/Design Space to import material or connect. Shared decoder constants
+necessary for device function may ship with the app. Joel permits necessary
+secret material in source only when no alternative exists, or in a git-ignored
+secrets file. Prefer OS-protected storage for account/device keys and settings;
+never log them or copy AI/account credentials into source or test fixtures.

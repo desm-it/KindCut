@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <path id="closed-curve" fill="none" stroke="#000000" d="M 16 16 L 80 16 C 80 32 32 80 16 80 Z"/>
+  <path id="clipped-line" fill="none" stroke="#000000" d="M -48 48 L 144 48"/>
+  <path id="blade-line" fill="none" stroke="#ff0000" d="M 8 8 L 88 88"/>
+</svg>

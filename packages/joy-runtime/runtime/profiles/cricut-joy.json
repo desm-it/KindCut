@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "profileId": "cricut-joy",
+  "machine": 12,
+  "protocol": "joy-v1",
+  "transport": "BluetoothSPP",
+  "capabilities": {
+    "status": true,
+    "readonly": false,
+    "matControl": true,
+    "cuts": false
+  },
+  "experimental": true,
+  "initializationRecords": [
+    {
+      "machineType": 12,
+      "lower": 8.15999984741211,
+      "upper": 8.168999671936035,
+      "odd": false,
+      "reverse": false,
+      "mix": false,
+      "rawBase64": "l1yBSyI3GkuB8B5kPaChzthh8Ny1PeHAT2FhzKxF+CATZ8E+1Ztvu5LYkyqRs6CIbvPzEhRgqC9XqVr1zo09pg=="
+    },
+    {
+      "machineType": 12,
+      "lower": 8.170000076293945,
+      "upper": 999.0,
+      "odd": false,
+      "reverse": false,
+      "mix": false,
+      "rawBase64": "l76BKCJdGk+BdB48PUahJthO8ES1jOE9T8BhSqyI+CUTA8HA1cZvq5IGk4SRRaBtbt/zshQ6qNRXgVppzq094w=="
+    }
+  ]
+}

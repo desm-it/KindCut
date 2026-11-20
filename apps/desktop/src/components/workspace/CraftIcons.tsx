@@ -2,15 +2,14 @@
 // visual progress, so the icons stay consistent across the app.
 
 // Material categories → slicebug material IDs.
-export const PAPER_MATERIAL_IDS = [218, 19, 211]; // light, medium, heavy
-export const MATERIAL_INSERT_ID = 535;
-export const MATERIAL_VINYL_ID = 20;
+import{MATERIAL_INSERT_ID,isVinylMaterial}from'../../workspace-materials';
+export{PAPER_MATERIAL_IDS,MATERIAL_INSERT_ID,MATERIAL_VINYL_ID}from'../../workspace-materials';
 
 export type MaterialKind = "paper" | "insert" | "vinyl";
 
 export function materialCategoryOf(id: number): MaterialKind {
   if (id === MATERIAL_INSERT_ID) return "insert";
-  if (id === MATERIAL_VINYL_ID) return "vinyl";
+  if (isVinylMaterial(id)) return "vinyl";
   return "paper";
 }
 
@@ -110,4 +109,14 @@ export function ToolGlyph({ tool, color }: { tool: CutToolKind; color: string })
 export function prettyToolName(tool: string): string {
   const spaced = tool.replace(/_/g, " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/** Stacked-sheet thickness glyph for a paper weight. */
+export function WeightIcon({ level }: { level: "light" | "medium" | "heavy" }) {
+  const layers = level === "light" ? 1 : level === "medium" ? 2 : 3;
+  return (
+    <span className="weight-icon" aria-hidden="true">
+      {Array.from({ length: layers }).map((_, i) => <span key={i} className="weight-icon__layer" />)}
+    </span>
+  );
 }

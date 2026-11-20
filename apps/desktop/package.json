@@ -1,6 +1,6 @@
 {
   "name": "@cricut-companion/desktop",
-  "version": "1.4.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,12 +11,13 @@
     "build:renderer": "tsc --noEmit && vite build --outDir dist/renderer",
     "build:shell": "tsc -p tsconfig.shell.json && node scripts/prepare-shell-output.cjs",
     "build:slicebug": "node scripts/build-slicebug-runtime.cjs",
+    "build:joy": "node ../../packages/joy-runtime/scripts/build-runtime.cjs",
     "verify:release-assets": "node scripts/verify-release-assets.cjs",
     "verify:slicebug": "node scripts/verify-slicebug-runtime.cjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.shell.json --noEmit",
     "test": "vitest run --passWithNoTests",
-    "package:dir": "npm run build:slicebug && npm run verify:slicebug && npm run build && electron-builder --dir --publish never",
-    "package:mac": "node scripts/assert-package-host.cjs mac && npm run build:slicebug && npm run verify:slicebug && npm run build && electron-builder --mac --publish never",
+    "package:dir": "npm run build:joy && npm run build:slicebug && npm run verify:slicebug && npm run build && electron-builder --dir --publish never",
+    "package:mac": "node scripts/assert-package-host.cjs mac && npm run build:joy && npm run build:slicebug && npm run verify:slicebug && npm run build && electron-builder --mac --publish never",
     "package:win": "node scripts/assert-package-host.cjs win && npm run build:slicebug && npm run verify:slicebug && npm run build && electron-builder --win --publish never"
   },
   "dependencies": {
@@ -26,14 +27,15 @@
     "@cricut-companion/svg-preflight": "*",
     "@xmldom/xmldom": "^0.8.13",
     "electron-updater": "^6.8.9",
+    "lucide-react": "1.77.0",
     "potrace": "^2.1.8",
-    "react": "latest",
-    "react-dom": "latest",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
     "react-moveable": "^0.56.0"
   },
   "devDependencies": {
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
+    "@types/react": "19.2.15",
+    "@types/react-dom": "19.2.3",
     "concurrently": "^10.0.3",
     "electron": "39.8.10",
     "electron-builder": "^26.0.12",
@@ -68,6 +70,12 @@
     ],
     "mac": {
       "category": "public.app-category.graphics-design",
+      "extraResources": [
+        {
+          "from": "resources/joy",
+          "to": "joy"
+        }
+      ],
       "target": [
         "dmg",
         "zip"

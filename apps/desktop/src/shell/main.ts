@@ -1,3 +1,4 @@
+import {NativeJoyInlineIntent,isNativeIntent,type NativeIntent} from './native-joy-inline-intent';
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -17,9 +18,10 @@ const Jimp = require("jimp") as {
   read: (buffer: Buffer) => Promise<JimpImage>;
   MIME_PNG: string;
 };
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, safeStorage } from "electron";
 import type {
   IpcMainEvent,
+  IpcMainInvokeEvent,
   MenuItemConstructorOptions,
   MessageBoxOptions,
   MessageBoxReturnValue,
@@ -59,6 +61,20 @@ import type { CutSessionSnapshot, SvgPlanInput } from "./slicebug-service";
 import { createMainWindowOptions, resolveRendererEntry } from "./window-config";
 import { isVersionAtLeast, shouldSuppressSkippedUpdate } from "./update-version";
 import type { SkippedUpdateState } from "./update-version";
+import { NativeJoyService,type NativeJoyLoadingState } from "./native-joy-service.js";
+import {NativeJoyJobService} from './native-joy-job-service';
+import {NativeJoyJobJournal} from './native-joy-job-journal';
+import {registerNativeJoyJobIpc} from './native-joy-job-ipc';
+import {NativeJoyLoadingJournal} from "./native-joy-loading-journal";
+import {applyAppDataIsolation} from "./app-data-isolation";
+import {JoyConfigurationStore,readConfigurationFile,exportConfigurationLibrary} from './joy-configuration-store';
+import {JoyConfigurationService} from './joy-configuration-service';
+import {registerNativeJoyConfigurationIpc} from './native-joy-configuration-ipc';
+import { acquireCutterEntry } from "./cutter-entry.js";
+import { JoyProvisioningStore } from "./joy-provisioning-store";
+import { registerNativeJoyIpc } from "./native-joy-ipc";
+import { isTrustedJoyUrl } from "./native-joy-origin";
+import { discoverJoyDevices } from "./joy-discovery";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 // Dev builds find SliceBug relative to the working directory, but on macOS the dev
@@ -67,7 +83,55 @@ const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 if (!app.isPackaged) {
   process.chdir(app.getAppPath());
 }
+applyAppDataIsolation(app,process.env.KINDCUT_USER_DATA_DIR);
+
 let activeCutSession: SlicebugCutSession | null = null;
+let legacyCutterStarting = false;
+let nativeJoyService: NativeJoyService | null = null;
+let nativeJoyLoadingJournal:NativeJoyLoadingJournal|null=null;
+function getNativeJoyLoadingJournal(){return nativeJoyLoadingJournal??=new NativeJoyLoadingJournal(path.join(app.getPath('userData'),'native-joy','diagnostics'));}
+function getNativeJoyService(): NativeJoyService {
+  if (!nativeJoyService) {
+    const runtimePath = app.isPackaged
+      ? path.join(process.resourcesPath, "joy", "kindcut-joy-runtime")
+      : path.resolve(app.getAppPath(), "../../packages/joy-runtime/dist/kindcut-joy-runtime/kindcut-joy-runtime");
+    nativeJoyService = new NativeJoyService({ platform: process.platform,
+      enabled: process.platform === "darwin", runtimePath,
+      store: new JoyProvisioningStore(path.join(app.getPath("userData"), "native-joy", "provisioning.bin"), safeStorage),
+    });
+  }
+  return nativeJoyService;
+}
+let joyConfigurationService:JoyConfigurationService|null=null;
+function getJoyConfigurationService(){
+ if(!joyConfigurationService)joyConfigurationService=new JoyConfigurationService({
+  store:new JoyConfigurationStore(path.join(app.getPath('userData'),'native-joy','configuration-library.json')),
+  offline:request=>getNativeJoyService().runOfflineConfiguration(request),
+  capture:async()=>{throw new Error('Use the session-bound calibration approval flow.');},
+ });
+ return joyConfigurationService;
+}
+const nativeInlineIntents=new NativeJoyInlineIntent();
+function trustedNativeSender(event:unknown):boolean{const e=event as IpcMainInvokeEvent;return Boolean(e?.sender&&!e.sender.isDestroyed()&&BrowserWindow.fromWebContents(e.sender)!==null&&e.senderFrame===e.sender.mainFrame&&e.senderFrame&&isTrustedJoyUrl(e.senderFrame.url,resolveRendererEntry({appRoot:path.resolve(__dirname,'..'),viteDevServerUrl:process.env.VITE_DEV_SERVER_URL})));}
+function nativeIntentBinding(action:NativeIntent):string{return JSON.stringify([getNativeJoyService().inlineActionIdentity,action.startsWith('job-')?getNativeJobService().inlineActionIdentity:null]);}
+const nativeIntentChannels:Record<string,NativeIntent>={'native-joy:connect':'connect','native-joy:connect-for-make':'connect','native-joy:disconnect':'disconnect','native-joy:job-start':'job-start','native-joy:job-go':'job-go','native-joy:job-resume':'job-resume','native-joy:job-end':'job-end'};
+function registerNativeUserHandler(name:string,handler:(event:unknown,input?:unknown)=>Promise<unknown>){ipcMain.handle(name,async(event,input)=>{const action=nativeIntentChannels[name];if(!action)return handler(event,input);if(!trustedNativeSender(event)||!event.senderFrame)throw Error('Trusted Make window required.');return nativeInlineIntents.run(event.senderFrame,action,nativeIntentBinding(action),()=>handler(event,input));});}
+async function approveNativeMakeAction(action:NativeIntent):Promise<boolean>{if(!(await checkForBlockingCutterProcesses()).ok)throw Error('Close the other cutter application before continuing.');return nativeInlineIntents.approve(action);}
+let nativeJobService:NativeJoyJobService|null=null;
+let nativeJobJournal:NativeJoyJobJournal|null=null;
+const legacyOwnsCutter=()=>legacyCutterStarting||Boolean(activeCutSession&&!['finished','stopped','blocked'].includes(activeCutSession.getSnapshot().status));
+function getNativeJobJournal(){return nativeJobJournal??=new NativeJoyJobJournal(path.join(app.getPath('userData'),'native-joy','job-diagnostics'));}
+function getNativeJobService(){
+ return nativeJobService??=new NativeJoyJobService({ensureMakeSelection:(materialId,tools)=>getJoyConfigurationService().ensureMakeSelection(materialId,tools),loadLibrary:()=>getJoyConfigurationService().exportLibrary(),native:getNativeJoyService(),legacyBusy:legacyOwnsCutter,
+  journal:{preflight:()=>getNativeJobJournal().preflight(),observe:s=>getNativeJobJournal().observe(s)},
+  // The isolated preload captures the single intentional button click; IPC
+  // consumes its frame/state-bound receipt before this host-only approval.
+  confirmLoad:()=>approveNativeMakeAction('job-start'),
+  confirmTool:()=>approveNativeMakeAction('job-go'),
+  confirmResume:()=>approveNativeMakeAction('job-resume'),
+  confirmEnd:()=>approveNativeMakeAction('job-end'),
+ });
+}
 const closeAllowedWindows = new WeakSet<BrowserWindow>();
 let updateCheckInProgress = false;
 let installingUpdate = false;
@@ -159,6 +223,7 @@ type UpdateRendererState = {
 
 type AppSettings = {
   slicebugLoggingEnabled?: boolean;
+  cutterBackend?: "auto" | "native" | "slicebug";
 };
 
 type JimpImage = {
@@ -329,7 +394,7 @@ function isAppSettings(value: unknown): value is AppSettings {
     return false;
   }
   const record = value as Record<string, unknown>;
-  return record.slicebugLoggingEnabled === undefined || typeof record.slicebugLoggingEnabled === "boolean";
+  return (record.slicebugLoggingEnabled === undefined || typeof record.slicebugLoggingEnabled === "boolean") && (record.cutterBackend === undefined || record.cutterBackend === "auto" || record.cutterBackend === "native" || record.cutterBackend === "slicebug");
 }
 
 async function readAppSettings(): Promise<AppSettings> {
@@ -1246,6 +1311,8 @@ async function showContextMenu(window: BrowserWindow): Promise<void> {
 async function createMainWindow(): Promise<BrowserWindow> {
   const preloadPath = path.join(__dirname, "preload.js");
   const mainWindow = new BrowserWindow(createMainWindowOptions({ preloadPath }));
+  mainWindow.webContents.on('did-start-navigation',()=>nativeInlineIntents.clear());
+  mainWindow.webContents.on('render-process-gone',()=>nativeInlineIntents.clear());
 
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
@@ -1325,6 +1392,20 @@ ipcMain.handle("updater:download", async (_event, input?: { background?: boolean
 ipcMain.handle("updater:install", async () => installReadyUpdate());
 ipcMain.handle("updater:dismiss", () => dismissUpdateModal());
 ipcMain.handle("updater:skip", async () => skipAvailableUpdate());
+function trustedCutterSender(e: IpcMainInvokeEvent): boolean {
+  const entry=resolveRendererEntry({appRoot:path.resolve(__dirname,".."),viteDevServerUrl:process.env.VITE_DEV_SERVER_URL});
+  return !e.sender.isDestroyed() && BrowserWindow.fromWebContents(e.sender)!==null &&
+    e.senderFrame===e.sender.mainFrame && Boolean(e.senderFrame&&isTrustedJoyUrl(e.senderFrame.url,entry));
+}
+function requireCutterSender(e: IpcMainInvokeEvent): void {
+  if(!trustedCutterSender(e))throw new Error("Cutter operations require the trusted main-frame renderer.");
+}
+ipcMain.handle("cutter:get-backend", async (event) => {requireCutterSender(event);return (await readAppSettings()).cutterBackend ?? "auto";});
+ipcMain.handle("cutter:set-backend", async (event, value: unknown) => {
+  requireCutterSender(event);
+  if (value !== "auto" && value !== "native" && value !== "slicebug") throw new Error("Invalid cutter backend preference.");
+  await writeAppSettings({ ...(await readAppSettings()), cutterBackend: value }); return value;
+});
 ipcMain.handle("slicebug:get-status", async () => getSlicebugStatus());
 ipcMain.handle("slicebug:get-setup-status", async () => getSlicebugSetupStatus());
 ipcMain.handle("slicebug:bootstrap", async (_event, input?: { designSpacePath?: string; designSpaceProfilePath?: string }) =>
@@ -1335,6 +1416,22 @@ ipcMain.handle("slicebug:generate-sample-plan", async (_event, choices?: { mater
 );
 ipcMain.handle("slicebug:create-plan", async (_event, input: SvgPlanInput) => generateSvgSlicebugPlan(input));
 ipcMain.handle("slicebug:start-cut-session", async (_event, planPath: string): Promise<CutSessionSnapshot> => {
+  requireCutterSender(_event);
+  return acquireCutterEntry({
+    acquire: () => { if (legacyCutterStarting || (activeCutSession && !["finished","stopped","blocked"].includes(activeCutSession.getSnapshot().status))) return false; legacyCutterStarting = true; return true; },
+    release: () => { legacyCutterStarting = false; },
+    readBackend: async () => (await readAppSettings()).cutterBackend ?? "auto",
+    nativeOwnsHardware: () => Boolean(nativeJoyService?.ownsHardware),
+    confirmFallback: async () => {
+      const choice = await dialog.showMessageBox({ type: "warning", buttons: ["Cancel", "Use SliceBug for this cut"], defaultId: 0, cancelId: 0, title: "Native cutting is not ready", message: "Auto cannot cut with the experimental native runtime yet.", detail: "Explicitly confirm SliceBug before the cut session starts. No automatic fallback will occur." });
+      return choice.response === 1;
+    },
+    confirmDisconnect: async () => {
+      const choice = await dialog.showMessageBox({ type: "warning", buttons: ["Cancel", "Disconnect and continue"], defaultId: 0, cancelId: 0, title: "Native session connected", message: "Disconnect the experimental native session before using SliceBug?", detail: "The session will be disconnected before the legacy cut starts." });
+      return choice.response === 1;
+    },
+    disconnectNative: async () => { await nativeJoyService?.disconnect(); },
+    start: async () => {
   const blocker = await checkForBlockingCutterProcesses();
   if (!blocker.ok) {
     activeCutSession = null;
@@ -1369,7 +1466,9 @@ ipcMain.handle("slicebug:start-cut-session", async (_event, planPath: string): P
       process.env.CRICUT_COMPANION_SMOKE_CUT === "1" ||
       process.env.NODE_ENV === "test",
   });
-  return activeCutSession.start();
+      return activeCutSession.start();
+    },
+  });
 });
 ipcMain.handle("slicebug:get-cut-session", async (): Promise<CutSessionSnapshot | null> => activeCutSession?.getSnapshot() ?? null);
 ipcMain.handle("slicebug:continue-cut-session", async (): Promise<CutSessionSnapshot | null> => activeCutSession?.continue() ?? null);
@@ -1729,6 +1828,92 @@ ipcMain.handle("image:trace-raster-to-svg", async (_event, input: {
 app.whenReady().then(async () => {
   configureDiagnosticsLog(path.join(app.getPath("userData"), "logs"));
   await loadAppSettings();
+  const joyRendererEntry = resolveRendererEntry({ appRoot: path.resolve(__dirname, ".."), viteDevServerUrl: process.env.VITE_DEV_SERVER_URL });
+  ipcMain.on('native-joy:trusted-click',(event,action:unknown)=>{if(!trustedNativeSender(event)||!event.senderFrame)return;if(action===null){nativeInlineIntents.revoke(event.senderFrame);return;}if(isNativeIntent(action))nativeInlineIntents.record(event.senderFrame,action,nativeIntentBinding(action));});
+  registerNativeJoyIpc({
+    diagnostics:{
+      prepare:height=>getNativeJoyLoadingJournal().prepare(height),
+      restore:async()=>getNativeJoyService().ownsHardware?null:getNativeJoyLoadingJournal().restoreTerminalState(),
+      record:state=>getNativeJoyLoadingJournal().record(state as NativeJoyLoadingState),
+      export:async()=>{
+        if(getNativeJoyService().getLoadingState().active)throw new Error('End loading before exporting diagnostics.');
+        try{await getNativeJoyLoadingJournal().readLatest();}catch{throw new Error('No valid saved loading diagnostics are available yet.');}
+        const answer=await dialog.showSaveDialog({title:'Export loading diagnostics',defaultPath:'KindCut-Joy-loading-diagnostics.json',filters:[{name:'KindCut loading diagnostics',extensions:['json']}]});
+        if(answer.canceled||!answer.filePath)return{canceled:true};
+        if(getNativeJoyService().getLoadingState().active)throw new Error('Loading started while diagnostic export was open.');
+        try{await getNativeJoyLoadingJournal().exportTo(answer.filePath);}catch{throw new Error('Loading diagnostics could not be exported. Check the destination and available disk space.');}
+        return{canceled:false};
+      },
+    },
+    register:registerNativeUserHandler,
+    isTrusted: (event) => {
+      const e = event as IpcMainInvokeEvent;
+      return !e.sender.isDestroyed() && BrowserWindow.fromWebContents(e.sender) !== null &&
+        e.senderFrame === e.sender.mainFrame && Boolean(e.senderFrame && isTrustedJoyUrl(e.senderFrame.url, joyRendererEntry));
+    },
+    service: getNativeJoyService,
+    listDevices: async () => {
+      if(process.platform!=="darwin")return [];
+      const folder=app.isPackaged?path.join(process.resourcesPath,"joy"):path.resolve(app.getAppPath(),"../../packages/joy-runtime/dist/kindcut-joy-runtime");
+      return discoverJoyDevices(path.join(folder,"_internal/bluetooth/joy_rfcomm"));
+    },
+    cutterBusy: () => legacyCutterStarting || Boolean(activeCutSession && !["finished", "stopped", "blocked"].includes(activeCutSession.getSnapshot().status)),
+    assertCurrent:action=>{nativeInlineIntents.assertCurrent(action);},
+    confirmImport: async () => {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error("Keychain protection is unavailable. No provisioning will be saved.");
+      const answer = await dialog.showMessageBox({ type: "question", title: "Import native Joy material", message: "Import material, settings and keys?", detail: "Choose an existing settings-cache JSON (settings8_raw) or a KindCut provisioning bundle. KindCut validates and protects imported material using macOS Keychain-backed storage. No Cricut helper, Design Space installation or login is required. Import does not operate the cutter.", buttons: ["Import", "Cancel"], defaultId: 1, cancelId: 1 });
+      return answer.response === 0;
+    },
+    chooseCache: async () => {
+      const answer = await dialog.showOpenDialog({ title: "Import material / settings / keys", defaultPath: path.join(app.getPath("home"), ".slicebug", "keys.json"), properties: ["openFile"], filters: [{ name: "Settings cache or KindCut provisioning bundle", extensions: ["json"] }] });
+      return answer.canceled ? null : answer.filePaths[0] ?? null;
+    },
+
+    confirmHardware: () => approveNativeMakeAction('connect'),
+    confirmLoading: async heightInches => {
+      const check=async()=>{
+        const blocker=await checkForBlockingCutterProcesses();
+        if(!blocker.ok){await dialog.showMessageBox({type:'warning',title:'Cutter is unavailable',message:blocker.message});return false;}
+        return true;
+      };
+      if(!await check())return false;
+      const answer=await dialog.showMessageBox({type:'warning',title:'Load and align mat',message:`Experimental ${heightInches}-inch sensor-driven mat loading`,detail:'Confirm the entire BLADE HOUSING is removed and the front and back are clear. Leave the mat out until KindCut shows Insert mat now after sensor arming. The loading sequence requests the ready light, detects insertion, grips, measures and aligns the mat and carriage, then holds the session ready. Physical loading/alignment remains unverified. No job or cutting starts. End loading session releases ownership; it does not prove the mat is ejected or motion stopped. Cancel is not a guaranteed emergency stop.',buttons:['Blade housing removed — run check','Cancel'],defaultId:1,cancelId:1});
+      return answer.response===0&&await check();
+    },
+    confirmMat: async action => {
+      const answer=await dialog.showMessageBox({type:'warning',title:action==='load'?'Load mat':'Unload mat',message:action==='load'?'Guide the mat into the Joy rollers. Ready to load?':'Ready to release the mat?',detail:'The rollers may move. Keep fingers and loose objects clear. This sends only a mat-control command, not a cut. An acknowledgement does not verify physical mat presence.',buttons:[action==='load'?'Load mat':'Unload mat','Cancel'],defaultId:1,cancelId:1});
+      return answer.response===0;
+    },
+  });
+  registerNativeJoyConfigurationIpc({
+    register:(name,handler)=>ipcMain.handle(name,handler),
+    isTrusted:event=>{const e=event as IpcMainInvokeEvent;return !e.sender.isDestroyed()&&BrowserWindow.fromWebContents(e.sender)!==null&&e.senderFrame===e.sender.mainFrame&&Boolean(e.senderFrame&&isTrustedJoyUrl(e.senderFrame.url,joyRendererEntry));},
+    cutterBusy:()=>legacyOwnsCutter()||getNativeJoyService().ownsJob,
+    service:getJoyConfigurationService,native:getNativeJoyService,
+    confirmRead:async()=>{
+      const check=async()=>{const blocker=await checkForBlockingCutterProcesses();if(!blocker.ok){await dialog.showMessageBox({type:'warning',message:blocker.message});return false;}return true;};
+      if(!await check())return false;
+      const answer=await dialog.showMessageBox({type:'question',title:'Read saved Joy calibration',message:'Read the connected original Joy’s saved pressure table?',detail:'Reads sixteen stored pressure/count entries from the already initialized session. No mechanical calibration, pressure change, rollers/carriage movement, reset or job is requested. Remove all tools for this first experimental read. Saved data is bound to this Joy; physical calibration and material suitability remain unverified.',buttons:['Read saved calibration','Cancel'],defaultId:1,cancelId:1});
+      return answer.response===0&&await check();
+    },
+    readImport:async()=>{const answer=await dialog.showOpenDialog({title:'Import KindCut Joy profiles and calibration',properties:['openFile'],filters:[{name:'KindCut configuration library',extensions:['json']}]});return answer.canceled||!answer.filePaths[0]?null:await readConfigurationFile(answer.filePaths[0]);},
+    writeExport:async value=>{const answer=await dialog.showSaveDialog({title:'Export KindCut Joy configuration library',defaultPath:'kindcut-joy-profiles.json',filters:[{name:'KindCut configuration library',extensions:['json']}]});if(answer.canceled||!answer.filePath)return false;await exportConfigurationLibrary(answer.filePath,value);return true;},
+  });
+  registerNativeJoyJobIpc({
+    register:registerNativeUserHandler,
+    isTrusted:event=>{const e=event as IpcMainInvokeEvent;return !e.sender.isDestroyed()&&BrowserWindow.fromWebContents(e.sender)!==null&&e.senderFrame===e.sender.mainFrame&&Boolean(e.senderFrame&&isTrustedJoyUrl(e.senderFrame.url,joyRendererEntry));},
+    service:getNativeJobService,
+    restoreHistory:()=>getNativeJoyService().ownsHardware?Promise.resolve(null):getNativeJobJournal().restoreTerminalState(),
+    recoveryInfo:()=>getNativeJoyService().ownsHardware?Promise.resolve(null):getNativeJobJournal().recoveryInfo(),
+    canExport:()=>!getNativeJoyService().ownsHardware&&!legacyOwnsCutter(),
+    export:async()=>{
+      await getNativeJobJournal().readLatest();
+      const a=await dialog.showSaveDialog({title:'Export native pen-job diagnostics',defaultPath:'KindCut-native-pen-job-diagnostics.json',filters:[{name:'KindCut pen-job diagnostics',extensions:['json']}]});
+      if(a.canceled||!a.filePath)return{canceled:true};
+      if(getNativeJoyService().ownsHardware||legacyOwnsCutter())throw Error('Retire the cutter owner before export.');
+      await getNativeJobJournal().exportTo(a.filePath);return{canceled:false};
+    },
+  });
   Menu.setApplicationMenu(createAppMenu());
   logDiagnostics("info", "[KindCut diagnostics] App started", {
     version: app.getVersion(),
@@ -1768,6 +1953,7 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
   app.quit();
 });
+app.on("will-quit", () => {nativeJobService?.dispose();nativeJoyService?.dispose();});
 
 if (isDevelopment) {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = "true";

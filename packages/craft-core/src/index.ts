@@ -142,3 +142,4 @@ export * from "./svg-path-geometry";
 export * from "./pen-fill";
 export * from "./dot-print";
 export * from "./outline";
+export * from "./native-joy-plan";

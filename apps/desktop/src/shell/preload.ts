@@ -1,3 +1,4 @@
+import {installNativeIntentCapture} from './native-joy-intent-capture';
 import { contextBridge, ipcRenderer } from "electron";
 import type { IpcRendererEvent } from "electron";
 import type {
@@ -10,6 +11,7 @@ import type {
   SvgPlanInput,
 } from "./slicebug-service";
 import type { SpotifyCodeRequest, SpotifyLookupResult, SpotifySearchResult } from "./spotify-code";
+import type { NativeJoySetup, NativeJoySnapshot, NativeJoyLoadingState } from "./native-joy-service";
 
 type AppActionPayload = {
   action:
@@ -125,7 +127,11 @@ type RasterTraceOptions = {
   invert: boolean;
 };
 
+// Isolated-world listener: renderer code cannot synthesize isTrusted or invoke this private channel.
+installNativeIntentCapture(window,action=>ipcRenderer.send('native-joy:trusted-click',action));
+
 const desktopApi = {
+  cutterBackend: { get: (): Promise<"auto"|"native"|"slicebug"> => ipcRenderer.invoke("cutter:get-backend"), set: (value: "auto"|"native"|"slicebug"): Promise<"auto"|"native"|"slicebug"> => ipcRenderer.invoke("cutter:set-backend", value) },
   platform: process.platform,
   versions: {
     app: process.env.npm_package_version ?? "1.0.0",
@@ -211,6 +217,43 @@ const desktopApi = {
     }): Promise<string> => ipcRenderer.invoke("ai:dalle-generate-png", input),
     tracePngToSvg: (pngBase64: string): Promise<string> =>
       ipcRenderer.invoke("ai:trace-png-to-svg", pngBase64),
+  },
+  nativeJoy: {
+    jobRecoveryInfo: ():Promise<import('./native-joy-job-recovery').NativeJobRecoveryInfo|null> => ipcRenderer.invoke('native-joy:job-recovery-info'),
+    jobPrepare: (input:{profileId:string;calibrationId:string;source:import('./native-joy-configuration-types').NativeConfigurationSource}):Promise<import('./native-joy-job-types').NativeJobMetadata&{jobId:string}> => ipcRenderer.invoke('native-joy:job-prepare',input),
+    jobStart: (input:{jobId:string;source:import('./native-joy-configuration-types').NativeConfigurationSource}):Promise<import('./native-joy-job-types').NativeJobState|{canceled:true}> => ipcRenderer.invoke('native-joy:job-start',input),
+    jobPrepareAutomatic:(source:import('./native-joy-configuration-types').NativeConfigurationSource):Promise<import('./native-joy-job-types').NativeJobMetadata&{jobId:string}>=>ipcRenderer.invoke('native-joy:job-prepare-auto',{source}),
+    jobArmNext: (input:{jobId:string;source:import('./native-joy-configuration-types').NativeConfigurationSource}):Promise<import('./native-joy-job-types').NativeJobState> => ipcRenderer.invoke('native-joy:job-arm-next',input),
+    jobStatus: ():Promise<import('./native-joy-job-types').NativeJobState&{historical?:true}> => ipcRenderer.invoke('native-joy:job-status'),
+    jobGo: ():Promise<import('./native-joy-job-types').NativeJobState|{canceled:true}> => ipcRenderer.invoke('native-joy:job-go'),
+    jobEnd: ():Promise<import('./native-joy-job-types').NativeJobState|{canceled:true}> => ipcRenderer.invoke('native-joy:job-end'),
+    jobPause: ():Promise<import('./native-joy-job-types').NativeJobState> => ipcRenderer.invoke('native-joy:job-pause'),
+    jobResume: ():Promise<import('./native-joy-job-types').NativeJobState|{canceled:true}> => ipcRenderer.invoke('native-joy:job-resume'),
+    jobCancel: ():Promise<import('./native-joy-job-types').NativeJobState> => ipcRenderer.invoke('native-joy:job-cancel'),
+    jobInvalidate: ():Promise<unknown> => ipcRenderer.invoke('native-joy:job-invalidate'),
+    exportJobDiagnostics: ():Promise<{canceled:boolean}> => ipcRenderer.invoke('native-joy:job-export'),
+    configurationAdopt: (input:{catalogId:string;materialId:number;materialName:string;confirmed:true}):Promise<import('./native-joy-configuration-types').NativeConfigurationCatalog> => ipcRenderer.invoke('native-joy:configuration-adopt',input),
+    configurationList: ():Promise<import('./native-joy-configuration-types').NativeConfigurationCatalog> => ipcRenderer.invoke('native-joy:configuration-list'),
+    configurationImport: ():Promise<import('./native-joy-configuration-types').NativeConfigurationCatalog|{canceled:true}> => ipcRenderer.invoke('native-joy:configuration-import'),
+    configurationExport: ():Promise<{canceled:boolean}> => ipcRenderer.invoke('native-joy:configuration-export'),
+    configurationSelect: (input:{profileId:string;calibrationId:string}):Promise<import('./native-joy-configuration-types').NativeConfigurationCatalog> => ipcRenderer.invoke('native-joy:configuration-select',input),
+    configurationCapture: ():Promise<import('./native-joy-configuration-types').NativeConfigurationCatalog|{canceled:true}> => ipcRenderer.invoke('native-joy:configuration-capture'),
+    configurationUpdate: (input:{profileId:string;pressureRequest:number}):Promise<import('./native-joy-configuration-types').NativeConfigurationCatalog> => ipcRenderer.invoke('native-joy:configuration-update',input),
+    configurationCompile: (input:{profileId:string;calibrationId:string;source:import('./native-joy-configuration-types').NativeConfigurationSource}):Promise<import('./native-joy-configuration-types').NativeConfigurationCompileResult> => ipcRenderer.invoke('native-joy:configuration-compile',input),
+    exportLoadingDiagnostics: ():Promise<{canceled:boolean}> => ipcRenderer.invoke('native-joy:loading-diagnostics-export'),
+    loadingStart: (heightInches:6.5|12):Promise<NativeJoyLoadingState|{canceled:true}> => ipcRenderer.invoke('native-joy:loading-start',{heightInches}),
+    loadingStatus: ():Promise<NativeJoyLoadingState> => ipcRenderer.invoke('native-joy:loading-status'),
+    loadingGo: ():Promise<NativeJoyLoadingState> => ipcRenderer.invoke('native-joy:loading-go'),
+    loadingCancel: ():Promise<NativeJoyLoadingState> => ipcRenderer.invoke('native-joy:loading-cancel'),
+    devices: (): Promise<Array<{name:string;id:string;paired:boolean;connected:boolean}>> => ipcRenderer.invoke("native-joy:devices"),
+    mat: (action:'load'|'unload'):Promise<{requestAcknowledged:boolean;matPresenceVerified:false;responseCode?:number}|{canceled:true}> => ipcRenderer.invoke('native-joy:mat',{action}),
+    getSetupStatus: (): Promise<NativeJoySetup> => ipcRenderer.invoke("native-joy:get-status"),
+    importProvisioning: (): Promise<{recordCount:number}|{canceled:true}> => ipcRenderer.invoke("native-joy:import"),
+    connect: (address:string): Promise<NativeJoySnapshot|{canceled:true}> => ipcRenderer.invoke("native-joy:connect", {address}),
+    cancelMakeConnection: ():Promise<{canceled:boolean}> => ipcRenderer.invoke('native-joy:cancel-make-connection'),
+    connectForMake: (address?:string): Promise<{status:'connected';devices:Array<{name:string;id:string;paired:boolean;connected:boolean}>}|{status:'not_found';devices:[]}|{status:'choose_device';devices:Array<{name:string;id:string;paired:boolean;connected:boolean}>}|{canceled:true}> => ipcRenderer.invoke('native-joy:connect-for-make',address===undefined?undefined:{address}),
+    pollStatus: (): Promise<NativeJoySnapshot> => ipcRenderer.invoke("native-joy:poll-status"),
+    disconnect: (): Promise<{state:"disconnected"}> => ipcRenderer.invoke("native-joy:disconnect"),
   },
   slicebug: {
     getStatus: (): Promise<SlicebugStatus> => ipcRenderer.invoke("slicebug:get-status"),

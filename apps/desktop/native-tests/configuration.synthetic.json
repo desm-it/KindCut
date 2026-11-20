@@ -1,0 +1,93 @@
+{
+  "settings": {
+    "schemaVersion": 1,
+    "materialId": 1,
+    "tool": "pen",
+    "operation": "draw",
+    "mode": "precision",
+    "context": 0,
+    "profileId": "fixture-profile-1",
+    "pressureRequest": 180,
+    "nonXY": {
+      "unit": "native_unverified",
+      "cutVelocity": [
+        9,
+        10,
+        11
+      ],
+      "moveVelocity": [
+        12,
+        13,
+        14
+      ],
+      "cutAcceleration": [
+        15,
+        16,
+        17
+      ],
+      "moveAcceleration": [
+        18,
+        19,
+        20
+      ]
+    },
+    "geometry": {
+      "unit": "native_unverified",
+      "flags": {
+        "p_bias_enabled": true,
+        "roc_threshold_enabled": true,
+        "t_bias_enabled": true,
+        "use_calc_offsets": true,
+        "centered_bl": true,
+        "tan_theta": true
+      },
+      "lift_threshold": 1.0,
+      "parallel_offset": 2.0,
+      "lagging_offset": 3.0,
+      "nodes": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "speeds": {
+      "cutVelocity_ips": [
+        1.0,
+        1.0
+      ],
+      "moveVelocity_ips": [
+        1.0,
+        1.0
+      ],
+      "cutAcceleration_ips2": [
+        1.0,
+        1.0
+      ],
+      "moveAcceleration_ips2": [
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "rows": [
+    "a00001000000000001000a",
+    "a000020000000000020014",
+    "a00003000000000003001e",
+    "a000040000000000040028",
+    "a000050000000000050032",
+    "a00006000000000006003c",
+    "a000070000000000070046",
+    "a000080000000000080050",
+    "a00009000000000009005a",
+    "a0000a00000000000a0064",
+    "a0000b00000000000b006e",
+    "a0000c00000000000c0078",
+    "a0000d00000000000d0082",
+    "a0000e00000000000e008c",
+    "a0000f00000000000f0096",
+    "a0001000000000001000a0"
+  ],
+  "warning": "SYNTHETIC UNIT TEST VALUES ONLY. NOT A MATERIAL PRESET OR DEVICE CAPTURE."
+}
