@@ -17,7 +17,7 @@ from initializer import JoyInitializer
 from materials import MaterialStore,decode_settings8
 from device_profile import load_joy_profile
 from mat_control import control_mat
-from bluetooth.transport import BluetoothTransport
+from bluetooth.transport import create_transport
 
 MAX_LINE=4*1024*1024
 
@@ -139,7 +139,7 @@ class RuntimeService:
             if request.get('profileId','cricut-joy')!='cricut-joy':raise ValueError('Unsupported device profile')
             store=load_joy_profile() if request.get('bundle') is None else _store(request['bundle'])
             transport=(self._transport_factory(address) if self._transport_factory is not None else
-                       BluetoothTransport(address,allow_hardware=True,helper_path=Path(__file__).parent/'bluetooth/joy_rfcomm'))
+                       create_transport(address,platform=self.platform,allow_hardware=True,helper_path=Path(__file__).parent/'bluetooth/joy_rfcomm'))
             self.transport=transport
             try:
                 transport.open()

@@ -18,6 +18,24 @@ import time
 MAX_BYTES=512*1024  # Base64 plus JSON remains below the 1MiB IPC-line cap.
 MAX_LINE=1024*1024
 
+
+def create_transport(address, *, platform, allow_hardware=False, helper_path=None):
+    """Select an adapter without opening it or granting hardware authority.
+
+    Worker/host platform admission is independent and intentionally remains
+    macOS-only until Windows transport, discovery and packaging acceptance.
+    """
+    if platform == 'darwin':
+        return BluetoothTransport(address, allow_hardware=allow_hardware, helper_path=helper_path)
+    if platform == 'win32':
+        from uuid import UUID
+        from .windows_transport import WindowsBluetoothTransport
+        # Same SPP service selected by the existing IOBluetooth helper. No guessed
+        # RFCOMM channel, fallback to a different service, or constructor I/O.
+        return WindowsBluetoothTransport(address, allow_hardware=allow_hardware, platform=platform,
+            service_uuid=UUID('00001101-0000-1000-8000-00805f9b34fb'))
+    raise RuntimeError('Unsupported native Bluetooth platform')
+
 class BluetoothTransport:
     def __init__(self,address,*,allow_hardware=False,helper_path=None):
         self.address=address
