@@ -1,7 +1,9 @@
-import{workspaceMaterialSelection,workspaceHasCutContent}from'./workspace-materials';
-import{buildNativeWorkspaceBundle}from'./native-joy-workspace-bundle';
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
+import { useProjectPersistence } from './features/project/use-project-persistence';
+import { restoreProjectObjects } from './features/project/project-document';
+import { workspaceMaterialSelection, workspaceHasCutContent } from './workspace-materials';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import {
   DEFAULT_DASH,
   DEFAULT_OUTLINE,
@@ -17,28 +19,21 @@ import {
   joyStandardMat,
   normalizePenFill,
   validateProject,
-} from "@cricut-companion/craft-core";
-import { createDesignPrompt } from "@cricut-companion/ai-designer";
-import { MAT_PRESETS, MATERIAL_OPTIONS, buildPlanCommand } from "@cricut-companion/slicebug-bridge";
-import { preflightSvg } from "@cricut-companion/svg-preflight";
-import {
-  APP_NAME,
-  getFriendlySlicebugStatusCopy,
-} from "./onboarding-copy";
+} from '@cricut-companion/craft-core';
+import { createDesignPrompt } from '@cricut-companion/ai-designer';
+import { MATERIAL_OPTIONS, buildPlanCommand } from '@cricut-companion/slicebug-bridge';
+import { preflightSvg } from '@cricut-companion/svg-preflight';
+import { APP_NAME, getFriendlySlicebugStatusCopy } from './onboarding-copy';
 import {
   type KindCutProjectFile,
   type WorkspaceTool,
   DEFAULT_PAPER_COLOR,
   DEFAULT_TOOLS,
-  buildProjectFile,
   getBehindColor,
   getPens,
-  getSafeProjectFileName,
-  parseProjectFile,
-  serializeProjectFile,
-} from "./project-file";
-import { formatFileSize } from "./svg-import";
-import { DEBUG } from "./dev-flags";
+} from './project-file';
+import { formatFileSize } from './svg-import';
+import { DEBUG } from './dev-flags';
 import {
   RASTER_IMPORT_EXT_RE,
   type RasterTraceOptions,
@@ -46,7 +41,7 @@ import {
   isRasterImportFile,
   rasterMimeType,
   stripImageExtension,
-} from "./local-raster-import";
+} from './local-raster-import';
 import {
   type WorkspaceObject,
   type WorkspacePathData,
@@ -56,23 +51,22 @@ import {
   buildWorkspaceCutPreviewSvg,
   buildWorkspaceCutSvg,
   isCutSvgEmpty,
-} from "./workspace-objects";
-import { clearCenterlineCache, traceCenterlinePathD } from "./centerline-trace";
-import { googleFontsHref } from "./font-catalog";
-import { extractWorkspacePathsFromSvg } from "./workspace-svg-import";
+} from './workspace-objects';
+import { clearCenterlineCache, traceCenterlinePathD } from './centerline-trace';
+import { googleFontsHref } from './font-catalog';
+import { extractWorkspacePathsFromSvg } from './workspace-svg-import';
 import {
   type WorkspaceClipboardSvgItem,
   createPastedWorkspaceSvgInputs,
   getSelectedWorkspaceClipboardItems,
-} from "./workspace-clipboard";
+} from './workspace-clipboard';
 import {
   type Language,
   createTranslator,
   loadLanguagePreference,
   saveLanguagePreference,
-} from "./i18n";
+} from './i18n';
 import {
-  WORKSPACE_HISTORY_LIMIT,
   WORKSPACE_PIXELS_PER_INCH,
   type MeasurementUnit,
   type WorkspaceItemTransform,
@@ -93,39 +87,48 @@ import {
   rotatePoint,
   saveMeasurementUnitPreference,
   type WorkspaceItemFrame,
-} from "./workspace-utils";
+} from './workspace-utils';
 import {
   computeSnugFrame,
-  computePathBBoxInDOM,
-  parseGroupedPathTransform,
   isUngroupablePath,
   reframeUngroupedChild,
   splitCompoundPathByContainment,
-} from "./utils/workspace-geometry";
+} from './utils/workspace-geometry';
 import {
   cloneWorkspaceSvgItems,
   createWorkspaceObjectItem,
   createWorkspaceShapeItem,
   createWorkspaceSvgItem,
   workspaceTransformsEqual,
-} from "./utils/workspace-factory";
-import { normalizeAiSvg } from "./utils/svg-normalize";
-import { type CardTemplate, buildTemplateItems } from "./card-templates";
-import { activeOutline, outlineFramePath, outlineTool } from "./outline-render";
-import { isEditableKeyboardTarget } from "./utils/dom-utils";
-import { type WorkspaceShapeKind, buildShapePath } from "./workspace-shapes";
-import { createWorkspaceGroup, ungroupWorkspaceObject } from "./workspace-grouping";
+} from './utils/workspace-factory';
+import { normalizeAiSvg } from './utils/svg-normalize';
+import { type CardTemplate, buildTemplateItems } from './card-templates';
+import { activeOutline, outlineFramePath, outlineTool } from './outline-render';
+import { isEditableKeyboardTarget } from './utils/dom-utils';
+import { type WorkspaceShapeKind, buildShapePath } from './workspace-shapes';
+import { createWorkspaceGroup, ungroupWorkspaceObject } from './workspace-grouping';
 import {
-  type AiProgressStep,
+  emptyWorkspaceHistory,
+  recordWorkspaceEdit,
+  travelWorkspaceHistory,
+  type WorkspaceHistory,
+  type WorkspaceHistorySnapshot,
+} from './features/workspace/history-controller';
+import { useNativeMakeSource } from './features/make/use-native-make-source';
+import {
   type AiProviderSettings,
   type AiSvgInput,
   generateAiSvg,
   hasActiveApiKey,
   loadAiSettings,
   saveAiSettings,
-} from "./ai-svg-generate";
-import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult, SpotifyCode } from "./app-types";
-import { type RecentProject, addRecentProject, loadRecentProjects, removeRecentProject, saveRecentProjects } from "./recent-projects";
+} from './ai-svg-generate';
+import type {
+  CutSessionSnapshot,
+  LibraryImage,
+  SlicebugPlanResult,
+  SpotifyCode,
+} from './app-types';
 import {
   defaultDotPrintSettings,
   dotPrintToPaths,
@@ -133,25 +136,26 @@ import {
   loadRasterImage,
   missingInkPens,
   readDotPrintImageFile,
-} from "./dot-print-render";
-import type { UpdateState } from "./shell/preload";
-import { DesignWorkspace } from "./components/workspace/DesignWorkspace";
-import { WelcomeScreen } from "./components/screens/WelcomeScreen";
-import { SettingsModal } from "./components/modals/SettingsModal";
-import { loadAdvancedInfoPreference, saveAdvancedInfoPreference } from "./advanced-info-preference";
-import { NativeMakeModal } from "./components/modals/NativeMakeModal";
-import {resolveMakeRoute} from "./native-make-route";
-import {nativeJoyConfigurationApi} from './components/panels/NativeJoyConfigurationPanel';
-import type {NativeConfigurationSource} from './native-joy-configuration-types';
-import { normalizeWorkspaceSvgForJoy } from './native-joy-workspace-normalize';
-import {nativeJoyMaterialOptions,type NativeJoyMaterialOption} from './native-joy-material-options';
-import {readCutterStartupSnapshot} from './cutter-startup-snapshot';
-import { AiGenerateModal } from "./components/modals/AiGenerateModal";
-import { LocalImageTraceModal } from "./components/modals/LocalImageTraceModal";
-import type { LocalRasterImport } from "./components/modals/LocalImageTraceModal";
-import { CutPreviewModal } from "./components/modals/CutPreviewModal";
-import { UnsavedChangesModal } from "./components/modals/UnsavedChangesModal";
-import { UpdateModal } from "./components/modals/UpdateModal";
+} from './dot-print-render';
+import type { UpdateState } from './shell/preload';
+import { DesignWorkspace } from './components/workspace/DesignWorkspace';
+import { WelcomeScreen } from './components/screens/WelcomeScreen';
+import { SettingsModal } from './components/modals/SettingsModal';
+import { loadAdvancedInfoPreference, saveAdvancedInfoPreference } from './advanced-info-preference';
+import { NativeMakeModal } from './components/modals/NativeMakeModal';
+import { resolveMakeRoute } from './native-make-route';
+import { nativeJoyConfigurationApi } from './components/panels/NativeJoyConfigurationPanel';
+import {
+  nativeJoyMaterialOptions,
+  type NativeJoyMaterialOption,
+} from './native-joy-material-options';
+import { readCutterStartupSnapshot } from './cutter-startup-snapshot';
+import { AiGenerateModal } from './components/modals/AiGenerateModal';
+import { LocalImageTraceModal } from './components/modals/LocalImageTraceModal';
+import type { LocalRasterImport } from './components/modals/LocalImageTraceModal';
+import { CutPreviewModal } from './components/modals/CutPreviewModal';
+import { UnsavedChangesModal } from './components/modals/UnsavedChangesModal';
+import { UpdateModal } from './components/modals/UpdateModal';
 
 type SlicebugStatus = {
   ok: boolean;
@@ -173,61 +177,57 @@ type SlicebugSetupStatus = {
   hasUsvg: boolean;
 };
 
-type WorkspaceHistorySnapshot = {
-  importedSvgs: WorkspaceSvgItem[];
-  selectedSvgId: string | null;
-  selectedSvgIds: string[];
-};
-
-type AppScreen = "welcome" | "workspace";
+type AppScreen = 'welcome' | 'workspace';
 
 type DesktopActionPayload = {
   action:
-    | "new-project"
-    | "open-project"
-    | "save-project"
-    | "save-project-as"
-    | "example-project"
-    | "set-language"
-    | "edit-cut"
-    | "edit-copy"
-    | "edit-paste"
-    | "edit-delete"
-    | "edit-select-all"
-    | "edit-undo"
-    | "edit-redo"
-    | "edit-group"
-    | "edit-ungroup"
-    | "edit-flip-x"
-    | "edit-flip-y"
-    | "edit-bring-forward"
-    | "edit-send-backward"
-    | "edit-bring-to-front"
-    | "edit-send-to-back"
-    | "close-window";
+    | 'new-project'
+    | 'open-project'
+    | 'save-project'
+    | 'save-project-as'
+    | 'example-project'
+    | 'set-language'
+    | 'edit-cut'
+    | 'edit-copy'
+    | 'edit-paste'
+    | 'edit-delete'
+    | 'edit-select-all'
+    | 'edit-undo'
+    | 'edit-redo'
+    | 'edit-group'
+    | 'edit-ungroup'
+    | 'edit-flip-x'
+    | 'edit-flip-y'
+    | 'edit-bring-forward'
+    | 'edit-send-backward'
+    | 'edit-bring-to-front'
+    | 'edit-send-to-back'
+    | 'close-window';
   value?: string;
 };
 
 const sampleProject = buildBeginnerProject({
-  name: "Dog birthday card",
-  machine: "cricut_joy",
+  name: 'Dog birthday card',
+  machine: 'cricut_joy',
   mat: joyStandardMat,
   materialId: 218,
-  prompt: "Create a cute dog birthday card with black pen details and a red cut border.",
+  prompt: 'Create a cute dog birthday card with black pen details and a red cut border.',
 });
 
 const validation = validateProject(sampleProject);
 const prompt = createDesignPrompt(sampleProject);
-const preflight = preflightSvg(`<svg width="288" height="240"><path d="M 10 10 L 40 40" stroke="#000" fill="none" /></svg>`);
+const preflight = preflightSvg(
+  `<svg width="288" height="240"><path d="M 10 10 L 40 40" stroke="#000" fill="none" /></svg>`,
+);
 const planCommand = buildPlanCommand({
-  slicebugExecutable: "slicebug",
-  inputSvgPath: "examples/dog-card.svg",
-  outputPlanPath: "examples/dog-card.json",
+  slicebugExecutable: 'slicebug',
+  inputSvgPath: 'examples/dog-card.svg',
+  outputPlanPath: 'examples/dog-card.json',
   materialId: sampleProject.material.id,
-  matPreset: "joy-standard",
+  matPreset: 'joy-standard',
   colorMap: {
-    "000000": "pen",
-    ff0000: "fine_point_blade",
+    '000000': 'pen',
+    ff0000: 'fine_point_blade',
   },
 });
 
@@ -236,14 +236,16 @@ const MATERIAL_INSERT_ID = 535;
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      if (typeof reader.result === "string") {
+    reader.addEventListener('load', () => {
+      if (typeof reader.result === 'string') {
         resolve(reader.result);
       } else {
-        reject(new Error("KindCut could not read that image file."));
+        reject(new Error('KindCut could not read that image file.'));
       }
     });
-    reader.addEventListener("error", () => reject(reader.error ?? new Error("KindCut could not read that image file.")));
+    reader.addEventListener('error', () =>
+      reject(reader.error ?? new Error('KindCut could not read that image file.')),
+    );
     reader.readAsDataURL(file);
   });
 }
@@ -252,7 +254,7 @@ async function readRasterImport(file: File): Promise<LocalRasterImport> {
   const dataUrl = await readFileAsDataUrl(file);
   const base64 = dataUrlToBase64(dataUrl);
   if (!base64) {
-    throw new Error("KindCut could not read that image file.");
+    throw new Error('KindCut could not read that image file.');
   }
   return {
     fileName: file.name,
@@ -263,7 +265,7 @@ async function readRasterImport(file: File): Promise<LocalRasterImport> {
 }
 
 export function App() {
-  const [screen, setScreen] = useState<AppScreen>("welcome");
+  const [screen, setScreen] = useState<AppScreen>('welcome');
   const [language, setLanguage] = useState<Language>(() => loadLanguagePreference());
   const [slicebugStatus, setSlicebugStatus] = useState<SlicebugStatus | null>(null);
   const [slicebugSetupStatus, setSlicebugSetupStatus] = useState<SlicebugSetupStatus | null>(null);
@@ -274,41 +276,49 @@ export function App() {
   const [importedSvgs, setImportedSvgs] = useState<WorkspaceSvgItem[]>([]);
   const [selectedSvgId, setSelectedSvgId] = useState<string | null>(null);
   const [selectedSvgIds, setSelectedSvgIds] = useState<string[]>([]);
-  const [workspaceHistory, setWorkspaceHistory] = useState<{ past: WorkspaceHistorySnapshot[]; future: WorkspaceHistorySnapshot[] }>({
-    past: [],
-    future: [],
-  });
+  const [workspaceHistory, setWorkspaceHistory] = useState<WorkspaceHistory>(emptyWorkspaceHistory);
   const [clipboardHasItems, setClipboardHasItems] = useState(false);
   const workspaceClipboard = useRef<WorkspaceClipboardSvgItem[]>([]);
   const lastWorkspaceContextMenuAt = useRef(0);
   const lastWorkspaceContextSelectionCount = useRef<number | null>(null);
-  const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
-  // Bumped on each successful save; used as a key to replay the "Saved!" fly-in toast.
-  const [savedToast, setSavedToast] = useState(0);
-  const [projectMessage, setProjectMessage] = useState<string | null>(null);
-  const [projectSaving, setProjectSaving] = useState(false);
-  const [projectOpening, setProjectOpening] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [selectedMaterialId, setSelectedMaterialId] = useState(218);
   const [nativeMaterialOptions, setNativeMaterialOptions] = useState<NativeJoyMaterialOption[]>([]);
   useEffect(() => {
-    let current=true;
-    const api=nativeJoyConfigurationApi(window.cricutCompanion?.nativeJoy);
+    let current = true;
+    const api = nativeJoyConfigurationApi(window.cricutCompanion?.nativeJoy);
     // Local catalog metadata only: never starts the worker, discovers, or connects.
-    if(api)void api.configurationList().then(c=>{if(current)setNativeMaterialOptions(nativeJoyMaterialOptions(c.materials??[]));}).catch(()=>{if(current)setNativeMaterialOptions([]);});
-    return()=>{current=false;};
+    if (api)
+      void api
+        .configurationList()
+        .then((c) => {
+          if (current) setNativeMaterialOptions(nativeJoyMaterialOptions(c.materials ?? []));
+        })
+        .catch(() => {
+          if (current) setNativeMaterialOptions([]);
+        });
+    return () => {
+      current = false;
+    };
   }, []);
   // Start on the short mat: it fits the screen whole and suits most first projects.
-  const [selectedMatPreset, setSelectedMatPreset] = useState("joy-standard-short");
+  const [selectedMatPreset, setSelectedMatPreset] = useState('joy-standard-short');
   // Insert-card sub-options (only meaningful for the insert-card material).
   const [cardSize, setCardSize] = useState<CardSize | null>(null);
   const [insertSlots, setInsertSlots] = useState(false);
   const [tools, setTools] = useState<WorkspaceTool[]>(DEFAULT_TOOLS);
   const [paperColor, setPaperColor] = useState<string>(DEFAULT_PAPER_COLOR);
-  const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>(() => loadMeasurementUnitPreference());
+  const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>(() =>
+    loadMeasurementUnitPreference(),
+  );
   const [importedPlan, setImportedPlan] = useState<SlicebugPlanResult | null>(null);
   const [importedPlanLoading, setImportedPlanLoading] = useState(false);
-  const [cutPreview, setCutPreview] = useState<{ plan: SlicebugPlanResult; svg: string; matPreset: string; paperColor: string } | null>(null);
+  const [cutPreview, setCutPreview] = useState<{
+    plan: SlicebugPlanResult;
+    svg: string;
+    matPreset: string;
+    paperColor: string;
+  } | null>(null);
   const [cutSession, setCutSession] = useState<CutSessionSnapshot | null>(null);
   const [cutBusy, setCutBusy] = useState(false);
   const [aiSettings, setAiSettings] = useState<AiProviderSettings>(() => loadAiSettings());
@@ -319,9 +329,18 @@ export function App() {
   const [nativeMakeOpen, setNativeMakeOpen] = useState(false);
   const [showAdvancedInfo, setShowAdvancedInfo] = useState(() => loadAdvancedInfoPreference());
   const [nativeMakeEverOpened, setNativeMakeEverOpened] = useState(false);
-  const [cutterBackend, setCutterBackend] = useState<"auto" | "native" | "slicebug">("auto");
-  const [backendLoadError, setBackendLoadError] = useState("");
-  useEffect(() => { void window.cricutCompanion?.cutterBackend.get().then(setCutterBackend).catch(() => setBackendLoadError("Could not load the saved cutter backend. Re-select a backend before cutting.")); }, []);
+  const [cutterBackend, setCutterBackend] = useState<'auto' | 'native' | 'slicebug'>('auto');
+  const [backendLoadError, setBackendLoadError] = useState('');
+  useEffect(() => {
+    void window.cricutCompanion?.cutterBackend
+      .get()
+      .then(setCutterBackend)
+      .catch(() =>
+        setBackendLoadError(
+          'Could not load the saved cutter backend. Re-select a backend before cutting.',
+        ),
+      );
+  }, []);
   const [aiGenerateOpen, setAiGenerateOpen] = useState(false);
   const [activeRasterImport, setActiveRasterImport] = useState<LocalRasterImport | null>(null);
   const [rasterImportQueue, setRasterImportQueue] = useState<LocalRasterImport[]>([]);
@@ -336,138 +355,87 @@ export function App() {
   const statusCopy = useMemo(() => {
     if (slicebugBootstrapLoading) {
       return {
-        tone: "checking" as const,
-        title: t("status.bootstrapLoadingTitle"),
-        message: t("status.bootstrapLoadingMessage"),
+        tone: 'checking' as const,
+        title: t('status.bootstrapLoadingTitle'),
+        message: t('status.bootstrapLoadingMessage'),
         details: [],
       };
     }
     if (slicebugStatus?.ok && slicebugSetupStatus && !slicebugSetupStatus.bootstrapped) {
       return {
-        tone: "warning" as const,
-        title: t("status.bootstrapTitle"),
-        message: t("status.bootstrapMessage"),
+        tone: 'warning' as const,
+        title: t('status.bootstrapTitle'),
+        message: t('status.bootstrapMessage'),
         details: [
           `SliceBug message: ${slicebugStatus.message}`,
           slicebugStatus.version ? `SliceBug version: ${slicebugStatus.version}` : null,
           slicebugStatus.executable ? `Executable: ${slicebugStatus.executable}` : null,
-          `Keys: ${slicebugSetupStatus.hasKeys ? "yes" : "no"}`,
-          `Profiles: ${slicebugSetupStatus.hasProfiles ? "yes" : "no"}`,
+          `Keys: ${slicebugSetupStatus.hasKeys ? 'yes' : 'no'}`,
+          `Profiles: ${slicebugSetupStatus.hasProfiles ? 'yes' : 'no'}`,
           `Machine profile: ${
-            slicebugSetupStatus.hasMachineProfile ? `yes (${slicebugSetupStatus.machineProfileCount})` : "no"
+            slicebugSetupStatus.hasMachineProfile
+              ? `yes (${slicebugSetupStatus.machineProfileCount})`
+              : 'no'
           }`,
-          slicebugSetupStatus.profileNames.length > 0 ? `Profile names: ${slicebugSetupStatus.profileNames.join(", ")}` : null,
+          slicebugSetupStatus.profileNames.length > 0
+            ? `Profile names: ${slicebugSetupStatus.profileNames.join(', ')}`
+            : null,
           slicebugSetupStatus.missingMaterialSettingsPaths.length > 0
             ? `Missing material settings: ${slicebugSetupStatus.missingMaterialSettingsPaths.length}`
             : null,
-          `Device plugin: ${slicebugSetupStatus.hasDevicePlugin ? "yes" : "no"}`,
-          `usvg: ${slicebugSetupStatus.hasUsvg ? "yes" : "no"}`,
+          `Device plugin: ${slicebugSetupStatus.hasDevicePlugin ? 'yes' : 'no'}`,
+          `usvg: ${slicebugSetupStatus.hasUsvg ? 'yes' : 'no'}`,
         ].filter((detail): detail is string => Boolean(detail)),
       };
     }
     return getFriendlySlicebugStatusCopy(slicebugStatus, slicebugLoading, language);
   }, [language, slicebugBootstrapLoading, slicebugLoading, slicebugSetupStatus, slicebugStatus, t]);
 
-  // --- Unsaved-changes tracking ---------------------------------------------
-  // A signature of the persisted project content (objects + settings, ignoring which item is
-  // selected). When it differs from the baseline taken at the last save/open/new, there are
-  // unsaved changes. Used to guard reload / Home / open / new with a Save prompt.
-  const currentSignature = useMemo(
-    () =>
-      JSON.stringify({
-        m: selectedMaterialId,
-        mat: selectedMatPreset,
-        unit: measurementUnit,
-        tools,
-        paper: paperColor,
-        card: cardSize,
-        slots: insertSlots,
-        objects: importedSvgs.map((o) => ({
-          id: o.id,
-          type: o.type,
-          kind: o.kind,
-          shapeKind: o.shapeKind,
-          fileName: o.fileName,
-          paths: o.paths,
-          frame: o.frame,
-          transform: o.transform,
-          textContent: o.textContent,
-          cornerRadius: o.cornerRadius,
-          penFill: o.penFill,
-          spotify: o.spotify,
-          dotPrint: o.dotPrint,
-          dashed: o.dashed,
-          outline: o.outline,
-          hollow: o.hollow,
-        })),
-      }),
-    [importedSvgs, selectedMaterialId, selectedMatPreset, measurementUnit, tools, paperColor, cardSize, insertSlots],
-  );
-  const [savedSignature, setSavedSignature] = useState("");
-  const [rebaseline, setRebaseline] = useState(0);
-  const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
-  const signatureRef = useRef(currentSignature);
-  signatureRef.current = currentSignature;
-  // Re-baseline on mount and whenever a save/open/new declares "this is the clean state now".
-  useEffect(() => {
-    setSavedSignature(signatureRef.current);
-  }, [rebaseline]);
-  const hasUnsavedChanges = currentSignature !== savedSignature;
-
-  // If there are unsaved changes, route the navigation through a Save / Don't save / Cancel
-  // prompt; otherwise run it straight away.
-  function guardNavigation(action: () => void) {
-    if (hasUnsavedChanges) {
-      setPendingNav(() => action);
-    } else {
-      action();
-    }
-  }
-
-  // Ctrl/Cmd+R passes through the unsaved-changes guard. Native window close is
-  // intercepted in Electron main and sent back as the "close-window" app action.
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && (event.key === "r" || event.key === "R")) {
-        event.preventDefault();
-        guardNavigation(() => window.location.reload());
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasUnsavedChanges]);
-
-  function handleUnsavedSave() {
-    void handleSaveProject().then((saved) => {
-      const next = pendingNav;
-      setPendingNav(null);
-      if (saved) next?.();
-    });
-  }
-
-  function handleUnsavedDiscard() {
-    const next = pendingNav;
-    setPendingNav(null);
-    // Discarding abandons the unsaved edits, so treat the current state as the
-    // clean baseline (like save/open/new do). Otherwise hasUnsavedChanges stays
-    // true after we navigate to the welcome screen — where the confirm modal is
-    // not rendered — so every guarded button (New/Open/Example/close-window)
-    // silently re-arms an invisible prompt and does nothing, leaving the UI
-    // looking frozen until a reload.
-    setRebaseline((n) => n + 1);
-    next?.();
-  }
-
-  function handleUnsavedCancel() {
-    setPendingNav(null);
-  }
+  const {
+    currentProjectPath,
+    setCurrentProjectPath,
+    savedToast,
+    projectMessage,
+    setProjectMessage,
+    projectSaving,
+    projectOpening,
+    recentProjects,
+    recentProjectError,
+    setRecentProjectError,
+    hasUnsavedChanges,
+    pendingNav,
+    guardNavigation,
+    markProjectClean,
+    handleUnsavedSave,
+    handleUnsavedDiscard,
+    handleUnsavedCancel,
+    handleOpenProject,
+    handleOpenRecentProject,
+    handleSaveProject,
+  } = useProjectPersistence({
+    document: {
+      language,
+      importedSvg,
+      importedSvgs,
+      selectedSvgId,
+      selectedMaterialId,
+      selectedMatPreset,
+      measurementUnit,
+      tools,
+      paperColor,
+      cardSize,
+      insertSlots,
+    },
+    apply: applyProjectFile,
+    enter: enterWorkspace,
+    translate: t,
+    debug: DEBUG,
+  });
 
   async function loadImageLibrary() {
     if (!window.cricutCompanion?.imageLibrary) {
-      if (DEBUG) console.warn("[ImageLibrary] IPC bridge not available — shell may need rebuilding");
+      if (DEBUG)
+        console.warn('[ImageLibrary] IPC bridge not available — shell may need rebuilding');
       return;
     }
     setLibraryLoading(true);
@@ -475,7 +443,7 @@ export function App() {
       const items = await window.cricutCompanion.imageLibrary.list();
       setImageLibrary(items ?? []);
     } catch (err) {
-      console.error("[ImageLibrary] Failed to list library:", err);
+      console.error('[ImageLibrary] Failed to list library:', err);
     } finally {
       setLibraryLoading(false);
     }
@@ -483,14 +451,15 @@ export function App() {
 
   async function saveToLibrary(name: string, svg: string, isAi: boolean): Promise<void> {
     if (!window.cricutCompanion?.imageLibrary) {
-      if (DEBUG) console.warn("[ImageLibrary] IPC bridge not available — shell may need rebuilding");
+      if (DEBUG)
+        console.warn('[ImageLibrary] IPC bridge not available — shell may need rebuilding');
       return;
     }
     try {
       const savedPath = await window.cricutCompanion.imageLibrary.save({ name, svg, isAi });
-      if (DEBUG) console.log("[ImageLibrary] Saved:", savedPath);
+      if (DEBUG) console.log('[ImageLibrary] Saved:', savedPath);
     } catch (err) {
-      if (DEBUG) console.error("[ImageLibrary] Failed to save:", err);
+      if (DEBUG) console.error('[ImageLibrary] Failed to save:', err);
     }
   }
 
@@ -501,7 +470,11 @@ export function App() {
 
   async function renameLibraryImage(filePath: string, name: string): Promise<void> {
     if (!window.cricutCompanion?.imageLibrary?.rename) {
-      throw new Error(language === "nl" ? "Hernoemen kan alleen in de desktopapp." : "Renaming is only available in the desktop app.");
+      throw new Error(
+        language === 'nl'
+          ? 'Hernoemen kan alleen in de desktopapp.'
+          : 'Renaming is only available in the desktop app.',
+      );
     }
     const renamed = await window.cricutCompanion.imageLibrary.rename({ filePath, name });
     setImageLibrary((prev) =>
@@ -522,7 +495,9 @@ export function App() {
   }
 
   function selectSvgGroup(ids: string[]) {
-    const uniqueIds = Array.from(new Set(ids)).filter((id) => importedSvgs.some((item) => item.id === id));
+    const uniqueIds = Array.from(new Set(ids)).filter((id) =>
+      importedSvgs.some((item) => item.id === id),
+    );
     setSelectedSvgIds(uniqueIds);
     setSelectedSvgId(uniqueIds.at(-1) ?? null);
   }
@@ -536,14 +511,11 @@ export function App() {
   }
 
   function pushWorkspaceHistorySnapshot(snapshot = createWorkspaceHistorySnapshot()) {
-    setWorkspaceHistory((current) => ({
-      past: [...current.past, snapshot].slice(-WORKSPACE_HISTORY_LIMIT),
-      future: [],
-    }));
+    setWorkspaceHistory((current) => recordWorkspaceEdit(current, snapshot));
   }
 
   function resetWorkspaceHistory() {
-    setWorkspaceHistory({ past: [], future: [] });
+    setWorkspaceHistory(emptyWorkspaceHistory());
   }
 
   function restoreWorkspaceHistorySnapshot(snapshot: WorkspaceHistorySnapshot) {
@@ -555,35 +527,31 @@ export function App() {
   }
 
   function handleUndoWorkspace(): boolean {
-    const previous = workspaceHistory.past.at(-1);
-    if (!previous) {
-      return false;
-    }
-    const currentSnapshot = createWorkspaceHistorySnapshot();
-    setWorkspaceHistory((current) => ({
-      past: current.past.slice(0, -1),
-      future: [currentSnapshot, ...current.future].slice(0, WORKSPACE_HISTORY_LIMIT),
-    }));
-    restoreWorkspaceHistorySnapshot(previous);
+    const transition = travelWorkspaceHistory(
+      workspaceHistory,
+      createWorkspaceHistorySnapshot(),
+      'undo',
+    );
+    if (!transition.snapshot) return false;
+    setWorkspaceHistory(transition.history);
+    restoreWorkspaceHistorySnapshot(transition.snapshot);
     return true;
   }
 
   function handleRedoWorkspace(): boolean {
-    const next = workspaceHistory.future[0];
-    if (!next) {
-      return false;
-    }
-    const currentSnapshot = createWorkspaceHistorySnapshot();
-    setWorkspaceHistory((current) => ({
-      past: [...current.past, currentSnapshot].slice(-WORKSPACE_HISTORY_LIMIT),
-      future: current.future.slice(1),
-    }));
-    restoreWorkspaceHistorySnapshot(next);
+    const transition = travelWorkspaceHistory(
+      workspaceHistory,
+      createWorkspaceHistorySnapshot(),
+      'redo',
+    );
+    if (!transition.snapshot) return false;
+    setWorkspaceHistory(transition.history);
+    restoreWorkspaceHistorySnapshot(transition.snapshot);
     return true;
   }
 
   function enterWorkspace() {
-    setScreen("workspace");
+    setScreen('workspace');
   }
 
   function handleNewProject() {
@@ -603,7 +571,7 @@ export function App() {
     setCutSession(null);
     setTools(DEFAULT_TOOLS);
     setPaperColor(DEFAULT_PAPER_COLOR);
-    setRebaseline((n) => n + 1); // fresh project = clean
+    markProjectClean(); // fresh project = clean
     enterWorkspace();
   }
 
@@ -622,158 +590,12 @@ export function App() {
       template,
       language,
       cutColor: getBehindColor(DEFAULT_TOOLS),
-      penColor: getPens(DEFAULT_TOOLS)[0]?.color ?? "#000000",
+      penColor: getPens(DEFAULT_TOOLS)[0]?.color ?? '#000000',
       timestamp: Date.now(),
       createText: (content, index, id) => createTextItem(content, index, id),
     });
     setImportedSvgs(items);
-    setRebaseline((n) => n + 1);
-  }
-
-  function handleOpenProject() {
-    guardNavigation(() => void doOpenProject());
-  }
-
-  const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() => loadRecentProjects());
-
-  function updateRecentProjects(update: (list: RecentProject[]) => RecentProject[]) {
-    setRecentProjects((list) => {
-      const next = update(list);
-      saveRecentProjects(next);
-      return next;
-    });
-  }
-
-  function handleOpenRecentProject(projectPath: string) {
-    guardNavigation(() => void doOpenRecentProject(projectPath));
-  }
-
-  async function doOpenRecentProject(projectPath: string) {
-    if (!window.cricutCompanion?.project?.openPath) {
-      setProjectMessage(t("project.openInDesktop"));
-      return;
-    }
-    setProjectOpening(true);
-    try {
-      const result = await window.cricutCompanion.project.openPath(projectPath);
-      if (result.canceled || !result.content) {
-        throw new Error(t("project.openEmpty"));
-      }
-      applyProjectFile(parseProjectFile(result.content), projectPath);
-      updateRecentProjects((list) => addRecentProject(list, projectPath));
-      setProjectMessage(null);
-      enterWorkspace();
-    } catch {
-      // The file was moved, renamed or deleted: drop it from the list and say so.
-      updateRecentProjects((list) => removeRecentProject(list, projectPath));
-      setRecentProjectError(projectPath);
-    } finally {
-      setProjectOpening(false);
-    }
-  }
-
-  const [recentProjectError, setRecentProjectError] = useState<string | null>(null);
-
-  async function doOpenProject() {
-    if (!window.cricutCompanion?.project) {
-      setProjectMessage(t("project.openInDesktop"));
-      enterWorkspace();
-      return;
-    }
-
-    setProjectOpening(true);
-    try {
-      const result = await window.cricutCompanion.project.open();
-      if (result.canceled) {
-        return;
-      }
-      if (!result.content) {
-        throw new Error(t("project.openEmpty"));
-      }
-      applyProjectFile(parseProjectFile(result.content), result.path);
-      const openedPath = result.path;
-      if (openedPath) updateRecentProjects((list) => addRecentProject(list, openedPath));
-      setProjectMessage(DEBUG ? t("project.opened", { path: result.path }) : null);
-      enterWorkspace();
-    } catch (error) {
-      setProjectMessage(error instanceof Error ? error.message : t("project.openError"));
-      enterWorkspace();
-    } finally {
-      setProjectOpening(false);
-    }
-  }
-
-  async function handleSaveProject(options: { saveAs?: boolean } = {}): Promise<boolean> {
-    if (!window.cricutCompanion?.project) {
-      setProjectMessage(t("project.saveInDesktop"));
-      enterWorkspace();
-      return false;
-    }
-
-    const projectFile = createCurrentProjectFile();
-    setProjectSaving(true);
-    try {
-      const result = await window.cricutCompanion.project.save({
-        content: serializeProjectFile(projectFile),
-        defaultFileName: `${getSafeProjectFileName(projectFile.name)}.kindcut`,
-        // "Save as" always asks for a new location; a plain save reuses the known path.
-        currentPath: options.saveAs ? null : currentProjectPath,
-      });
-      if (result.canceled) {
-        return false;
-      }
-      setCurrentProjectPath(result.path);
-      const savedPath = result.path;
-      if (savedPath) updateRecentProjects((list) => addRecentProject(list, savedPath));
-      setProjectMessage(DEBUG ? t("project.saved", { path: result.path }) : null);
-      setSavedToast((n) => n + 1); // cute fly-in confirmation
-      setRebaseline((n) => n + 1); // saved = clean
-      enterWorkspace();
-      return true;
-    } catch (error) {
-      setProjectMessage(error instanceof Error ? error.message : t("project.saveError"));
-      enterWorkspace();
-      return false;
-    } finally {
-      setProjectSaving(false);
-    }
-  }
-
-  function createCurrentProjectFile(): KindCutProjectFile {
-    return buildProjectFile({
-      name: importedSvg?.fileName ?? (language === "nl" ? "Nieuw leeg ontwerp" : "New blank design"),
-      selectedMaterialId,
-      selectedMatPreset,
-      measurementUnit,
-      tools,
-      paperColor,
-      cardSize,
-      insertSlots,
-      importedSvg: null,
-      importedSvgs: [],
-      workspaceObjects: importedSvgs.map((item) => ({
-        id: item.id,
-        type: item.type,
-        kind: item.kind,
-        sourceKind: item.sourceKind,
-        shapeKind: item.shapeKind,
-        fileName: item.fileName,
-        fileSize: item.fileSize,
-        frame: item.frame,
-        paths: item.paths,
-        transform: item.transform,
-        textContent: item.textContent,
-        cornerRadius: item.cornerRadius,
-        penFill: item.penFill,
-        spotify: item.spotify,
-        dotPrint: item.dotPrint,
-        dashed: item.dashed,
-        outline: item.outline,
-        hollow: item.hollow,
-      })),
-      selectedObjectId: selectedSvgId,
-      selectedSvgId: null,
-    });
+    markProjectClean();
   }
 
   function applyProjectFile(projectFile: KindCutProjectFile, projectPath: string) {
@@ -791,37 +613,15 @@ export function App() {
     setCutSession(null);
     setImportMessage(null);
 
-    const restoredItems = projectFile.workspaceObjects.map((item, index) => {
-      const base = createWorkspaceObjectItem({
-        id: item.id ?? `svg-${index + 1}`,
-        type: item.type,
-        kind: item.kind ?? "image",
-        sourceKind: item.sourceKind ?? item.kind ?? "image",
-        shapeKind: item.shapeKind,
-        fileName: item.fileName,
-        fileSize: item.fileSize,
-        frame: item.frame,
-        paths: item.paths,
-        language,
-        index,
-        transform: item.transform,
-        cornerRadius: item.cornerRadius,
-        penFill: item.penFill,
-        spotify: item.spotify,
-        dotPrint: item.dotPrint,
-        dashed: item.dashed,
-        outline: item.outline,
-        hollow: item.hollow,
-      });
-      if (item.textContent) base.textContent = item.textContent;
-      return base;
-    });
+    const { items: restoredItems, selectedId: restoredSelectedId } = restoreProjectObjects(
+      projectFile,
+      language,
+    );
     setImportedSvgs(restoredItems);
-    const restoredSelectedId = projectFile.selectedObjectId ?? projectFile.selectedSvgId ?? restoredItems[0]?.id ?? null;
     setSelectedSvgId(restoredSelectedId);
     setSelectedSvgIds(restoredSelectedId ? [restoredSelectedId] : []);
     resetWorkspaceHistory();
-    setRebaseline((n) => n + 1); // just-opened project = clean
+    markProjectClean(); // just-opened project = clean
   }
 
   function handleSelectAllSvgs() {
@@ -829,7 +629,11 @@ export function App() {
   }
 
   function handleCopySvgs(): boolean {
-    const copiedItems = getSelectedWorkspaceClipboardItems(importedSvgs, selectedSvgIds, selectedSvgId);
+    const copiedItems = getSelectedWorkspaceClipboardItems(
+      importedSvgs,
+      selectedSvgIds,
+      selectedSvgId,
+    );
     if (copiedItems.length === 0) {
       return false;
     }
@@ -851,8 +655,8 @@ export function App() {
       createWorkspaceObjectItem({
         id: item.id,
         type: item.type,
-        kind: item.kind ?? "image",
-        sourceKind: item.sourceKind ?? item.kind ?? "image",
+        kind: item.kind ?? 'image',
+        sourceKind: item.sourceKind ?? item.kind ?? 'image',
         shapeKind: item.shapeKind,
         fileName: item.fileName,
         fileSize: item.fileSize,
@@ -882,7 +686,9 @@ export function App() {
   }
 
   function handleDeleteSvgs(): boolean {
-    const idsToDelete = new Set(selectedSvgIds.length > 0 ? selectedSvgIds : selectedSvgId ? [selectedSvgId] : []);
+    const idsToDelete = new Set(
+      selectedSvgIds.length > 0 ? selectedSvgIds : selectedSvgId ? [selectedSvgId] : [],
+    );
     if (idsToDelete.size === 0) {
       return false;
     }
@@ -900,13 +706,20 @@ export function App() {
   // The Layers pane shows it reversed (front on top), so reorder math is done in
   // that reversed "display" space and flipped back to the stored array.
 
-  type LayerMove = "forward" | "backward" | "front" | "back";
+  type LayerMove = 'forward' | 'backward' | 'front' | 'back';
 
   function moveLayer(id: string, mode: LayerMove): boolean {
     const display = [...importedSvgs].reverse();
     const idx = display.findIndex((item) => item.id === id);
     if (idx < 0) return false;
-    const target = mode === "front" ? 0 : mode === "back" ? display.length - 1 : mode === "forward" ? idx - 1 : idx + 1;
+    const target =
+      mode === 'front'
+        ? 0
+        : mode === 'back'
+          ? display.length - 1
+          : mode === 'forward'
+            ? idx - 1
+            : idx + 1;
     const clamped = Math.max(0, Math.min(display.length - 1, target));
     if (clamped === idx) return false;
     const [item] = display.splice(idx, 1);
@@ -959,14 +772,17 @@ export function App() {
     const groupItem = createWorkspaceGroup({
       id: `group-${Date.now()}`,
       items: selectedObjects,
-      label: language === "nl" ? "Groep" : "Group",
-      fileSize: language === "nl" ? `${partCount} onderdelen` : `${partCount} parts`,
+      label: language === 'nl' ? 'Groep' : 'Group',
+      fileSize: language === 'nl' ? `${partCount} onderdelen` : `${partCount} parts`,
     });
     if (!groupItem) {
       return false;
     }
     pushWorkspaceHistorySnapshot();
-    setImportedSvgs((current) => [...current.filter((item) => !selectedSet.has(item.id)), groupItem]);
+    setImportedSvgs((current) => [
+      ...current.filter((item) => !selectedSet.has(item.id)),
+      groupItem,
+    ]);
     setSelectedSvgId(groupItem.id);
     setSelectedSvgIds([groupItem.id]);
     setImportedPlan(null);
@@ -988,7 +804,12 @@ export function App() {
         const offset = rotatePoint(rawOffset, item.transform.rotation);
         return {
           ...item,
-          transform: { ...item.transform, mirrorX: newMirrorX, x: item.transform.x + offset.x, y: item.transform.y + offset.y },
+          transform: {
+            ...item.transform,
+            mirrorX: newMirrorX,
+            x: item.transform.x + offset.x,
+            y: item.transform.y + offset.y,
+          },
         };
       }),
     );
@@ -1007,7 +828,12 @@ export function App() {
         const offset = rotatePoint(rawOffset, item.transform.rotation);
         return {
           ...item,
-          transform: { ...item.transform, mirrorY: newMirrorY, x: item.transform.x + offset.x, y: item.transform.y + offset.y },
+          transform: {
+            ...item.transform,
+            mirrorY: newMirrorY,
+            x: item.transform.x + offset.x,
+            y: item.transform.y + offset.y,
+          },
         };
       }),
     );
@@ -1020,15 +846,17 @@ export function App() {
       return false;
     }
     const labelForIndex = (index: number) =>
-      language === "nl" ? `${sel.fileName} onderdeel ${index + 1}` : `${sel.fileName} part ${index + 1}`;
+      language === 'nl'
+        ? `${sel.fileName} onderdeel ${index + 1}`
+        : `${sel.fileName} part ${index + 1}`;
     const idPrefix = `${sel.id}-part-${Date.now()}`;
 
     let children: WorkspaceSvgItem[] = [];
-    if (sel.type === "group") {
+    if (sel.type === 'group') {
       children = ungroupWorkspaceObject({ group: sel, idPrefix, labelForIndex }).map((child) =>
         reframeUngroupedChild(child, sel.transform),
       );
-    } else if (sel.type === "path") {
+    } else if (sel.type === 'path') {
       // Traced/AI compound path → one object per top-level shape (subpaths contained
       // inside another stay attached as holes, keeping their fill rule). A single shape
       // yields < 2 pieces and is left untouched below.
@@ -1038,7 +866,9 @@ export function App() {
       return false;
     }
     pushWorkspaceHistorySnapshot();
-    setImportedSvgs((current) => current.flatMap((item) => (item.id === sel.id ? children : [item])));
+    setImportedSvgs((current) =>
+      current.flatMap((item) => (item.id === sel.id ? children : [item])),
+    );
     const childIds = children.map((item) => item.id);
     setSelectedSvgId(childIds.at(-1) ?? null);
     setSelectedSvgIds(childIds);
@@ -1051,8 +881,16 @@ export function App() {
   const visibleAreaRef = useRef<(() => WorkspaceRect | null) | null>(null);
 
   function getPlacementArea(): WorkspaceRect {
-    const dims = selectedMaterialId === MATERIAL_INSERT_ID && cardSize ? CARD_SIZES[cardSize] : getMatDimensionsInches(selectedMatPreset);
-    const paper = { x: 0, y: 0, width: dims.width * WORKSPACE_PIXELS_PER_INCH, height: dims.height * WORKSPACE_PIXELS_PER_INCH };
+    const dims =
+      selectedMaterialId === MATERIAL_INSERT_ID && cardSize
+        ? CARD_SIZES[cardSize]
+        : getMatDimensionsInches(selectedMatPreset);
+    const paper = {
+      x: 0,
+      y: 0,
+      width: dims.width * WORKSPACE_PIXELS_PER_INCH,
+      height: dims.height * WORKSPACE_PIXELS_PER_INCH,
+    };
     const visible = visibleAreaRef.current?.() ?? null;
     return (visible && intersectRects(paper, visible)) ?? paper;
   }
@@ -1065,10 +903,15 @@ export function App() {
     const area = getPlacementArea();
     const occupied = importedSvgs.flatMap((item) => {
       const bounds = getWorkspaceSelectionBounds([item]);
-      return bounds ? [{ x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height }] : [];
+      return bounds
+        ? [{ x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height }]
+        : [];
     });
     return items.map((item) => {
-      const size = { width: item.frame.width * item.transform.scaleX, height: item.frame.height * item.transform.scaleY };
+      const size = {
+        width: item.frame.width * item.transform.scaleX,
+        height: item.frame.height * item.transform.scaleY,
+      };
       const spot = findFreePlacement({ size, area, occupied });
       occupied.push({ ...spot, ...size });
       return { ...item, transform: { ...item.transform, ...spot } };
@@ -1079,7 +922,10 @@ export function App() {
     return placeNewItems([item])[0] ?? item;
   }
 
-  function handleAddWorkspaceShape(shapeKind: WorkspaceShapeKind, options: { fold?: boolean } = {}) {
+  function handleAddWorkspaceShape(
+    shapeKind: WorkspaceShapeKind,
+    options: { fold?: boolean } = {},
+  ) {
     const shape = recolorItem(
       createWorkspaceShapeItem({
         shapeKind,
@@ -1089,9 +935,15 @@ export function App() {
       }),
       getBehindColor(tools),
     );
-    const item = placeNewItem(options.fold
-      ? { ...shape, fileName: language === "nl" ? "Vouwlijn" : "Fold line", dashed: { ...DEFAULT_DASH } }
-      : shape);
+    const item = placeNewItem(
+      options.fold
+        ? {
+            ...shape,
+            fileName: language === 'nl' ? 'Vouwlijn' : 'Fold line',
+            dashed: { ...DEFAULT_DASH },
+          }
+        : shape,
+    );
     pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) => [...current, item]);
     setSelectedSvgId(item.id);
@@ -1102,7 +954,7 @@ export function App() {
   }
 
   // Step 1: Generate only — returns normalised SVG, does NOT import yet
-  async function handleGenerateAiDesign(input: Omit<AiSvgInput, "settings">): Promise<string> {
+  async function handleGenerateAiDesign(input: Omit<AiSvgInput, 'settings'>): Promise<string> {
     const rawSvg = await generateAiSvg({ ...input, settings: aiSettings, language });
     return normalizeAiSvg(rawSvg);
   }
@@ -1139,7 +991,10 @@ export function App() {
     });
   }
 
-  async function traceLocalRasterImage(source: LocalRasterImport, traceOptions?: RasterTraceOptions): Promise<string> {
+  async function traceLocalRasterImage(
+    source: LocalRasterImport,
+    traceOptions?: RasterTraceOptions,
+  ): Promise<string> {
     const rawSvg = await window.cricutCompanion?.image?.traceRasterToSvg({
       base64: source.base64,
       fileName: source.fileName,
@@ -1147,7 +1002,7 @@ export function App() {
       traceOptions,
     });
     if (!rawSvg) {
-      throw new Error(language === "nl" ? "Vectorisatie mislukt." : "Vectorisation failed.");
+      throw new Error(language === 'nl' ? 'Vectorisatie mislukt.' : 'Vectorisation failed.');
     }
     return normalizeAiSvg(rawSvg);
   }
@@ -1156,17 +1011,22 @@ export function App() {
     const name = stripImageExtension(source.fileName);
     await saveToLibrary(name, svg, false);
     await loadImageLibrary();
-    addSvgToWorkspace(source.fileName.replace(RASTER_IMPORT_EXT_RE, ".svg"), svg, true);
+    addSvgToWorkspace(source.fileName.replace(RASTER_IMPORT_EXT_RE, '.svg'), svg, true);
     advanceRasterImportQueue();
   }
 
-  function addSvgToWorkspace(name: string, svg: string, normalizeFirst = false, extra: Partial<WorkspaceSvgItem> = {}): void {
+  function addSvgToWorkspace(
+    name: string,
+    svg: string,
+    normalizeFirst = false,
+    extra: Partial<WorkspaceSvgItem> = {},
+  ): void {
     const finalSvg = normalizeFirst ? normalizeAiSvg(svg) : svg;
     const item = createWorkspaceSvgItem({
       id: `svg-${Date.now()}`,
-      kind: "image",
+      kind: 'image',
       fileName: name,
-      fileSize: "",
+      fileSize: '',
       svg: finalSvg,
       language,
       index: importedSvgs.length,
@@ -1180,7 +1040,9 @@ export function App() {
       item.transform.scaleY = scale;
     }
     // New artwork defaults to "Cut" — shown filled in the behind colour.
-    const cutItem = placeNewItem(recolorItem({ ...item, ...extra } as WorkspaceSvgItem, getBehindColor(tools)));
+    const cutItem = placeNewItem(
+      recolorItem({ ...item, ...extra } as WorkspaceSvgItem, getBehindColor(tools)),
+    );
     pushWorkspaceHistorySnapshot();
     setImportedSvgs((current) => [...current, cutItem]);
     setSelectedSvgId(item.id);
@@ -1197,29 +1059,32 @@ export function App() {
     if (!current) return;
     const fresh = createWorkspaceSvgItem({
       id: current.id,
-      kind: "image",
+      kind: 'image',
       fileName: code.name,
-      fileSize: "",
+      fileSize: '',
       svg: code.svg,
       language,
       index: 0,
       transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     });
     const color = current.paths[0]?.stroke ?? getBehindColor(tools);
-    const replaced = recolorItem({
-      ...current,
-      type: fresh.type,
-      paths: fresh.paths,
-      frame: fresh.frame,
-      sizeCopy: fresh.sizeCopy,
-      fileName: code.name,
-      spotify: code.uri ? { uri: code.uri, name: code.name } : current.spotify,
-      transform: {
-        ...current.transform,
-        scaleX: (current.frame.width * current.transform.scaleX) / fresh.frame.width,
-        scaleY: (current.frame.height * current.transform.scaleY) / fresh.frame.height,
-      },
-    } as WorkspaceSvgItem, color);
+    const replaced = recolorItem(
+      {
+        ...current,
+        type: fresh.type,
+        paths: fresh.paths,
+        frame: fresh.frame,
+        sizeCopy: fresh.sizeCopy,
+        fileName: code.name,
+        spotify: code.uri ? { uri: code.uri, name: code.name } : current.spotify,
+        transform: {
+          ...current.transform,
+          scaleX: (current.frame.width * current.transform.scaleX) / fresh.frame.width,
+          scaleY: (current.frame.height * current.transform.scaleY) / fresh.frame.height,
+        },
+      } as WorkspaceSvgItem,
+      color,
+    );
     pushWorkspaceHistorySnapshot();
     setImportedSvgs((items) => items.map((item) => (item.id === itemId ? replaced : item)));
     setImportedPlan(null);
@@ -1231,17 +1096,20 @@ export function App() {
   function measureTextFrame(tc: WorkspaceTextContent): { width: number; height: number } {
     // Single-line text is centerline-traced from the *real* font, so it measures with
     // the normal font-metrics path below (no special-casing needed).
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d")!;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
     ctx.font = `${tc.fontStyle} ${tc.fontWeight} ${tc.fontSize}px ${tc.fontFamily}`;
-    const lines = tc.text.split("\n");
+    const lines = tc.text.split('\n');
     const lineH = tc.fontSize * tc.lineHeight;
     const maxW = Math.max(
       10,
       ...lines.map((l) => {
         const chars = [...l];
         if (chars.length === 0) return 0;
-        return chars.reduce((w, c) => w + ctx.measureText(c).width, 0) + Math.max(0, chars.length - 1) * tc.letterSpacing;
+        return (
+          chars.reduce((w, c) => w + ctx.measureText(c).width, 0) +
+          Math.max(0, chars.length - 1) * tc.letterSpacing
+        );
       }),
     );
     return { width: Math.ceil(maxW) + 2, height: Math.ceil(lineH * lines.length) + 2 };
@@ -1252,116 +1120,130 @@ export function App() {
   // workspace <text> render in buildTextContentSvg. The returned canvas maps 1:1 (× SCALE) onto
   // the frame, so the traced paths land exactly where the on-screen text sits — no ink-bbox
   // renormalisation, which is what used to shift/stretch the cut text relative to the preview.
-  function renderTextToCanvas(tc: WorkspaceTextContent, frame: WorkspaceItemFrame): { base64: string; width: number; height: number } {
+  function renderTextToCanvas(
+    tc: WorkspaceTextContent,
+    frame: WorkspaceItemFrame,
+  ): { base64: string; width: number; height: number } {
     const SCALE = 3;
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d")!;
-    const fontStr = `${tc.fontStyle === "italic" ? "italic " : ""}${tc.fontWeight === "bold" ? "bold " : ""}${tc.fontSize * SCALE}px ${tc.fontFamily}`;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    const fontStr = `${tc.fontStyle === 'italic' ? 'italic ' : ''}${tc.fontWeight === 'bold' ? 'bold ' : ''}${tc.fontSize * SCALE}px ${tc.fontFamily}`;
     canvas.width = Math.max(1, Math.ceil(frame.width * SCALE));
     canvas.height = Math.max(1, Math.ceil(frame.height * SCALE));
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.font = fontStr;
-    ctx.fillStyle = "#000000";
-    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = '#000000';
+    ctx.textBaseline = 'alphabetic';
 
-    const lines = tc.text.split("\n");
+    const lines = tc.text.split('\n');
     const lineH = tc.fontSize * SCALE * tc.lineHeight;
     const letterSpacing = tc.letterSpacing * SCALE;
     lines.forEach((line, i) => {
       const chars = [...line];
-      const lineW = chars.length === 0
-        ? 0
-        : chars.reduce((w, c) => w + ctx.measureText(c).width, 0) + Math.max(0, chars.length - 1) * letterSpacing;
+      const lineW =
+        chars.length === 0
+          ? 0
+          : chars.reduce((w, c) => w + ctx.measureText(c).width, 0) +
+            Math.max(0, chars.length - 1) * letterSpacing;
       // Mirror buildTextContentSvg anchors: center → width/2, right → width-1, left → 1.
-      const xStart = tc.textAlign === "center"
-        ? (frame.width * SCALE - lineW) / 2
-        : tc.textAlign === "right"
-          ? (frame.width - 1) * SCALE - lineW
-          : 1 * SCALE;
-      const baselineY = (tc.fontSize + i * lineH / SCALE) * SCALE; // = (fontSize + i·lineH)·SCALE
+      const xStart =
+        tc.textAlign === 'center'
+          ? (frame.width * SCALE - lineW) / 2
+          : tc.textAlign === 'right'
+            ? (frame.width - 1) * SCALE - lineW
+            : 1 * SCALE;
+      const baselineY = (tc.fontSize + (i * lineH) / SCALE) * SCALE; // = (fontSize + i·lineH)·SCALE
       let x = xStart;
       for (const char of chars) {
         ctx.fillText(char, x, baselineY);
         x += ctx.measureText(char).width + letterSpacing;
       }
-      if (tc.textDecoration === "underline") {
+      if (tc.textDecoration === 'underline') {
         ctx.fillRect(xStart, baselineY + 2 * SCALE, lineW, Math.max(2, tc.fontSize * SCALE * 0.06));
       }
     });
     return {
-      base64: canvas.toDataURL("image/png").replace("data:image/png;base64,", ""),
+      base64: canvas.toDataURL('image/png').replace('data:image/png;base64,', ''),
       width: canvas.width,
       height: canvas.height,
     };
   }
 
-  async function resolveTextItemsForCutting(items: WorkspaceSvgItem[]): Promise<WorkspaceSvgItem[]> {
+  async function resolveTextItemsForCutting(
+    items: WorkspaceSvgItem[],
+  ): Promise<WorkspaceSvgItem[]> {
     // Convert any text items (no paths) to path-based items via canvas → Potrace
-    return Promise.all(items.map(async (item) => {
-      if (!item.textContent || item.paths.length > 0) return item;
-      // Single-line text: emit the Hershey stroke polylines directly as open paths
-      // (no fill) — bypassing the canvas→Potrace outline trace entirely.
-      if (item.textContent.singleLine) {
-        const color = item.textContent.color;
-        const d = traceCenterlinePathD(item.textContent, item.frame);
-        if (!d) return item;
-        const strokePath: WorkspacePathData = {
-          id: `${item.id}-stroke`,
-          d,
-          fill: "none",
-          stroke: color,
-          strokeWidth: "1.5",
-          strokeLinecap: "round",
-          strokeLinejoin: "round",
-        };
-        return { ...item, paths: [strokePath] as unknown as [WorkspacePathData] };
-      }
-      try {
-        const rendered = renderTextToCanvas(item.textContent, item.frame);
-        const rawSvg = await window.cricutCompanion?.ai?.tracePngToSvg(rendered.base64);
-        if (!rawSvg) return item;
-        const svg = normalizeAiSvg(rawSvg);
-        const extracted = extractWorkspacePathsFromSvg(svg);
-        // The canvas is the frame coordinate space × SCALE, so the traced paths already sit
-        // where the on-screen text does — just scale the whole canvas back down to the frame
-        // (NOT the ink bounding box, which would drop the baseline/line-height offset).
-        const scaleX = item.frame.width / rendered.width;
-        const scaleY = item.frame.height / rendered.height;
-        const color = item.textContent.color;
-        const paths = extracted.paths.map((p) => ({
-          ...p,
-          stroke: color,
-          fill: color,
-          // Prepend the scale-down transform; preserve any existing pathTransform
-          pathTransform: p.pathTransform
-            ? `scale(${scaleX} ${scaleY}) ${p.pathTransform}`
-            : `scale(${scaleX} ${scaleY})`,
-        }));
-        return {
-          ...item,
-          // Keep original frame — the scale transform brings paths into that space
-          paths: paths as unknown as [WorkspacePathData],
-        };
-      } catch {
-        return item; // fall back to text element if tracing fails
-      }
-    }));
+    return Promise.all(
+      items.map(async (item) => {
+        if (!item.textContent || item.paths.length > 0) return item;
+        // Single-line text: emit the Hershey stroke polylines directly as open paths
+        // (no fill) — bypassing the canvas→Potrace outline trace entirely.
+        if (item.textContent.singleLine) {
+          const color = item.textContent.color;
+          const d = traceCenterlinePathD(item.textContent, item.frame);
+          if (!d) return item;
+          const strokePath: WorkspacePathData = {
+            id: `${item.id}-stroke`,
+            d,
+            fill: 'none',
+            stroke: color,
+            strokeWidth: '1.5',
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round',
+          };
+          return { ...item, paths: [strokePath] as unknown as [WorkspacePathData] };
+        }
+        try {
+          const rendered = renderTextToCanvas(item.textContent, item.frame);
+          const rawSvg = await window.cricutCompanion?.ai?.tracePngToSvg(rendered.base64);
+          if (!rawSvg) return item;
+          const svg = normalizeAiSvg(rawSvg);
+          const extracted = extractWorkspacePathsFromSvg(svg);
+          // The canvas is the frame coordinate space × SCALE, so the traced paths already sit
+          // where the on-screen text does — just scale the whole canvas back down to the frame
+          // (NOT the ink bounding box, which would drop the baseline/line-height offset).
+          const scaleX = item.frame.width / rendered.width;
+          const scaleY = item.frame.height / rendered.height;
+          const color = item.textContent.color;
+          const paths = extracted.paths.map((p) => ({
+            ...p,
+            stroke: color,
+            fill: color,
+            // Prepend the scale-down transform; preserve any existing pathTransform
+            pathTransform: p.pathTransform
+              ? `scale(${scaleX} ${scaleY}) ${p.pathTransform}`
+              : `scale(${scaleX} ${scaleY})`,
+          }));
+          return {
+            ...item,
+            // Keep original frame — the scale transform brings paths into that space
+            paths: paths as unknown as [WorkspacePathData],
+          };
+        } catch {
+          return item; // fall back to text element if tracing fails
+        }
+      }),
+    );
   }
 
-  function createTextItem(tc: WorkspaceTextContent, index: number, existingId?: string): WorkspaceSvgItem {
+  function createTextItem(
+    tc: WorkspaceTextContent,
+    index: number,
+    existingId?: string,
+  ): WorkspaceSvgItem {
     const frame = measureTextFrame(tc);
     const id = existingId ?? `text-${Date.now()}`;
     return {
       id,
-      kind: "text",
-      sourceKind: "text",
-      fileName: tc.text.slice(0, 30) || "Text",
-      fileSize: "",
-      sizeCopy: "",
+      kind: 'text',
+      sourceKind: 'text',
+      fileName: tc.text.slice(0, 30) || 'Text',
+      fileSize: '',
+      sizeCopy: '',
       frame,
       transform: { x: 40 + index * 20, y: 40 + index * 20, scaleX: 1, scaleY: 1, rotation: 0 },
-      type: "path",
+      type: 'path',
       paths: [] as unknown as [WorkspacePathData],
       textContent: tc,
     } satisfies WorkspaceSvgItem;
@@ -1375,13 +1257,13 @@ export function App() {
 
   function handleAddText() {
     const defaultContent: WorkspaceTextContent = {
-      text: language === "nl" ? "Tekst" : "Text",
-      fontFamily: "sans-serif",
+      text: language === 'nl' ? 'Tekst' : 'Text',
+      fontFamily: 'sans-serif',
       fontSize: 48,
-      fontWeight: "normal",
-      fontStyle: "normal",
-      textDecoration: "none",
-      textAlign: "left",
+      fontWeight: 'normal',
+      fontStyle: 'normal',
+      textDecoration: 'none',
+      textAlign: 'left',
       letterSpacing: 0,
       lineHeight: 1.25,
       // New text defaults to Cut (the behind colour) so placed text is cut by default.
@@ -1402,7 +1284,12 @@ export function App() {
         if (!idSet.has(item.id) || !item.textContent) return item;
         const newContent = { ...item.textContent, ...patch };
         const frame = measureTextFrame(newContent);
-        return { ...item, textContent: newContent, frame, paths: [] as unknown as [WorkspacePathData] };
+        return {
+          ...item,
+          textContent: newContent,
+          frame,
+          paths: [] as unknown as [WorkspacePathData],
+        };
       }),
     );
   }
@@ -1419,11 +1306,16 @@ export function App() {
     setImportedSvgs((current) =>
       current.map((item) => {
         if (!idSet.has(item.id) || !item.shapeKind) return item;
-        const clamped = Math.max(0, Math.min(radius, Math.min(item.frame.width, item.frame.height) / 2));
+        const clamped = Math.max(
+          0,
+          Math.min(radius, Math.min(item.frame.width, item.frame.height) / 2),
+        );
         // Keep the stored path in sync (scale-1 baseline); the render/cut regenerate
         // scale-aware on top of this.
         const d = buildShapePath(item.shapeKind, item.frame.width, item.frame.height, clamped);
-        const paths = item.paths.map((p, i) => (i === 0 ? { ...p, d, pathTransform: undefined } : p));
+        const paths = item.paths.map((p, i) =>
+          i === 0 ? { ...p, d, pathTransform: undefined } : p,
+        );
         return { ...item, cornerRadius: clamped, paths } as WorkspaceSvgItem;
       }),
     );
@@ -1450,7 +1342,7 @@ export function App() {
   }
 
   // Slider drags and held arrow keys send many small changes; keep a burst as one undo step.
-  const lastBurstHistory = useRef<{ kind: string; at: number }>({ kind: "", at: 0 });
+  const lastBurstHistory = useRef<{ kind: string; at: number }>({ kind: '', at: 0 });
   function pushBurstHistory(kind: string) {
     const now = Date.now();
     if (lastBurstHistory.current.kind !== kind || now - lastBurstHistory.current.at > 600) {
@@ -1461,11 +1353,14 @@ export function App() {
 
   function handleDashChange(ids: string[], patch: Partial<DashSettings>) {
     const idSet = new Set(ids);
-    pushBurstHistory("dash");
+    pushBurstHistory('dash');
     setImportedSvgs((current) =>
       current.map((item) => {
         if (!idSet.has(item.id)) return item;
-        const dashed = normalizeDash({ ...(item.dashed ?? { ...DEFAULT_DASH, enabled: false }), ...patch });
+        const dashed = normalizeDash({
+          ...(item.dashed ?? { ...DEFAULT_DASH, enabled: false }),
+          ...patch,
+        });
         return dashed ? { ...item, dashed } : item;
       }),
     );
@@ -1475,16 +1370,21 @@ export function App() {
   function handleHollowChange(ids: string[], hollow: boolean) {
     const idSet = new Set(ids);
     pushWorkspaceHistorySnapshot();
-    setImportedSvgs((current) => current.map((item) => (idSet.has(item.id) ? { ...item, hollow: hollow || undefined } : item)));
+    setImportedSvgs((current) =>
+      current.map((item) => (idSet.has(item.id) ? { ...item, hollow: hollow || undefined } : item)),
+    );
   }
 
   function handleOutlineChange(ids: string[], patch: Partial<OutlineSettings>) {
     const idSet = new Set(ids);
-    pushBurstHistory("outline");
+    pushBurstHistory('outline');
     setImportedSvgs((current) =>
       current.map((item) => {
         if (!idSet.has(item.id)) return item;
-        const outline = normalizeOutline({ ...(item.outline ?? { ...DEFAULT_OUTLINE, enabled: false }), ...patch });
+        const outline = normalizeOutline({
+          ...(item.outline ?? { ...DEFAULT_OUTLINE, enabled: false }),
+          ...patch,
+        });
         return outline ? { ...item, outline } : item;
       }),
     );
@@ -1501,16 +1401,26 @@ export function App() {
     const detached = new Map<string, WorkspaceSvgItem>();
     importedSvgs.forEach((item, index) => {
       const outline = idSet.has(item.id) ? activeOutline(item) : null;
-      const d = outline ? outlineFramePath(item) : "";
+      const d = outline ? outlineFramePath(item) : '';
       if (!outline || !d) return;
       const base = createWorkspaceObjectItem({
         id: `outline-${timestamp}-${index}`,
-        type: "path",
-        kind: "image",
-        fileName: language === "nl" ? `Rand van ${item.fileName}` : `Outline of ${item.fileName}`,
-        fileSize: "",
+        type: 'path',
+        kind: 'image',
+        fileName: language === 'nl' ? `Rand van ${item.fileName}` : `Outline of ${item.fileName}`,
+        fileSize: '',
         frame: { ...item.frame },
-        paths: [{ id: "path-1", d, fill: "none", stroke: outlineTool(outline, tools).color, strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }],
+        paths: [
+          {
+            id: 'path-1',
+            d,
+            fill: 'none',
+            stroke: outlineTool(outline, tools).color,
+            strokeWidth: '1.5',
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round',
+          },
+        ],
         language,
         index,
         transform: { ...item.transform },
@@ -1522,7 +1432,9 @@ export function App() {
     setImportedSvgs((current) =>
       current.flatMap((item) => {
         const outlineItem = detached.get(item.id);
-        return outlineItem && item.outline ? [outlineItem, { ...item, outline: { ...item.outline, enabled: false } }] : [item];
+        return outlineItem && item.outline
+          ? [outlineItem, { ...item, outline: { ...item.outline, enabled: false } }]
+          : [item];
       }),
     );
     const newIds = [...detached.values()].map((item) => item.id);
@@ -1533,8 +1445,16 @@ export function App() {
 
   /** The paper objects are lined up on: the chosen card for insert cards, otherwise the whole mat. */
   function getPaperRect(): WorkspaceRect {
-    const dims = selectedMaterialId === MATERIAL_INSERT_ID && cardSize ? CARD_SIZES[cardSize] : getMatDimensionsInches(selectedMatPreset);
-    return { x: 0, y: 0, width: dims.width * WORKSPACE_PIXELS_PER_INCH, height: dims.height * WORKSPACE_PIXELS_PER_INCH };
+    const dims =
+      selectedMaterialId === MATERIAL_INSERT_ID && cardSize
+        ? CARD_SIZES[cardSize]
+        : getMatDimensionsInches(selectedMatPreset);
+    return {
+      x: 0,
+      y: 0,
+      width: dims.width * WORKSPACE_PIXELS_PER_INCH,
+      height: dims.height * WORKSPACE_PIXELS_PER_INCH,
+    };
   }
 
   function handleAlignSelection(mode: AlignMode) {
@@ -1542,7 +1462,7 @@ export function App() {
     handleSvgTransformsCommit(alignWorkspaceItems(selected, mode, getPaperRect()));
   }
 
-  function handleDistributeSelection(axis: "x" | "y") {
+  function handleDistributeSelection(axis: 'x' | 'y') {
     const selected = importedSvgs.filter((item) => selectedSvgIds.includes(item.id));
     handleSvgTransformsCommit(distributeWorkspaceItems(selected, axis));
   }
@@ -1550,11 +1470,18 @@ export function App() {
   function handleNudgeSelection(dx: number, dy: number): boolean {
     if (selectedSvgIds.length === 0 || editingTextId) return false;
     const idSet = new Set(selectedSvgIds);
-    pushBurstHistory("nudge");
+    pushBurstHistory('nudge');
     setImportedSvgs((current) =>
       current.map((item) =>
         idSet.has(item.id)
-          ? { ...item, transform: normalizeWorkspaceItemTransform({ ...item.transform, x: item.transform.x + dx, y: item.transform.y + dy }) }
+          ? {
+              ...item,
+              transform: normalizeWorkspaceItemTransform({
+                ...item.transform,
+                x: item.transform.x + dx,
+                y: item.transform.y + dy,
+              }),
+            }
           : item,
       ),
     );
@@ -1566,7 +1493,7 @@ export function App() {
 
   async function handleDotPrintFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    event.target.value = "";
+    event.target.value = '';
     if (!file) return;
     try {
       const picture = await readDotPrintImageFile(file);
@@ -1574,18 +1501,20 @@ export function App() {
       const inkPens = ensureInkPens(tools);
       if (inkPens.tools !== tools) setTools(inkPens.tools);
       const width = 3 * WORKSPACE_PIXELS_PER_INCH;
-      const item = placeNewItem(createWorkspaceObjectItem({
-        id: `dotprint-${Date.now()}`,
-        type: "group",
-        kind: "image",
-        fileName: stripImageExtension(file.name),
-        fileSize: "",
-        frame: { width, height: (width * picture.height) / picture.width },
-        paths: [],
-        language,
-        index: importedSvgs.length,
-        dotPrint: { image: picture.dataUrl, settings: defaultDotPrintSettings(inkPens.pens) },
-      }));
+      const item = placeNewItem(
+        createWorkspaceObjectItem({
+          id: `dotprint-${Date.now()}`,
+          type: 'group',
+          kind: 'image',
+          fileName: stripImageExtension(file.name),
+          fileSize: '',
+          frame: { width, height: (width * picture.height) / picture.width },
+          paths: [],
+          language,
+          index: importedSvgs.length,
+          dotPrint: { image: picture.dataUrl, settings: defaultDotPrintSettings(inkPens.pens) },
+        }),
+      );
       pushWorkspaceHistorySnapshot();
       setImportedSvgs((current) => [...current, item]);
       setSelectedSvgId(item.id);
@@ -1593,8 +1522,12 @@ export function App() {
       setImportedPlan(null);
       setCutSession(null);
     } catch (error) {
-      console.error("[DotPrint] Import failed:", error);
-      setImportMessage(language === "nl" ? "Deze foto kon niet worden geopend." : "This photo could not be opened.");
+      console.error('[DotPrint] Import failed:', error);
+      setImportMessage(
+        language === 'nl'
+          ? 'Deze foto kon niet worden geopend.'
+          : 'This photo could not be opened.',
+      );
     }
   }
 
@@ -1618,12 +1551,21 @@ export function App() {
   }
 
   /** Dot prints become real pen paths (one colour after the other) so they cut like any pen drawing. */
-  async function resolveDotPrintItemsForCutting(items: WorkspaceSvgItem[]): Promise<WorkspaceSvgItem[]> {
-    return Promise.all(items.map(async (item) => {
-      if (!item.dotPrint) return item;
-      const image = await loadRasterImage(item.dotPrint.image);
-      return { ...item, type: "group", paths: dotPrintToPaths(item, image), dotPrint: undefined } as WorkspaceSvgItem;
-    }));
+  async function resolveDotPrintItemsForCutting(
+    items: WorkspaceSvgItem[],
+  ): Promise<WorkspaceSvgItem[]> {
+    return Promise.all(
+      items.map(async (item) => {
+        if (!item.dotPrint) return item;
+        const image = await loadRasterImage(item.dotPrint.image);
+        return {
+          ...item,
+          type: 'group',
+          paths: dotPrintToPaths(item, image),
+          dotPrint: undefined,
+        } as WorkspaceSvgItem;
+      }),
+    );
   }
 
   // ── End text ─────────────────────────────────────────────────────────────────
@@ -1638,7 +1580,9 @@ export function App() {
   function handleRenameObject(id: string, newName: string) {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    setImportedSvgs((current) => current.map((item) => item.id === id ? { ...item, fileName: trimmed } : item));
+    setImportedSvgs((current) =>
+      current.map((item) => (item.id === id ? { ...item, fileName: trimmed } : item)),
+    );
   }
 
   function handleChangeObjectColor(ids: string | string[], color: string) {
@@ -1646,7 +1590,7 @@ export function App() {
     setImportedSvgs((current) =>
       current.map((item): WorkspaceObject => {
         if (!idSet.has(item.id)) return item;
-        if (item.type === "path") {
+        if (item.type === 'path') {
           return { ...item, paths: [{ ...item.paths[0], stroke: color }] };
         }
         return { ...item, paths: item.paths.map((p) => ({ ...p, stroke: color })) };
@@ -1659,14 +1603,22 @@ export function App() {
     lastWorkspaceContextSelectionCount.current = selectedObjectCount ?? null;
     // Open the native workspace menu now (on right-click release). A frame later so any
     // selection change from the right-click has flushed before the menu reads edit state.
-    requestAnimationFrame(() => { void window.cricutCompanion?.showWorkspaceContextMenu?.(); });
+    requestAnimationFrame(() => {
+      void window.cricutCompanion?.showWorkspaceContextMenu?.();
+    });
   }
 
   // Card-size + insert-slot options only apply to the insert-card material; clear them
   // when switching to another material.
   function handleMaterialChange(materialId: number) {
-    const next=workspaceMaterialSelection({materialId:selectedMaterialId,matPreset:selectedMatPreset,cardSize,insertSlots},materialId);
-    setSelectedMaterialId(next.materialId);setSelectedMatPreset(next.matPreset);setCardSize(next.cardSize);setInsertSlots(next.insertSlots);
+    const next = workspaceMaterialSelection(
+      { materialId: selectedMaterialId, matPreset: selectedMatPreset, cardSize, insertSlots },
+      materialId,
+    );
+    setSelectedMaterialId(next.materialId);
+    setSelectedMatPreset(next.matPreset);
+    setCardSize(next.cardSize);
+    setInsertSlots(next.insertSlots);
   }
 
   function handleCardSizeChange(size: CardSize) {
@@ -1680,95 +1632,101 @@ export function App() {
   async function doExampleProject() {
     enterWorkspace();
     await generateSamplePlan();
-    setRebaseline((n) => n + 1); // example loaded = clean starting point
+    markProjectClean(); // example loaded = clean starting point
   }
 
   function handleDesktopAction(payload: DesktopActionPayload) {
-    if (
-      payload.action.startsWith("edit-") &&
-      isEditableKeyboardTarget(document.activeElement)
-    ) {
+    if (payload.action.startsWith('edit-') && isEditableKeyboardTarget(document.activeElement)) {
       // Electron intercepted the shortcut before the input got it — forward it manually.
       switch (payload.action) {
-        case "edit-copy": document.execCommand("copy"); break;
-        case "edit-cut": document.execCommand("cut"); break;
-        case "edit-paste":
+        case 'edit-copy':
+          document.execCommand('copy');
+          break;
+        case 'edit-cut':
+          document.execCommand('cut');
+          break;
+        case 'edit-paste':
           // execCommand("paste") is blocked by Chromium; read the clipboard and insert.
-          void navigator.clipboard.readText()
-            .then((text) => { if (text) document.execCommand("insertText", false, text); })
+          void navigator.clipboard
+            .readText()
+            .then((text) => {
+              if (text) document.execCommand('insertText', false, text);
+            })
             .catch(() => {});
           break;
-        case "edit-select-all": (document.activeElement as HTMLInputElement | HTMLTextAreaElement).select?.(); break;
+        case 'edit-select-all':
+          (document.activeElement as HTMLInputElement | HTMLTextAreaElement).select?.();
+          break;
       }
       return;
     }
     switch (payload.action) {
-      case "new-project":
+      case 'new-project':
         handleNewProject();
         break;
-      case "open-project":
+      case 'open-project':
         void handleOpenProject();
         break;
-      case "save-project":
+      case 'save-project':
         void handleSaveProject();
         break;
-      case "save-project-as":
+      case 'save-project-as':
         void handleSaveProject({ saveAs: true });
         break;
-      case "example-project":
+      case 'example-project':
         void handleExampleProject();
         break;
-      case "set-language":
-        if (payload.value === "nl" || payload.value === "en") {
+      case 'set-language':
+        if (payload.value === 'nl' || payload.value === 'en') {
           handleLanguageChange(payload.value);
         }
         break;
-      case "edit-select-all":
+      case 'edit-select-all':
         handleSelectAllSvgs();
         break;
-      case "edit-undo":
+      case 'edit-undo':
         handleUndoWorkspace();
         break;
-      case "edit-redo":
+      case 'edit-redo':
         handleRedoWorkspace();
         break;
-      case "edit-copy":
+      case 'edit-copy':
         handleCopySvgs();
         break;
-      case "edit-paste":
+      case 'edit-paste':
         handlePasteSvgs();
         break;
-      case "edit-cut":
+      case 'edit-cut':
         handleCutSvgs();
         break;
-      case "edit-delete":
+      case 'edit-delete':
         handleDeleteSvgs();
         break;
-      case "edit-group":
+      case 'edit-group':
         handleGroupSvgs();
         break;
-      case "edit-ungroup":
+      case 'edit-ungroup':
         handleUngroupSvg();
         break;
-      case "edit-flip-x":
+      case 'edit-flip-x':
         handleFlipX();
         break;
-      case "edit-flip-y":
+      case 'edit-flip-y':
         handleFlipY();
         break;
-      case "edit-bring-forward":
-        handleMoveSelectedLayer("forward");
+      case 'edit-bring-forward':
+        handleMoveSelectedLayer('forward');
         break;
-      case "edit-send-backward":
-        handleMoveSelectedLayer("backward");
+      case 'edit-send-backward':
+        handleMoveSelectedLayer('backward');
         break;
-      case "edit-bring-to-front":
-        handleMoveSelectedLayer("front");
+      case 'edit-bring-to-front':
+        handleMoveSelectedLayer('front');
         break;
-      case "edit-send-to-back":
-        handleMoveSelectedLayer("back");
+      case 'edit-send-to-back':
+        handleMoveSelectedLayer('back');
         break;
-      case "close-window":
+      case 'close-window':
         guardNavigation(() => {
           void window.cricutCompanion?.appWindow?.closeConfirmed();
         });
@@ -1783,26 +1741,36 @@ export function App() {
         executable: null,
         version: null,
         message:
-          language === "nl"
-            ? "Open dit scherm in de Electron-desktopapp om SliceBug te gebruiken."
-            : "Open this screen in the Electron desktop shell to call SliceBug.",
+          language === 'nl'
+            ? 'Open dit scherm in de Electron-desktopapp om SliceBug te gebruiken.'
+            : 'Open this screen in the Electron desktop shell to call SliceBug.',
       });
       return;
     }
 
     setSlicebugLoading(true);
     try {
-      const api=window.cricutCompanion;
-      const snapshot=await readCutterStartupSnapshot({
-        preference:()=>api.cutterBackend.get(),
-        nativeSetup:api.nativeJoy?()=>api.nativeJoy!.getSetupStatus():undefined,
-        legacyStatus:()=>api.slicebug.getStatus(),
-        legacySetup:async()=>await api.slicebug.getSetupStatus?.()??null,
+      const api = window.cricutCompanion;
+      const snapshot = await readCutterStartupSnapshot({
+        preference: () => api.cutterBackend.get(),
+        nativeSetup: api.nativeJoy ? () => api.nativeJoy!.getSetupStatus() : undefined,
+        legacyStatus: () => api.slicebug.getStatus(),
+        legacySetup: async () => (await api.slicebug.getSetupStatus?.()) ?? null,
       });
-      if(snapshot.kind==='native'){
-        setSlicebugStatus({ok:snapshot.setup.runtimeAvailable,executable:null,version:null,message:snapshot.setup.runtimeAvailable?'Native Joy runtime available. No device connection has been opened.':'Native Joy runtime is unavailable. No legacy fallback was started.'});
+      if (snapshot.kind === 'native') {
+        setSlicebugStatus({
+          ok: snapshot.setup.runtimeAvailable,
+          executable: null,
+          version: null,
+          message: snapshot.setup.runtimeAvailable
+            ? 'Native Joy runtime available. No device connection has been opened.'
+            : 'Native Joy runtime is unavailable. No legacy fallback was started.',
+        });
         setSlicebugSetupStatus(null);
-      }else{setSlicebugStatus(snapshot.status);setSlicebugSetupStatus(snapshot.setup);}
+      } else {
+        setSlicebugStatus(snapshot.status);
+        setSlicebugSetupStatus(snapshot.setup);
+      }
     } catch (error) {
       setSlicebugStatus({
         ok: false,
@@ -1811,9 +1779,9 @@ export function App() {
         message:
           error instanceof Error
             ? error.message
-            : language === "nl"
-              ? "Onbekende SliceBug-fout."
-              : "Unknown SliceBug error.",
+            : language === 'nl'
+              ? 'Onbekende SliceBug-fout.'
+              : 'Unknown SliceBug error.',
       });
     } finally {
       setSlicebugLoading(false);
@@ -1827,9 +1795,9 @@ export function App() {
         executable: null,
         version: null,
         message:
-          language === "nl"
-            ? "Open dit scherm in de Electron-desktopapp om SliceBug in te stellen."
-            : "Open this screen in the Electron desktop shell to set up SliceBug.",
+          language === 'nl'
+            ? 'Open dit scherm in de Electron-desktopapp om SliceBug in te stellen.'
+            : 'Open this screen in the Electron desktop shell to set up SliceBug.',
       });
       return;
     }
@@ -1851,7 +1819,7 @@ export function App() {
         ok: false,
         executable: null,
         version: null,
-        message: error instanceof Error ? error.message : "SliceBug setup failed.",
+        message: error instanceof Error ? error.message : 'SliceBug setup failed.',
       });
     } finally {
       setSlicebugBootstrapLoading(false);
@@ -1862,15 +1830,15 @@ export function App() {
     if (!window.cricutCompanion?.slicebug) {
       setSamplePlan({
         ok: false,
-        executable: "",
-        inputSvgPath: "",
-        outputPlanPath: "",
-        stdout: "",
-        stderr: "",
+        executable: '',
+        inputSvgPath: '',
+        outputPlanPath: '',
+        stdout: '',
+        stderr: '',
         message:
-          language === "nl"
-            ? "Open dit scherm in de Electron-desktopapp om een SliceBug-plan te maken."
-            : "Open this screen in the Electron desktop shell to generate a SliceBug plan.",
+          language === 'nl'
+            ? 'Open dit scherm in de Electron-desktopapp om een SliceBug-plan te maken.'
+            : 'Open this screen in the Electron desktop shell to generate a SliceBug plan.',
         plan: null,
       });
       return;
@@ -1887,17 +1855,17 @@ export function App() {
     } catch (error) {
       setSamplePlan({
         ok: false,
-        executable: "",
-        inputSvgPath: "",
-        outputPlanPath: "",
-        stdout: "",
-        stderr: "",
+        executable: '',
+        inputSvgPath: '',
+        outputPlanPath: '',
+        stdout: '',
+        stderr: '',
         message:
           error instanceof Error
             ? error.message
-            : language === "nl"
-              ? "Onbekende SliceBug-planfout."
-              : "Unknown SliceBug plan error.",
+            : language === 'nl'
+              ? 'Onbekende SliceBug-planfout.'
+              : 'Unknown SliceBug plan error.',
         plan: null,
       });
     } finally {
@@ -1907,19 +1875,19 @@ export function App() {
 
   async function prepareImportedPlan() {
     if (!importedSvg) {
-      setImportMessage(t("import.chooseSvgFile"));
+      setImportMessage(t('import.chooseSvgFile'));
       return;
     }
 
     if (!window.cricutCompanion?.slicebug) {
       setImportedPlan({
         ok: false,
-        executable: "",
-        inputSvgPath: "",
-        outputPlanPath: "",
-        stdout: "",
-        stderr: "",
-        message: t("import.openInShellPlan"),
+        executable: '',
+        inputSvgPath: '',
+        outputPlanPath: '',
+        stdout: '',
+        stderr: '',
+        message: t('import.openInShellPlan'),
         plan: null,
       });
       return;
@@ -1940,12 +1908,12 @@ export function App() {
     } catch (error) {
       setImportedPlan({
         ok: false,
-        executable: "",
-        inputSvgPath: "",
-        outputPlanPath: "",
-        stdout: "",
-        stderr: "",
-        message: error instanceof Error ? error.message : t("import.planError"),
+        executable: '',
+        inputSvgPath: '',
+        outputPlanPath: '',
+        stdout: '',
+        stderr: '',
+        message: error instanceof Error ? error.message : t('import.planError'),
         plan: null,
       });
     } finally {
@@ -1956,8 +1924,8 @@ export function App() {
   function buildToolColorMap(): Record<string, string> {
     const map: Record<string, string> = {};
     for (const tool of tools) {
-      const hex = tool.color.replace(/^#/, "").toLowerCase();
-      map[hex] = tool.type === "pen" ? "pen" : "fine_point_blade";
+      const hex = tool.color.replace(/^#/, '').toLowerCase();
+      map[hex] = tool.type === 'pen' ? 'pen' : 'fine_point_blade';
     }
     return map;
   }
@@ -1976,7 +1944,8 @@ export function App() {
         const outline = activeOutline(item);
         if (outline) used.add(outlineTool(outline, tools).color.toLowerCase());
       }
-      if (selectedMaterialId === MATERIAL_INSERT_ID && insertSlots) used.add(getBehindColor(tools).toLowerCase());
+      if (selectedMaterialId === MATERIAL_INSERT_ID && insertSlots)
+        used.add(getBehindColor(tools).toLowerCase());
     }
     // Pens run in the order they appear in the cut file (dot prints: light inks first).
     const runOrder = cutPlanColors ? [...cutPlanColors] : [];
@@ -1987,62 +1956,140 @@ export function App() {
         const indexB = runOrder.indexOf(b.color.toLowerCase());
         return (indexA < 0 ? Infinity : indexA) - (indexB < 0 ? Infinity : indexB);
       })
-      .map((tool) => ({ tool: (tool.type === "pen" ? "pen" : "fine_point_blade") as "pen" | "fine_point_blade", color: tool.color }));
-    return [...list.filter((t) => t.tool === "pen"), ...list.filter((t) => t.tool !== "pen")];
+      .map((tool) => ({
+        tool: (tool.type === 'pen' ? 'pen' : 'fine_point_blade') as 'pen' | 'fine_point_blade',
+        color: tool.color,
+      }));
+    return [...list.filter((t) => t.tool === 'pen'), ...list.filter((t) => t.tool !== 'pen')];
   }, [importedSvgs, tools, selectedMaterialId, insertSlots, cutPlanColors]);
 
-  const getNativeWorkspaceBundle = useCallback(async () => {
-    const matDims = getMatDimensionsInches(selectedMatPreset);
-    const resolvedItems = await resolveDotPrintItemsForCutting(await resolveTextItemsForCutting(importedSvgs));
-    return buildNativeWorkspaceBundle({items:resolvedItems,matPreset:selectedMatPreset,mat:matDims,tools,materialId:selectedMaterialId,cardSize,insertSlots,behindColor:getBehindColor(tools),colorMap:buildToolColorMap()});
-  }, [importedSvgs, selectedMaterialId, selectedMatPreset, tools, insertSlots, cardSize]);
-  const getNativeWorkspaceSource=useCallback(async():Promise<NativeConfigurationSource>=>(await getNativeWorkspaceBundle()).source,[getNativeWorkspaceBundle]);
-  const getNativeConfigurationSource=useCallback(async():Promise<NativeConfigurationSource>=>{const src=await getNativeWorkspaceSource();return {...src,svg:normalizeWorkspaceSvgForJoy(src.svg,src.mat,src.strokeTools)};},[getNativeWorkspaceSource]);
-  const getNativePreviewSource=useCallback(async()=>{const b=await getNativeWorkspaceBundle();return{...b.source,previewOnly:true as const,matPreset:selectedMatPreset,cardSize:selectedMaterialId===MATERIAL_INSERT_ID?cardSize:null,insertSlots:selectedMaterialId===MATERIAL_INSERT_ID&&insertSlots,visualSvg:b.visualSvg,paperColor,behindColor:getBehindColor(tools)};},[getNativeWorkspaceBundle,selectedMatPreset,selectedMaterialId,cardSize,insertSlots,paperColor,tools]);
+  const nativeSourceMat = useMemo(
+    () => getMatDimensionsInches(selectedMatPreset),
+    [selectedMatPreset],
+  );
+  const nativeSourceColorMap = useMemo(() => buildToolColorMap(), [tools]);
+  const resolveNativeItems = useCallback(
+    async (items: WorkspaceSvgItem[]) =>
+      resolveDotPrintItemsForCutting(await resolveTextItemsForCutting(items)),
+    [],
+  );
+  const {
+    getWorkspaceSource: getNativeWorkspaceSource,
+    getConfigurationSource: getNativeConfigurationSource,
+    getPreviewSource: getNativePreviewSource,
+  } = useNativeMakeSource({
+    items: importedSvgs,
+    resolveItems: resolveNativeItems,
+    matPreset: selectedMatPreset,
+    mat: nativeSourceMat,
+    tools,
+    materialId: selectedMaterialId,
+    cardSize,
+    insertSlots,
+    colorMap: nativeSourceColorMap,
+    paperColor,
+  });
 
   async function handleOpenCutPreview() {
-    if (!workspaceHasCutContent(importedSvgs.length,selectedMaterialId,insertSlots)) return;
+    if (!workspaceHasCutContent(importedSvgs.length, selectedMaterialId, insertSlots)) return;
     try {
-      const api=window.cricutCompanion;
-      if(!api)throw Error('Open the desktop app to make this design.');
-      const route=await resolveMakeRoute({preference:()=>api.cutterBackend.get(),nativeSetup:api.nativeJoy?()=>api.nativeJoy!.getSetupStatus():undefined});
-      if(route==='native'){setNativeMakeEverOpened(true);setNativeMakeOpen(true);return;}
-    }catch(error){setImportMessage(error instanceof Error?error.message:'Could not resolve the cutter backend.');return;}
+      const api = window.cricutCompanion;
+      if (!api) throw Error('Open the desktop app to make this design.');
+      const route = await resolveMakeRoute({
+        preference: () => api.cutterBackend.get(),
+        nativeSetup: api.nativeJoy ? () => api.nativeJoy!.getSetupStatus() : undefined,
+      });
+      if (route === 'native') {
+        setNativeMakeEverOpened(true);
+        setNativeMakeOpen(true);
+        return;
+      }
+    } catch (error) {
+      setImportMessage(
+        error instanceof Error ? error.message : 'Could not resolve the cutter backend.',
+      );
+      return;
+    }
     // Clear any finished/stopped/errored session so reopening starts a fresh cut.
     setCutSession(null);
     const matDims = getMatDimensionsInches(selectedMatPreset);
     const matW = matDims.width * WORKSPACE_PIXELS_PER_INCH;
     const matH = matDims.height * WORKSPACE_PIXELS_PER_INCH;
     // Convert any text items to traced paths and dot prints to pen dots so slicebug can use them
-    const resolvedItems = await resolveDotPrintItemsForCutting(await resolveTextItemsForCutting(importedSvgs));
+    const resolvedItems = await resolveDotPrintItemsForCutting(
+      await resolveTextItemsForCutting(importedSvgs),
+    );
     const missingPens = [...new Set(importedSvgs.flatMap((item) => missingInkPens(item, tools)))];
     // Insert-card corner slots (cut in the behind colour) sit at the active card area.
-    const slotsSvg = selectedMaterialId === MATERIAL_INSERT_ID && insertSlots
-      ? (() => {
-          const dims = cardSize ? CARD_SIZES[cardSize] : matDims;
-          return buildInsertSlotsPaths(dims.width * WORKSPACE_PIXELS_PER_INCH, dims.height * WORKSPACE_PIXELS_PER_INCH, getBehindColor(tools));
-        })()
-      : "";
+    const slotsSvg =
+      selectedMaterialId === MATERIAL_INSERT_ID && insertSlots
+        ? (() => {
+            const dims = cardSize ? CARD_SIZES[cardSize] : matDims;
+            return buildInsertSlotsPaths(
+              dims.width * WORKSPACE_PIXELS_PER_INCH,
+              dims.height * WORKSPACE_PIXELS_PER_INCH,
+              getBehindColor(tools),
+            );
+          })()
+        : '';
     // Only what lies on the paper is drawn or cut: the chosen card area for insert cards,
     // otherwise the whole mat. Objects parked beside the mat stay in the project but are
     // left out, and objects hanging off an edge are cropped there.
-    const paperDims = selectedMaterialId === MATERIAL_INSERT_ID && cardSize ? CARD_SIZES[cardSize] : matDims;
-    const paper = { x: 0, y: 0, width: paperDims.width * WORKSPACE_PIXELS_PER_INCH, height: paperDims.height * WORKSPACE_PIXELS_PER_INCH };
-    const planSvg = buildWorkspaceCutSvg(resolvedItems, matW, matH, tools, WORKSPACE_PIXELS_PER_INCH, slotsSvg, paper);
-    const svg = buildWorkspaceCutPreviewSvg(resolvedItems, matW, matH, tools, WORKSPACE_PIXELS_PER_INCH, slotsSvg, paper);
+    const paperDims =
+      selectedMaterialId === MATERIAL_INSERT_ID && cardSize ? CARD_SIZES[cardSize] : matDims;
+    const paper = {
+      x: 0,
+      y: 0,
+      width: paperDims.width * WORKSPACE_PIXELS_PER_INCH,
+      height: paperDims.height * WORKSPACE_PIXELS_PER_INCH,
+    };
+    const planSvg = buildWorkspaceCutSvg(
+      resolvedItems,
+      matW,
+      matH,
+      tools,
+      WORKSPACE_PIXELS_PER_INCH,
+      slotsSvg,
+      paper,
+    );
+    const svg = buildWorkspaceCutPreviewSvg(
+      resolvedItems,
+      matW,
+      matH,
+      tools,
+      WORKSPACE_PIXELS_PER_INCH,
+      slotsSvg,
+      paper,
+    );
     const colorMap = buildToolColorMap();
-    setCutPlanColors(new Set([...planSvg.matchAll(/stroke="(#[0-9a-fA-F]{3,8})"/g)].map((match) => (match[1] ?? "").toLowerCase())));
+    setCutPlanColors(
+      new Set(
+        [...planSvg.matchAll(/stroke="(#[0-9a-fA-F]{3,8})"/g)].map((match) =>
+          (match[1] ?? '').toLowerCase(),
+        ),
+      ),
+    );
 
     if (isCutSvgEmpty(planSvg) || missingPens.length > 0) {
-      const message = missingPens.length > 0
-        ? language === "nl"
-          ? `Een stippelfoto gebruikt pennen die niet in je pennenlijst staan (${missingPens.join(", ")}). Voeg ze toe bij Pennen.`
-          : `A dot photo uses pens that aren't in your pen list (${missingPens.join(", ")}). Add them under Pens.`
-        : language === "nl"
-          ? "Er staat niets op het papier om te tekenen of te snijden. Sleep je ontwerp op het papier."
-          : "There is nothing on the paper to draw or cut. Drag your design onto the paper.";
+      const message =
+        missingPens.length > 0
+          ? language === 'nl'
+            ? `Een stippelfoto gebruikt pennen die niet in je pennenlijst staan (${missingPens.join(', ')}). Voeg ze toe bij Pennen.`
+            : `A dot photo uses pens that aren't in your pen list (${missingPens.join(', ')}). Add them under Pens.`
+          : language === 'nl'
+            ? 'Er staat niets op het papier om te tekenen of te snijden. Sleep je ontwerp op het papier.'
+            : 'There is nothing on the paper to draw or cut. Drag your design onto the paper.';
       setCutPreview({
-        plan: { ok: false, executable: "", inputSvgPath: "", outputPlanPath: "", stdout: "", stderr: "", message, plan: null },
+        plan: {
+          ok: false,
+          executable: '',
+          inputSvgPath: '',
+          outputPlanPath: '',
+          stdout: '',
+          stderr: '',
+          message,
+          plan: null,
+        },
         svg,
         matPreset: selectedMatPreset,
         paperColor,
@@ -2052,7 +2099,16 @@ export function App() {
 
     if (!window.cricutCompanion?.slicebug) {
       setCutPreview({
-        plan: { ok: false, executable: "", inputSvgPath: "", outputPlanPath: "", stdout: "", stderr: "", message: "Slicebug not available", plan: null },
+        plan: {
+          ok: false,
+          executable: '',
+          inputSvgPath: '',
+          outputPlanPath: '',
+          stdout: '',
+          stderr: '',
+          message: 'Slicebug not available',
+          plan: null,
+        },
         svg,
         matPreset: selectedMatPreset,
         paperColor,
@@ -2064,7 +2120,7 @@ export function App() {
     try {
       const plan = await window.cricutCompanion.slicebug.createPlan({
         svg: planSvg,
-        fileName: importedSvgs[0]?.fileName ?? "design",
+        fileName: importedSvgs[0]?.fileName ?? 'design',
         materialId: selectedMaterialId,
         matPreset: selectedMatPreset,
         colorMap,
@@ -2072,7 +2128,16 @@ export function App() {
       setImportedPlan(plan);
       setCutPreview({ plan, svg, matPreset: selectedMatPreset, paperColor });
     } catch (error) {
-      const plan: SlicebugPlanResult = { ok: false, executable: "", inputSvgPath: "", outputPlanPath: "", stdout: "", stderr: "", message: error instanceof Error ? error.message : "Plan failed", plan: null };
+      const plan: SlicebugPlanResult = {
+        ok: false,
+        executable: '',
+        inputSvgPath: '',
+        outputPlanPath: '',
+        stdout: '',
+        stderr: '',
+        message: error instanceof Error ? error.message : 'Plan failed',
+        plan: null,
+      };
       setCutPreview({ plan, svg, matPreset: selectedMatPreset, paperColor });
     } finally {
       setImportedPlanLoading(false);
@@ -2124,32 +2189,37 @@ export function App() {
     setImportMessage(null);
     setProjectMessage(null);
 
-    const svgFiles = files.filter((file) => file.name.toLowerCase().endsWith(".svg"));
+    const svgFiles = files.filter((file) => file.name.toLowerCase().endsWith('.svg'));
     const rasterFiles = files.filter(isRasterImportFile);
     const unsupportedCount = files.length - svgFiles.length - rasterFiles.length;
     if (svgFiles.length === 0 && rasterFiles.length === 0) {
-      setImportMessage(t("import.invalidSvg"));
-      event.target.value = "";
+      setImportMessage(t('import.invalidSvg'));
+      event.target.value = '';
       return;
     }
 
     try {
       if (svgFiles.length > 0) {
         const startIndex = importedSvgs.length;
-        const loaded = await Promise.all(svgFiles.map(async (file) => ({ file, svg: await file.text() })));
+        const loaded = await Promise.all(
+          svgFiles.map(async (file) => ({ file, svg: await file.text() })),
+        );
         // Save each to library (fire-and-forget, non-fatal)
-        void Promise.all(loaded.map(({ file, svg }) => saveToLibrary(stripImageExtension(file.name), svg, false)))
-          .then(() => loadImageLibrary());
-        const newItems = placeNewItems(loaded.map(({ file, svg }, fileIndex) =>
-          createWorkspaceSvgItem({
-            id: `svg-${Date.now()}-${startIndex + fileIndex}`,
-            fileName: file.name,
-            fileSize: formatFileSize(file.size),
-            svg,
-            language,
-            index: startIndex + fileIndex,
-          }),
-        ));
+        void Promise.all(
+          loaded.map(({ file, svg }) => saveToLibrary(stripImageExtension(file.name), svg, false)),
+        ).then(() => loadImageLibrary());
+        const newItems = placeNewItems(
+          loaded.map(({ file, svg }, fileIndex) =>
+            createWorkspaceSvgItem({
+              id: `svg-${Date.now()}-${startIndex + fileIndex}`,
+              fileName: file.name,
+              fileSize: formatFileSize(file.size),
+              svg,
+              language,
+              index: startIndex + fileIndex,
+            }),
+          ),
+        );
         pushWorkspaceHistorySnapshot();
         setImportedSvgs((current) => [...current, ...newItems]);
         const newSelectedIds = newItems.map((item) => item.id);
@@ -2164,16 +2234,20 @@ export function App() {
       }
 
       if (unsupportedCount > 0) {
-        setImportMessage(t("import.invalidSvg"));
+        setImportMessage(t('import.invalidSvg'));
       }
     } catch (error) {
-      setImportMessage(error instanceof Error ? error.message : t("import.openError"));
+      setImportMessage(error instanceof Error ? error.message : t('import.openError'));
     }
-    event.target.value = "";
+    event.target.value = '';
   }
 
-  function handleSvgTransformsCommit(updates: Array<{ id: string; transform: WorkspaceItemTransform }>) {
-    const transformById = new Map(updates.map((update) => [update.id, normalizeWorkspaceItemTransform(update.transform)]));
+  function handleSvgTransformsCommit(
+    updates: Array<{ id: string; transform: WorkspaceItemTransform }>,
+  ) {
+    const transformById = new Map(
+      updates.map((update) => [update.id, normalizeWorkspaceItemTransform(update.transform)]),
+    );
     const hasChanges = importedSvgs.some((item) => {
       const transform = transformById.get(item.id);
       return transform ? !workspaceTransformsEqual(item.transform, transform) : false;
@@ -2241,11 +2315,11 @@ export function App() {
 
   // Load the curated Google Fonts catalog once (card-making fonts, by category).
   useEffect(() => {
-    const id = "kindcut-google-fonts";
+    const id = 'kindcut-google-fonts';
     if (document.getElementById(id)) return;
-    const link = document.createElement("link");
+    const link = document.createElement('link');
     link.id = id;
-    link.rel = "stylesheet";
+    link.rel = 'stylesheet';
     link.href = googleFontsHref();
     document.head.appendChild(link);
   }, []);
@@ -2257,11 +2331,13 @@ export function App() {
     function handleFontsLoaded() {
       clearCenterlineCache();
       setImportedSvgs((current) =>
-        current.map((item) => (item.textContent ? { ...item, frame: measureTextFrame(item.textContent) } : item)),
+        current.map((item) =>
+          item.textContent ? { ...item, frame: measureTextFrame(item.textContent) } : item,
+        ),
       );
     }
-    document.fonts.addEventListener("loadingdone", handleFontsLoaded);
-    return () => document.fonts.removeEventListener("loadingdone", handleFontsLoaded);
+    document.fonts.addEventListener('loadingdone', handleFontsLoaded);
+    return () => document.fonts.removeEventListener('loadingdone', handleFontsLoaded);
   }, []);
 
   useEffect(() => window.cricutCompanion?.onAppAction?.(handleDesktopAction));
@@ -2272,12 +2348,19 @@ export function App() {
       const selectedSet = new Set(selectedSvgIds);
       const selectedObjects = importedSvgs.filter((item) => selectedSet.has(item.id));
       return {
-        isWorkspaceContextTarget: screen === "workspace" && Date.now() - lastWorkspaceContextMenuAt.current < 500,
+        isWorkspaceContextTarget:
+          screen === 'workspace' && Date.now() - lastWorkspaceContextMenuAt.current < 500,
         selectedObjectCount: selCount,
         objectCount: importedSvgs.length,
         hasInternalClipboard: workspaceClipboard.current.length > 0,
-        canGroup: selCount >= 2 && !selectedObjects.some((item) => item.textContent || item.dotPrint || item.dashed?.enabled),
-        canUngroup: selectedObjects.some((item) => item.type === "group" || isUngroupablePath(item)),
+        canGroup:
+          selCount >= 2 &&
+          !selectedObjects.some(
+            (item) => item.textContent || item.dotPrint || item.dashed?.enabled,
+          ),
+        canUngroup: selectedObjects.some(
+          (item) => item.type === 'group' || isUngroupablePath(item),
+        ),
         canReorder: selCount === 1 && importedSvgs.length > 1,
       };
     });
@@ -2285,7 +2368,7 @@ export function App() {
 
   useEffect(() => {
     return window.cricutCompanion?.projectState?.setProvider(() => ({
-      hasOpenProject: screen !== "welcome",
+      hasOpenProject: screen !== 'welcome',
       hasUnsavedChanges,
     }));
   }, [hasUnsavedChanges, screen]);
@@ -2297,18 +2380,26 @@ export function App() {
 
   useEffect(() => {
     function handleDocumentContextMenu(event: globalThis.MouseEvent) {
-      lastWorkspaceContextMenuAt.current = (event.target as HTMLElement | null)?.closest(".viewport") ? Date.now() : 0;
+      lastWorkspaceContextMenuAt.current = (event.target as HTMLElement | null)?.closest(
+        '.viewport',
+      )
+        ? Date.now()
+        : 0;
       if (!lastWorkspaceContextMenuAt.current) {
         lastWorkspaceContextSelectionCount.current = null;
       }
     }
 
-    document.addEventListener("contextmenu", handleDocumentContextMenu, true);
-    return () => document.removeEventListener("contextmenu", handleDocumentContextMenu, true);
+    document.addEventListener('contextmenu', handleDocumentContextMenu, true);
+    return () => document.removeEventListener('contextmenu', handleDocumentContextMenu, true);
   }, []);
 
   useEffect(() => {
-    if (!window.cricutCompanion?.slicebug || !cutSession || !["running", "waiting"].includes(cutSession.status)) {
+    if (
+      !window.cricutCompanion?.slicebug ||
+      !cutSession ||
+      !['running', 'waiting'].includes(cutSession.status)
+    ) {
       return;
     }
 
@@ -2323,17 +2414,19 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [cutSession]);
 
-  if (screen === "welcome") {
+  if (screen === 'welcome') {
     return (
       <>
         <WelcomeScreen
           language={language}
           statusCopy={statusCopy}
-          statusDetailsLabel={t("details.advanced")}
+          statusDetailsLabel={t('details.advanced')}
           samplePlanLoading={samplePlanLoading}
           slicebugLoading={slicebugLoading}
           slicebugBootstrapLoading={slicebugBootstrapLoading}
-          showBootstrapSetup={Boolean(slicebugStatus?.ok && slicebugSetupStatus && !slicebugSetupStatus.bootstrapped)}
+          showBootstrapSetup={Boolean(
+            slicebugStatus?.ok && slicebugSetupStatus && !slicebugSetupStatus.bootstrapped,
+          )}
           onLanguageChange={handleLanguageChange}
           onNewProject={handleNewProject}
           onOpenProject={handleOpenProject}
@@ -2342,7 +2435,10 @@ export function App() {
           recentProjects={recentProjects}
           recentProjectError={recentProjectError}
           projectOpening={projectOpening}
-          onOpenRecentProject={(projectPath) => { setRecentProjectError(null); handleOpenRecentProject(projectPath); }}
+          onOpenRecentProject={(projectPath) => {
+            setRecentProjectError(null);
+            handleOpenRecentProject(projectPath);
+          }}
           onCheckSetup={() => void refreshSlicebugStatus()}
           onBootstrapSetup={() => void runSlicebugBootstrap()}
         />
@@ -2372,183 +2468,254 @@ export function App() {
 
   return (
     <>
-    <DesignWorkspace
-      nativeMaterials={nativeMaterialOptions}
-      language={language}
-      measurementUnit={measurementUnit}
-      selectedMaterialId={selectedMaterialId}
-      selectedMatPreset={selectedMatPreset}
-      cardSize={cardSize}
-      insertSlots={insertSlots}
-      onCardSizeChange={handleCardSizeChange}
-      onInsertSlotsChange={setInsertSlots}
-      importedSvg={importedSvg}
-      importedSvgs={importedSvgs}
-      selectedSvgId={selectedSvgId}
-      selectedSvgIds={selectedSvgIds}
-      importedPlan={importedPlan}
-      importedPlanLoading={importedPlanLoading}
-      samplePlan={samplePlan}
-      samplePlanLoading={samplePlanLoading}
-      validationOk={validation.ok && preflight.ok}
-      importMessage={importMessage}
-      projectMessage={projectMessage}
-      currentProjectPath={currentProjectPath}
-      projectSaving={projectSaving}
-      projectOpening={projectOpening}
-      cutSession={cutSession}
-      cutBusy={cutBusy}
-      onBackWelcome={() => guardNavigation(() => setScreen("welcome"))}
-      onMaterialChange={handleMaterialChange}
-      onMatChange={setSelectedMatPreset}
-      tools={tools}
-      onToolsChange={setTools}
-      paperColor={paperColor}
-      onPaperColorChange={setPaperColor}
-      onSvgFileChange={(event) => void handleSvgFileChange(event)}
-      onAddShape={handleAddWorkspaceShape}
-      onAddText={handleAddText}
-      editingTextId={editingTextId}
-      onEnterTextEdit={setEditingTextId}
-      onExitTextEdit={commitTextEdit}
-      onTextContentChange={handleTextContentChange}
-      onShapeCornerRadiusChange={handleShapeCornerRadiusChange}
-      onPenFillChange={handlePenFillChange}
-      onDashChange={handleDashChange}
-      onHollowChange={handleHollowChange}
-      onOutlineChange={handleOutlineChange}
-      onOutlineDetach={handleOutlineDetach}
-      onAlign={handleAlignSelection}
-      onDistribute={handleDistributeSelection}
-      onNudge={handleNudgeSelection}
-      onDotPrintChange={handleDotPrintChange}
-      onDotPrintImport={(event) => void handleDotPrintFileChange(event)}
-      visibleAreaRef={visibleAreaRef}
-      onSelectSvg={selectSingleSvg}
-      onSelectSvgGroup={selectSvgGroup}
-      onSelectAllSvgs={handleSelectAllSvgs}
-      onCopySvgs={handleCopySvgs}
-      onPasteSvgs={handlePasteSvgs}
-      onCutSvgs={handleCutSvgs}
-      onDeleteSvgs={handleDeleteSvgs}
-      onGroupSvgs={handleGroupSvgs}
-      onUngroupSvg={handleUngroupSvg}
-      onFlipX={handleFlipX}
-      onFlipY={handleFlipY}
-      onMoveLayer={handleMoveSelectedLayer}
-      onReorderLayerToTarget={handleReorderLayerToTarget}
-      onRenameObject={handleRenameObject}
-      onChangeObjectColor={handleChangeObjectColor}
-      canUndo={workspaceHistory.past.length > 0}
-      canRedo={workspaceHistory.future.length > 0}
-      onUndoSvgs={handleUndoWorkspace}
-      onRedoSvgs={handleRedoWorkspace}
-      onWorkspaceContextMenu={markWorkspaceContextMenuTarget}
-      onSvgTransformsCommit={handleSvgTransformsCommit}
-      onPrepareImportedPlan={() => void prepareImportedPlan()}
-      onOpenProject={() => void handleOpenProject()}
-      onSaveProject={() => void handleSaveProject()}
-      onSaveProjectAs={() => void handleSaveProject({ saveAs: true })}
-      onGenerateSamplePlan={() => void generateSamplePlan()}
-      onStartCut={() => void handleOpenCutPreview()}
-      onContinueCut={() => void continueCutSession()}
-      onStopCut={() => void stopCutSession()}
-      hasActiveAiKey={hasActiveApiKey(aiSettings)}
-      onOpenSettings={() => setSettingsOpen(true)}
-      onOpenAiGenerate={() => setAiGenerateOpen(true)}
-      onAiGenerateSvg={handleGenerateAiDesign}
-      imageLibrary={imageLibrary}
-      imageLibraryLoading={libraryLoading}
-      onLoadImageLibrary={() => void loadImageLibrary()}
-      onRenameLibraryImage={(path, name) => renameLibraryImage(path, name)}
-      onDeleteLibraryImage={(p) => void deleteFromLibrary(p)}
-      onAddLibraryImageToWorkspace={(img) => addSvgToWorkspace(img.name, img.svg)}
-      onAddSpotifyCodeToWorkspace={(code) =>
-        addSvgToWorkspace(code.name, code.svg, false, code.uri ? { spotify: { uri: code.uri, name: code.name } } : {})}
-      onReplaceSpotifyCode={replaceSpotifyCode}
-    />
-    {settingsOpen ? (
-      <SettingsModal
-        showAdvancedInfo={showAdvancedInfo}
-        onShowAdvancedInfoChange={(value) => { setShowAdvancedInfo(value); saveAdvancedInfoPreference(value); }}
-        onOpenNativeMake={() => { setSettingsOpen(false); setNativeMakeEverOpened(true); setNativeMakeOpen(true); }}
-        language={language}
-        settings={aiSettings}
-        backend={cutterBackend}
-        backendLoadError={backendLoadError}
-        onBackendChange={async (value) => { if (!window.cricutCompanion) throw new Error("Desktop API unavailable"); await window.cricutCompanion.cutterBackend.set(value); setCutterBackend(value); setBackendLoadError(""); }}
-        onSave={(updated) => { saveAiSettings(updated); setAiSettings(updated); setSettingsOpen(false); }}
-        onClose={() => setSettingsOpen(false)}
-      />
-    ) : null}
-    {nativeMakeEverOpened && <div style={{ display: nativeMakeOpen ? undefined : "none" }}><NativeMakeModal onOpenSettings={()=>{setNativeMakeOpen(false);setSettingsOpen(true);}} showAdvancedInfo={showAdvancedInfo} visible={nativeMakeOpen} onClose={() => setNativeMakeOpen(false)} language={language} configurationApi={nativeJoyConfigurationApi(window.cricutCompanion?.nativeJoy)} previewSource={getNativePreviewSource} source={getNativeConfigurationSource} nativeMaterials={nativeMaterialOptions} onWorkspaceMaterialChange={handleMaterialChange} workspaceCard={{size:cardSize,slots:insertSlots,onSize:setCardSize,onSlots:setInsertSlots}} workspaceMaterial={{id:selectedMaterialId,name:nativeMaterialOptions.find(m=>m.id===selectedMaterialId)?.name??MATERIAL_OPTIONS.find(m=>m.id===selectedMaterialId)?.name??`Material #${selectedMaterialId}`}} /></div>}
-    {aiGenerateOpen ? (
-      <AiGenerateModal
-        language={language}
-        hasApiKey={hasActiveApiKey(aiSettings)}
-        onGenerate={handleGenerateAiDesign}
-        onImport={(svg, prompt) => void handleImportAiDesign(svg, prompt)}
-        onOpenSettings={() => { setAiGenerateOpen(false); setSettingsOpen(true); }}
-        onClose={() => setAiGenerateOpen(false)}
-      />
-    ) : null}
-    {activeRasterImport ? (
-      <LocalImageTraceModal
-        language={language}
-        source={activeRasterImport}
-        onTrace={traceLocalRasterImage}
-        onImport={handleImportLocalRaster}
-        onClose={advanceRasterImportQueue}
-      />
-    ) : null}
-    {cutPreview ? (
-      <CutPreviewModal
+      <DesignWorkspace
+        nativeMaterials={nativeMaterialOptions}
         language={language}
         measurementUnit={measurementUnit}
-        preview={cutPreview}
-        cutBusy={cutBusy}
+        selectedMaterialId={selectedMaterialId}
+        selectedMatPreset={selectedMatPreset}
+        cardSize={cardSize}
+        insertSlots={insertSlots}
+        onCardSizeChange={handleCardSizeChange}
+        onInsertSlotsChange={setInsertSlots}
+        importedSvg={importedSvg}
+        importedSvgs={importedSvgs}
+        selectedSvgId={selectedSvgId}
+        selectedSvgIds={selectedSvgIds}
+        importedPlan={importedPlan}
+        importedPlanLoading={importedPlanLoading}
+        samplePlan={samplePlan}
+        samplePlanLoading={samplePlanLoading}
+        validationOk={validation.ok && preflight.ok}
+        importMessage={importMessage}
+        projectMessage={projectMessage}
+        currentProjectPath={currentProjectPath}
+        projectSaving={projectSaving}
+        projectOpening={projectOpening}
         cutSession={cutSession}
-        materialId={selectedMaterialId}
-        cutTools={usedCutTools}
-        onClose={() => { setCutPreview(null); setCutSession(null); }}
-        onConfirmCut={() => {
-          if (cutPreview.plan.outputPlanPath) {
-            void startCutSession(cutPreview.plan.outputPlanPath);
-          }
-        }}
+        cutBusy={cutBusy}
+        onBackWelcome={() => guardNavigation(() => setScreen('welcome'))}
+        onMaterialChange={handleMaterialChange}
+        onMatChange={setSelectedMatPreset}
+        tools={tools}
+        onToolsChange={setTools}
+        paperColor={paperColor}
+        onPaperColorChange={setPaperColor}
+        onSvgFileChange={(event) => void handleSvgFileChange(event)}
+        onAddShape={handleAddWorkspaceShape}
+        onAddText={handleAddText}
+        editingTextId={editingTextId}
+        onEnterTextEdit={setEditingTextId}
+        onExitTextEdit={commitTextEdit}
+        onTextContentChange={handleTextContentChange}
+        onShapeCornerRadiusChange={handleShapeCornerRadiusChange}
+        onPenFillChange={handlePenFillChange}
+        onDashChange={handleDashChange}
+        onHollowChange={handleHollowChange}
+        onOutlineChange={handleOutlineChange}
+        onOutlineDetach={handleOutlineDetach}
+        onAlign={handleAlignSelection}
+        onDistribute={handleDistributeSelection}
+        onNudge={handleNudgeSelection}
+        onDotPrintChange={handleDotPrintChange}
+        onDotPrintImport={(event) => void handleDotPrintFileChange(event)}
+        visibleAreaRef={visibleAreaRef}
+        onSelectSvg={selectSingleSvg}
+        onSelectSvgGroup={selectSvgGroup}
+        onSelectAllSvgs={handleSelectAllSvgs}
+        onCopySvgs={handleCopySvgs}
+        onPasteSvgs={handlePasteSvgs}
+        onCutSvgs={handleCutSvgs}
+        onDeleteSvgs={handleDeleteSvgs}
+        onGroupSvgs={handleGroupSvgs}
+        onUngroupSvg={handleUngroupSvg}
+        onFlipX={handleFlipX}
+        onFlipY={handleFlipY}
+        onMoveLayer={handleMoveSelectedLayer}
+        onReorderLayerToTarget={handleReorderLayerToTarget}
+        onRenameObject={handleRenameObject}
+        onChangeObjectColor={handleChangeObjectColor}
+        canUndo={workspaceHistory.past.length > 0}
+        canRedo={workspaceHistory.future.length > 0}
+        onUndoSvgs={handleUndoWorkspace}
+        onRedoSvgs={handleRedoWorkspace}
+        onWorkspaceContextMenu={markWorkspaceContextMenuTarget}
+        onSvgTransformsCommit={handleSvgTransformsCommit}
+        onPrepareImportedPlan={() => void prepareImportedPlan()}
+        onOpenProject={() => void handleOpenProject()}
+        onSaveProject={() => void handleSaveProject()}
+        onSaveProjectAs={() => void handleSaveProject({ saveAs: true })}
+        onGenerateSamplePlan={() => void generateSamplePlan()}
+        onStartCut={() => void handleOpenCutPreview()}
         onContinueCut={() => void continueCutSession()}
-        onStopCut={() => { void stopCutSession(); setCutPreview(null); }}
+        onStopCut={() => void stopCutSession()}
+        hasActiveAiKey={hasActiveApiKey(aiSettings)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenAiGenerate={() => setAiGenerateOpen(true)}
+        onAiGenerateSvg={handleGenerateAiDesign}
+        imageLibrary={imageLibrary}
+        imageLibraryLoading={libraryLoading}
+        onLoadImageLibrary={() => void loadImageLibrary()}
+        onRenameLibraryImage={(path, name) => renameLibraryImage(path, name)}
+        onDeleteLibraryImage={(p) => void deleteFromLibrary(p)}
+        onAddLibraryImageToWorkspace={(img) => addSvgToWorkspace(img.name, img.svg)}
+        onAddSpotifyCodeToWorkspace={(code) =>
+          addSvgToWorkspace(
+            code.name,
+            code.svg,
+            false,
+            code.uri ? { spotify: { uri: code.uri, name: code.name } } : {},
+          )
+        }
+        onReplaceSpotifyCode={replaceSpotifyCode}
       />
-    ) : null}
-    {pendingNav ? (
-      <UnsavedChangesModal
-        language={language}
-        neverSaved={currentProjectPath === null}
-        busy={projectSaving}
-        onSave={handleUnsavedSave}
-        onDiscard={handleUnsavedDiscard}
-        onCancel={handleUnsavedCancel}
-      />
-    ) : null}
-    {updateState ? (
-      <UpdateModal
-        state={updateState}
-        busy={updateBusy}
-        onDownloadNow={() => handleDownloadUpdate(false)}
-        onDownloadBackground={() => handleDownloadUpdate(true)}
-        onRestart={handleRestartUpdate}
-        onSkip={handleSkipUpdate}
-        onLater={handleDismissUpdate}
-      />
-    ) : null}
-    {savedToast > 0 ? (
-      <div className="save-toast" key={savedToast} role="status" aria-live="polite">
-        <span className="save-toast__check" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4 4L19 7" /></svg>
-        </span>
-        {t("project.savedToast")}
-      </div>
-    ) : null}
+      {settingsOpen ? (
+        <SettingsModal
+          showAdvancedInfo={showAdvancedInfo}
+          onShowAdvancedInfoChange={(value) => {
+            setShowAdvancedInfo(value);
+            saveAdvancedInfoPreference(value);
+          }}
+          onOpenNativeMake={() => {
+            setSettingsOpen(false);
+            setNativeMakeEverOpened(true);
+            setNativeMakeOpen(true);
+          }}
+          language={language}
+          settings={aiSettings}
+          backend={cutterBackend}
+          backendLoadError={backendLoadError}
+          onBackendChange={async (value) => {
+            if (!window.cricutCompanion) throw new Error('Desktop API unavailable');
+            await window.cricutCompanion.cutterBackend.set(value);
+            setCutterBackend(value);
+            setBackendLoadError('');
+          }}
+          onSave={(updated) => {
+            saveAiSettings(updated);
+            setAiSettings(updated);
+            setSettingsOpen(false);
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
+      {nativeMakeEverOpened && (
+        <div style={{ display: nativeMakeOpen ? undefined : 'none' }}>
+          <NativeMakeModal
+            onOpenSettings={() => {
+              setNativeMakeOpen(false);
+              setSettingsOpen(true);
+            }}
+            showAdvancedInfo={showAdvancedInfo}
+            visible={nativeMakeOpen}
+            onClose={() => setNativeMakeOpen(false)}
+            language={language}
+            configurationApi={nativeJoyConfigurationApi(window.cricutCompanion?.nativeJoy)}
+            previewSource={getNativePreviewSource}
+            source={getNativeConfigurationSource}
+            nativeMaterials={nativeMaterialOptions}
+            onWorkspaceMaterialChange={handleMaterialChange}
+            workspaceCard={{
+              size: cardSize,
+              slots: insertSlots,
+              onSize: setCardSize,
+              onSlots: setInsertSlots,
+            }}
+            workspaceMaterial={{
+              id: selectedMaterialId,
+              name:
+                nativeMaterialOptions.find((m) => m.id === selectedMaterialId)?.name ??
+                MATERIAL_OPTIONS.find((m) => m.id === selectedMaterialId)?.name ??
+                `Material #${selectedMaterialId}`,
+            }}
+          />
+        </div>
+      )}
+      {aiGenerateOpen ? (
+        <AiGenerateModal
+          language={language}
+          hasApiKey={hasActiveApiKey(aiSettings)}
+          onGenerate={handleGenerateAiDesign}
+          onImport={(svg, prompt) => void handleImportAiDesign(svg, prompt)}
+          onOpenSettings={() => {
+            setAiGenerateOpen(false);
+            setSettingsOpen(true);
+          }}
+          onClose={() => setAiGenerateOpen(false)}
+        />
+      ) : null}
+      {activeRasterImport ? (
+        <LocalImageTraceModal
+          language={language}
+          source={activeRasterImport}
+          onTrace={traceLocalRasterImage}
+          onImport={handleImportLocalRaster}
+          onClose={advanceRasterImportQueue}
+        />
+      ) : null}
+      {cutPreview ? (
+        <CutPreviewModal
+          language={language}
+          measurementUnit={measurementUnit}
+          preview={cutPreview}
+          cutBusy={cutBusy}
+          cutSession={cutSession}
+          materialId={selectedMaterialId}
+          cutTools={usedCutTools}
+          onClose={() => {
+            setCutPreview(null);
+            setCutSession(null);
+          }}
+          onConfirmCut={() => {
+            if (cutPreview.plan.outputPlanPath) {
+              void startCutSession(cutPreview.plan.outputPlanPath);
+            }
+          }}
+          onContinueCut={() => void continueCutSession()}
+          onStopCut={() => {
+            void stopCutSession();
+            setCutPreview(null);
+          }}
+        />
+      ) : null}
+      {pendingNav ? (
+        <UnsavedChangesModal
+          language={language}
+          neverSaved={currentProjectPath === null}
+          busy={projectSaving}
+          onSave={handleUnsavedSave}
+          onDiscard={handleUnsavedDiscard}
+          onCancel={handleUnsavedCancel}
+        />
+      ) : null}
+      {updateState ? (
+        <UpdateModal
+          state={updateState}
+          busy={updateBusy}
+          onDownloadNow={() => handleDownloadUpdate(false)}
+          onDownloadBackground={() => handleDownloadUpdate(true)}
+          onRestart={handleRestartUpdate}
+          onSkip={handleSkipUpdate}
+          onLater={handleDismissUpdate}
+        />
+      ) : null}
+      {savedToast > 0 ? (
+        <div className="save-toast" key={savedToast} role="status" aria-live="polite">
+          <span className="save-toast__check" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M5 13l4 4L19 7" />
+            </svg>
+          </span>
+          {t('project.savedToast')}
+        </div>
+      ) : null}
     </>
   );
 }

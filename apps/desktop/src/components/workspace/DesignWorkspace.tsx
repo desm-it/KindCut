@@ -1,7 +1,10 @@
-import{workspaceHasCutContent}from'../../workspace-materials';
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, MouseEvent, MutableRefObject, PointerEvent, ReactNode } from "react";
-import Moveable from "react-moveable";
+import { CanvasViewport } from './CanvasViewport';
+import { WorkspaceInspector } from './WorkspaceInspector';
+import { ARROW_DIRECTIONS } from './workspace-render-helpers';
+import { workspaceHasCutContent } from '../../workspace-materials';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, MouseEvent, MutableRefObject, PointerEvent } from 'react';
+import Moveable from 'react-moveable';
 import type {
   OnClick,
   OnClickGroup,
@@ -17,40 +20,18 @@ import type {
   OnScaleGroup,
   OnScaleGroupStart,
   OnScaleStart,
-} from "react-moveable";
-import { APP_NAME } from "../../onboarding-copy";
+} from 'react-moveable';
+import { APP_NAME } from '../../onboarding-copy';
+import { type WorkspaceTool } from '../../project-file';
+import type { WorkspaceSvgItem, WorkspaceTextContent } from '../../workspace-objects';
+import { type Language, createTranslator, getMaterialName, getMatName } from '../../i18n';
+import { MAT_PRESETS, MATERIAL_OPTIONS } from '@cricut-companion/slicebug-bridge';
 import {
-  type WorkspaceTool,
-  getBehindColor,
-  getPens,
-  nextPenColor,
-  withBehindColor,
-  withPens,
-} from "../../project-file";
-import type { WorkspaceSvgItem, WorkspaceTextContent } from "../../workspace-objects";
-import {
-  type Language,
-  createTranslator,
-  getMaterialName,
-  getMatName,
-} from "../../i18n";
-import { MAT_PRESETS, MATERIAL_OPTIONS } from "@cricut-companion/slicebug-bridge";
-import {
-  DEFAULT_PEN_FILL,
-  PEN_FILL_DENSITY_MAX,
-  PEN_FILL_DENSITY_MIN,
-  PEN_FILL_PATTERNS,
-  DOT_STYLES,
   type DashSettings,
   type DotPrintSettings,
   type OutlineSettings,
-  type PenFillPattern,
   type PenFillSettings,
-  penFillPatternTile,
-} from "@cricut-companion/craft-core";
-import { canPenFill } from "../../pen-fill-render";
-import { canDash } from "../../dash-render";
-import { canOutline } from "../../outline-render";
+} from '@cricut-companion/craft-core';
 import {
   MOVEABLE_CENTER_DIRECTION,
   ROTATION_SNAP_INTERVAL_DEGREES,
@@ -68,8 +49,6 @@ import {
   getMatKind,
   type CardSize,
   CARD_SIZES,
-  CARD_SIZE_ORDER,
-  buildInsertSlotsPaths,
   type WorkspaceRect,
   type AlignMode,
   type SnapTargets,
@@ -77,11 +56,8 @@ import {
   nudgeStepPx,
   snapDragDelta,
   fitMatToView,
-  formatLength,
-  formatLengthPx,
   getMatBorder,
   getMeasurementTicks,
-  getViewportTransform,
   getWorkspaceItemTransform,
   getWorkspaceItemVisualSize,
   getWorkspaceSelectionBounds,
@@ -89,284 +65,29 @@ import {
   rotateWorkspaceItemTransformAroundPoint,
   scaleWorkspaceItemTransformFromAnchor,
   snapScaleFactorToAspect,
-} from "../../workspace-utils";
-import type { WorkspaceShapeKind } from "../../workspace-shapes";
-import { buildShapePath, shapeHasCorners } from "../../workspace-shapes";
-import type { AiSvgInput } from "../../ai-svg-generate";
-import type { CutSessionSnapshot, LibraryImage, SlicebugPlanResult, SpotifyCode } from "../../app-types";
-import { cssEscape, isEditableKeyboardTarget } from "../../utils/dom-utils";
-import { FONT_GROUPS } from "../../font-catalog";
-import { isUngroupablePath } from "../../utils/workspace-geometry";
-import { WeightIcon, MatIcon, MaterialIcon, materialCategoryOf, PAPER_MATERIAL_IDS, MATERIAL_INSERT_ID, MATERIAL_VINYL_ID } from "./CraftIcons";
-import { Ruler } from "./Ruler";
-import { WorkspaceToolbar } from "./WorkspaceToolbar";
-import { SelectionActionBar } from "./SelectionActionBar";
-import { TextEditOverlay } from "./TextEditOverlay";
-import { PenFillPatternDef, WorkspaceObjectArtwork } from "./WorkspaceObjectArtwork";
-import { ImageLibraryPanel } from "../panels/ImageLibraryPanel";
-import { ShapeLibraryPanel } from "../panels/ShapeLibraryPanel";
-import { SpotifyCodePanel } from "../panels/SpotifyCodePanel";
-import { DotPrintSettingsPanel } from "../panels/DotPrintSettingsPanel";
-import { DOT_STYLE_LABELS } from "../panels/dot-style-labels";
-import { MoreOptions } from "../panels/MoreOptions";
-import { AlignPanel, FoldLinePanel, OutlinePanel } from "../panels/ArrangePanels";
-import { EmptyImportState } from "../screens/ImportPanel";
-
-const ARROW_DIRECTIONS: Record<string, Point | undefined> = {
-  ArrowLeft: { x: -1, y: 0 },
-  ArrowRight: { x: 1, y: 0 },
-  ArrowUp: { x: 0, y: -1 },
-  ArrowDown: { x: 0, y: 1 },
-};
-
-const SNAP_ALL_DIRECTIONS = { top: true, left: true, bottom: true, right: true, center: true, middle: true };
-
-// ── Small presentational helpers for the Card-colors / Pens / picker UI ───────
-
-const PEN_FILL_LABELS: Record<PenFillPattern, { nl: string; en: string }> = {
-  lines: { nl: "Lijnen", en: "Lines" },
-  cross: { nl: "Kruis", en: "Cross" },
-  grid: { nl: "Raster", en: "Grid" },
-  triangles: { nl: "Driehoek", en: "Triangles" },
-  cubic: { nl: "Kubus", en: "Cubic" },
-  honeycomb: { nl: "Honingraat", en: "Honeycomb" },
-  dots: { nl: "Stippen", en: "Dots" },
-};
-
-/** A small live sample of a fill pattern, drawn with the same tile as the canvas. */
-function PenFillSwatch({ pattern }: { pattern: PenFillPattern }) {
-  const tile = penFillPatternTile({ enabled: true, pattern, density: 30, angle: 45, dotStyle: "circle" }, 1.25);
-  if (!tile) return null;
-  const id = `pen-fill-swatch-${pattern}`;
-  return (
-    <svg className="pen-fill-pattern__swatch" viewBox="0 0 40 26" aria-hidden="true">
-      <defs>
-        <PenFillPatternDef id={id} tile={tile} color="currentColor" patternTransform="" />
-      </defs>
-      <rect x="1" y="1" width="38" height="24" rx="4" fill={`url(#${id})`} stroke="currentColor" strokeWidth="1.25" />
-    </svg>
-  );
-}
-
-function PaperIcon() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3"/></svg>;
-}
-function BehindIcon() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="2" width="9" height="9" rx="1.5"/><path d="M6 11v2.5A1.5 1.5 0 0 0 7.5 15H13a1.5 1.5 0 0 0 1.5-1.5V8A1.5 1.5 0 0 0 13 6.5h-2"/></svg>;
-}
-function PenIcon() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 2l3 3-8.5 8.5L2 14l.5-3.5z"/><path d="M9.5 3.5l3 3"/></svg>;
-}
-function ScissorsIcon() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="3.5" cy="4.5" r="1.8"/><circle cx="3.5" cy="11.5" r="1.8"/><path d="M5.2 5.6 14 11M5.2 10.4 14 5"/></svg>;
-}
-
-/**
- * A pointy-top (Stabilo-style) hexagon swatch drawn as SVG so it can have softly
- * rounded corners AND an inset 2px border with a 1px gap — matching the card-colour
- * pickers — without changing the overall footprint.
- */
-function HexShape({ color, add, warn }: { color?: string; add?: boolean; warn?: boolean }) {
-  const cx = 19;
-  const cy = 22;
-  const s = Math.sqrt(3) / 2;
-  const hex = (r: number) => {
-    const pts: Array<[number, number]> = [
-      [cx, cy - r], [cx + r * s, cy - r / 2], [cx + r * s, cy + r / 2],
-      [cx, cy + r], [cx - r * s, cy + r / 2], [cx - r * s, cy - r / 2],
-    ];
-    return pts.map(([x, y]) => `${Number(x.toFixed(2))},${Number(y.toFixed(2))}`).join(" ");
-  };
-  const borderColor = warn ? "#d9a300" : add ? "rgba(41,37,33,0.45)" : "rgba(41,37,33,0.4)";
-  return (
-    <svg className="pen-hex__svg" viewBox="0 0 38 44" width="38" height="44" aria-hidden="true">
-      {/* Outer border (2px), rounded joins; the transparent ring to the fill is the 1px gap */}
-      <polygon points={hex(20)} fill={add ? "rgba(41,37,33,0.07)" : "none"} stroke={borderColor} strokeWidth="2" strokeLinejoin="round" />
-      {!add && color && (
-        <polygon points={hex(17)} fill={color} stroke={color} strokeWidth="2" strokeLinejoin="round" />
-      )}
-      {add && <path d="M19 14.5v15M11.5 22h15" stroke="rgba(41,37,33,0.7)" strokeWidth="2" strokeLinecap="round" />}
-    </svg>
-  );
-}
-
-/** A labelled native colour picker styled as a swatch chip. */
-function ColorRow({ icon, label, color, onChange, title }: {
-  icon: ReactNode;
-  label?: string;
-  color: string;
-  onChange: (color: string) => void;
-  title?: string;
-}) {
-  return (
-    <label className="color-row" title={title}>
-      <span className="color-row__icon" aria-hidden="true">{icon}</span>
-      {label ? <span className="color-row__label">{label}</span> : null}
-      <span className="color-row__chip" style={{ backgroundColor: color }}>
-        <input type="color" value={color} onChange={(e) => onChange(e.target.value)} />
-      </span>
-    </label>
-  );
-}
-
-/**
- * Per-object tool picker: a distinct Cut box (behind colour) on top, then the pens
- * shown as selectable hexagons below — mirroring the workpiece pen palette.
- * Picking sets the object's colour.
- */
-/**
- * The most important choice per object: is it cut out, or drawn with a pen?
- * Two big labelled options; the pen colours only show once "Draw" is chosen.
- */
-function SwatchPicker({ tools, selectedColor, onPick, language }: {
-  tools: WorkspaceTool[];
-  selectedColor: string;
-  onPick: (color: string) => void;
-  language: Language;
-}) {
-  const nl = language === "nl";
-  const pens = getPens(tools);
-  const behind = getBehindColor(tools);
-  const sel = (selectedColor ?? "").toLowerCase();
-  const activePen = pens.find((pen) => pen.color.toLowerCase() === sel) ?? null;
-  const cutActive = !activePen && behind.toLowerCase() === sel;
-  return (
-    <div className="tool-picker" role="group">
-      <div className="tool-choice">
-        <button
-          type="button"
-          className={`tool-choice__btn${cutActive ? " tool-choice__btn--active" : ""}`}
-          onClick={() => onPick(behind)}
-          aria-pressed={cutActive}
-        >
-          <ScissorsIcon />
-          <strong>{nl ? "Snijden" : "Cut"}</strong>
-          <span>{nl ? "Het mesje snijdt de vorm uit" : "The blade cuts the shape out"}</span>
-        </button>
-        <button
-          type="button"
-          className={`tool-choice__btn${activePen ? " tool-choice__btn--active" : ""}`}
-          onClick={() => { if (!activePen && pens[0]) onPick(pens[0].color); }}
-          aria-pressed={Boolean(activePen)}
-          disabled={pens.length === 0}
-        >
-          <PenIcon />
-          <strong>{nl ? "Tekenen" : "Draw"}</strong>
-          <span>{nl ? "Een pen tekent de lijnen" : "A pen draws the lines"}</span>
-        </button>
-      </div>
-
-      {activePen ? (
-        <div className="tool-picker__pens-row">
-          <span className="object-settings__label">{nl ? "Penkleur" : "Pen colour"}</span>
-          <div className="tool-picker__pens">
-            {pens.map((pen, i) => {
-              const active = pen === activePen;
-              return (
-                <button
-                  key={pen.id}
-                  type="button"
-                  className={`pen-dot${active ? " pen-dot--active" : ""}`}
-                  onClick={() => onPick(pen.color)}
-                  aria-pressed={active}
-                  aria-label={`${nl ? "Pen" : "Pen"} ${i + 1}`}
-                  title={`${nl ? "Pen" : "Pen"} ${i + 1}`}
-                  style={{ backgroundColor: pen.color }}
-                />
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-// Card-size guide rectangles (physical card blanks), drawn as dotted outlines on
-// the CardMat. Sizes in inches → workspace px via WORKSPACE_PIXELS_PER_INCH.
-/**
- * Decorative representation of the physical Cricut Joy mat, framing the paper.
- * Purely visual (pointer-events:none); sits behind the paper inside the zoom/pan
- * transform so it scales and moves with the workpiece. `width`/`height` are the
- * paper's pixel size; the mat extends beyond it by fixed bands.
- */
-function WorkspaceMat({ kind, width, height }: { kind: "standard" | "card"; width: number; height: number }) {
-  const { side: SIDE, top: TOP, bottom: BOTTOM } = getMatBorder(kind);
-  const style = {
-    top: -TOP,
-    left: -SIDE,
-    width: width + SIDE * 2,
-    height: height + TOP + BOTTOM,
-  };
-  if (kind === "card") {
-    return (
-      <div className="workpiece-mat workpiece-mat--card" style={style} aria-hidden="true">
-        {/* Raised bands align with the paper column, not the full mat width */}
-        <div className="workpiece-mat__band workpiece-mat__band--top" style={{ height: TOP, left: SIDE, width }}>
-          <span className="workpiece-mat__arrow">▲</span>
-          <span className="workpiece-mat__label workpiece-mat__label--right">CardMat</span>
-        </div>
-        <div className="workpiece-mat__band workpiece-mat__band--bottom" style={{ height: BOTTOM, left: SIDE, width }} />
-      </div>
-    );
-  }
-  return (
-    <div className="workpiece-mat workpiece-mat--standard" style={style} aria-hidden="true">
-      {/* Labels align to the paper edges on the x-axis (inset by SIDE). */}
-      <span className="workpiece-mat__label workpiece-mat__label--right" style={{ top: (TOP - 20) / 2, right: SIDE }}>Standard</span>
-      <span className="workpiece-mat__label workpiece-mat__label--bottom-left" style={{ bottom: (BOTTOM - 20) / 2, left: SIDE }}>Standard</span>
-    </div>
-  );
-}
-
-/**
- * CardMat card-size guides, drawn as dotted rectangles ON the paper (above it,
- * below the design items). Anchored at the paper's top-left (0,0) corner — cards
- * align to that corner — and nested from there.
- */
-function WorkspaceCardGuides({ width, height, activeCardSize }: { width: number; height: number; activeCardSize: CardSize | null }) {
-  // Dotted guides for the small + medium card blanks (large == the paper edge). When a
-  // size is selected, hide the guides smaller than it.
-  const guideSizes: CardSize[] = ["medium", "small"];
-  const areaOf = (s: CardSize) => CARD_SIZES[s].width * CARD_SIZES[s].height;
-  const activeArea = activeCardSize ? areaOf(activeCardSize) : 0;
-  return (
-    <div className="workpiece-card-guides" style={{ width, height, overflow: "visible" }} aria-hidden="true">
-      {guideSizes
-        .filter((s) => !activeCardSize || areaOf(s) >= activeArea)
-        .map((s) => (
-          <div
-            key={s}
-            className="workpiece-mat__card-guide"
-            style={{ width: CARD_SIZES[s].width * WORKSPACE_PIXELS_PER_INCH, height: CARD_SIZES[s].height * WORKSPACE_PIXELS_PER_INCH, left: 0, top: 0 }}
-          />
-        ))}
-    </div>
-  );
-}
-
-// Insert-card corner slots overlay (purely visual; the real cut geometry is generated in
-// buildInsertSlotsPaths and added to the cut SVG). Non-interactive.
-function InsertSlotsOverlay({ width, height, color }: { width: number; height: number; color: string }) {
-  return (
-    <svg
-      className="workpiece-insert-slots"
-      width={width}
-      height={height}
-      viewBox={`0 0 ${Math.max(1, width)} ${Math.max(1, height)}`}
-      overflow="visible"
-      aria-hidden="true"
-      dangerouslySetInnerHTML={{ __html: buildInsertSlotsPaths(width, height, color) }}
-    />
-  );
-}
-
+} from '../../workspace-utils';
+import type { WorkspaceShapeKind } from '../../workspace-shapes';
+import { buildShapePath } from '../../workspace-shapes';
+import type { AiSvgInput } from '../../ai-svg-generate';
+import type {
+  CutSessionSnapshot,
+  LibraryImage,
+  SlicebugPlanResult,
+  SpotifyCode,
+} from '../../app-types';
+import { cssEscape, isEditableKeyboardTarget } from '../../utils/dom-utils';
+import { isUngroupablePath } from '../../utils/workspace-geometry';
+import { materialCategoryOf } from './CraftIcons';
+import { WorkspaceToolbar } from './WorkspaceToolbar';
+import { ImageLibraryPanel } from '../panels/ImageLibraryPanel';
+import { ShapeLibraryPanel } from '../panels/ShapeLibraryPanel';
+import { SpotifyCodePanel } from '../panels/SpotifyCodePanel';
 
 export function DesignWorkspace({
   language,
   measurementUnit,
   selectedMaterialId,
-  nativeMaterials=[],
+  nativeMaterials = [],
   selectedMatPreset,
   importedSvg,
   importedSvgs,
@@ -459,7 +180,7 @@ export function DesignWorkspace({
   language: Language;
   measurementUnit: MeasurementUnit;
   selectedMaterialId: number;
-  nativeMaterials?:Array<{id:number;name:string}>;
+  nativeMaterials?: Array<{ id: number; name: string }>;
   selectedMatPreset: string;
   importedSvg: WorkspaceSvgItem | null;
   importedSvgs: WorkspaceSvgItem[];
@@ -503,14 +224,16 @@ export function DesignWorkspace({
   onUngroupSvg: () => boolean;
   onFlipX: () => boolean;
   onFlipY: () => boolean;
-  onMoveLayer: (mode: "forward" | "backward" | "front" | "back") => boolean;
+  onMoveLayer: (mode: 'forward' | 'backward' | 'front' | 'back') => boolean;
   onReorderLayerToTarget: (draggedId: string, targetId: string) => void;
   onRenameObject: (id: string, newName: string) => void;
   onChangeObjectColor: (ids: string | string[], color: string) => void;
   onUndoSvgs: () => boolean;
   onRedoSvgs: () => boolean;
   onWorkspaceContextMenu: (selectedObjectCount?: number) => void;
-  onSvgTransformsCommit: (updates: Array<{ id: string; transform: WorkspaceItemTransform }>) => void;
+  onSvgTransformsCommit: (
+    updates: Array<{ id: string; transform: WorkspaceItemTransform }>,
+  ) => void;
   onPrepareImportedPlan: () => void;
   onOpenProject: () => void;
   onSaveProject: () => void;
@@ -522,7 +245,7 @@ export function DesignWorkspace({
   hasActiveAiKey: boolean;
   onOpenSettings: () => void;
   onOpenAiGenerate: () => void;
-  onAiGenerateSvg: (input: Omit<AiSvgInput, "settings">) => Promise<string>;
+  onAiGenerateSvg: (input: Omit<AiSvgInput, 'settings'>) => Promise<string>;
   imageLibrary: LibraryImage[];
   imageLibraryLoading: boolean;
   onLoadImageLibrary: () => void;
@@ -543,7 +266,7 @@ export function DesignWorkspace({
   onOutlineChange: (ids: string[], patch: Partial<OutlineSettings>) => void;
   onOutlineDetach: (ids: string[]) => void;
   onAlign: (mode: AlignMode) => void;
-  onDistribute: (axis: "x" | "y") => void;
+  onDistribute: (axis: 'x' | 'y') => void;
   /** Moves the selection by an offset in workspace pixels. */
   onNudge: (dx: number, dy: number) => boolean;
   onDotPrintChange: (ids: string[], patch: Partial<DotPrintSettings>) => void;
@@ -554,48 +277,59 @@ export function DesignWorkspace({
   const { t } = createTranslator(language);
   const [zoom, setZoom] = useState(0.85);
   const [pan, setPan] = useState<Point>({ x: 260, y: 90 });
-  const [activeDrawer, setActiveDrawer] = useState<"image" | "shapes" | "spotify" | null>(null);
+  const [activeDrawer, setActiveDrawer] = useState<'image' | 'shapes' | 'spotify' | null>(null);
   const drawerOpen = activeDrawer !== null;
   // When set, the Spotify drawer swaps this code's song instead of adding a new code.
   const [spotifyReplaceId, setSpotifyReplaceId] = useState<string | null>(null);
-  const spotifyReplaceTarget = spotifyReplaceId ? importedSvgs.find((item) => item.id === spotifyReplaceId) ?? null : null;
+  const spotifyReplaceTarget = spotifyReplaceId
+    ? (importedSvgs.find((item) => item.id === spotifyReplaceId) ?? null)
+    : null;
 
   function openSpotifyReplace(itemId: string) {
     setSpotifyReplaceId(itemId);
-    setActiveDrawer("spotify");
+    setActiveDrawer('spotify');
   }
 
-  function toggleDrawer(drawer: "image" | "shapes" | "spotify") {
+  function toggleDrawer(drawer: 'image' | 'shapes' | 'spotify') {
     setSpotifyReplaceId(null);
     if (activeDrawer === drawer) {
       setActiveDrawer(null);
       return;
     }
     setActiveDrawer(drawer);
-    if (drawer === "image") {
+    if (drawer === 'image') {
       onLoadImageLibrary();
     }
   }
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [dragLayerId, setDragLayerId] = useState<string | null>(null);
-  const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
-  const pendingRenameRef = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const pendingRenameRef = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(
+    null,
+  );
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const selectionBarRef = useRef<HTMLDivElement | null>(null);
   const workpieceTransformRef = useRef<HTMLDivElement | null>(null);
   // Panning (right/middle/space-drag) and marquee (left-drag on empty) gestures.
-  const panRef = useRef<null | { pointerId: number; start: Point; pan: Point; button: number; moved: boolean }>(null);
+  const panRef = useRef<null | {
+    pointerId: number;
+    start: Point;
+    pan: Point;
+    button: number;
+    moved: boolean;
+  }>(null);
   const marqueeRef = useRef<null | {
     pointerId: number;
     origin: Point;
     baseSelection: string[];
-    mode: "replace" | "add" | "toggle";
+    mode: 'replace' | 'add' | 'toggle';
     moved: boolean;
   }>(null);
   const spaceHeldRef = useRef(false);
   const [spacePanReady, setSpacePanReady] = useState(false);
-  const [marqueeRect, setMarqueeRect] = useState<null | { left: number; top: number; width: number; height: number }>(null);
+  const [marqueeRect, setMarqueeRect] = useState<null | {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  }>(null);
   const recentScrollRef = useRef(false);
   const recentScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const directItemDragStart = useRef<null | {
@@ -619,15 +353,18 @@ export function DesignWorkspace({
   const matDimensions = getMatDimensionsInches(selectedMatPreset);
   // The active card size (insert-card sub-option) shrinks the working area: rulers, the
   // white paper, and slot positions follow it. The cut/mat itself are unaffected.
-  const isInsertCard = materialCategoryOf(selectedMaterialId) === "insert";
+  const isInsertCard = materialCategoryOf(selectedMaterialId) === 'insert';
   const activeCardSize = isInsertCard ? cardSize : null;
   const activeDims = activeCardSize ? CARD_SIZES[activeCardSize] : matDimensions;
   const materialName =
-    nativeMaterials.find(m=>m.id===selectedMaterialId)?.name ??
+    nativeMaterials.find((m) => m.id === selectedMaterialId)?.name ??
     getMaterialName(selectedMaterialId, language) ??
     MATERIAL_OPTIONS.find((material) => material.id === selectedMaterialId)?.name ??
-    "Material";
-  const matName = getMatName(selectedMatPreset, language) ?? MAT_PRESETS.find((mat) => mat.id === selectedMatPreset)?.name ?? "Mat";
+    'Material';
+  const matName =
+    getMatName(selectedMatPreset, language) ??
+    MAT_PRESETS.find((mat) => mat.id === selectedMatPreset)?.name ??
+    'Mat';
   // The mat + paper container stay the full mat size (the mat is always visible); the
   // white "card" area + rulers + slots follow the selected card size.
   const workpieceWidth = matDimensions.width * WORKSPACE_PIXELS_PER_INCH;
@@ -635,7 +372,7 @@ export function DesignWorkspace({
   const cardWidth = activeDims.width * WORKSPACE_PIXELS_PER_INCH;
   const cardHeight = activeDims.height * WORKSPACE_PIXELS_PER_INCH;
   const xTicks = getMeasurementTicks({
-    axis: "x",
+    axis: 'x',
     lengthInches: activeDims.width,
     unit: measurementUnit,
     zoom,
@@ -643,14 +380,17 @@ export function DesignWorkspace({
     pixelsPerInch: WORKSPACE_PIXELS_PER_INCH,
   });
   const yTicks = getMeasurementTicks({
-    axis: "y",
+    axis: 'y',
     lengthInches: activeDims.height,
     unit: measurementUnit,
     zoom,
     pan,
     pixelsPerInch: WORKSPACE_PIXELS_PER_INCH,
   });
-  const canCut = workspaceHasCutContent(importedSvgs.length,selectedMaterialId,insertSlots) && !importedPlanLoading && !cutBusy;
+  const canCut =
+    workspaceHasCutContent(importedSvgs.length, selectedMaterialId, insertSlots) &&
+    !importedPlanLoading &&
+    !cutBusy;
   const selectedSvgIdSet = useMemo(() => new Set(selectedSvgIds), [selectedSvgIds]);
   const lastPointerDownItemId = useRef<{ id: string; time: number } | null>(null);
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
@@ -659,8 +399,12 @@ export function DesignWorkspace({
       if (fonts && fonts.length > 0) setSystemFonts(fonts.sort());
     });
   }, []);
-  const selectedItems = useMemo(() => importedSvgs.filter((item) => selectedSvgIdSet.has(item.id)), [importedSvgs, selectedSvgIdSet]);
-  const selectedGroup = selectedItems.length === 1 && selectedItems[0]?.type === "group" ? selectedItems[0] : null;
+  const selectedItems = useMemo(
+    () => importedSvgs.filter((item) => selectedSvgIdSet.has(item.id)),
+    [importedSvgs, selectedSvgIdSet],
+  );
+  const selectedGroup =
+    selectedItems.length === 1 && selectedItems[0]?.type === 'group' ? selectedItems[0] : null;
   // Ungroup also applies to a single traced/compound path with 2+ top-level shapes.
   // Memoized because the check measures path bboxes in the DOM.
   const canUngroupSelection = useMemo(() => {
@@ -685,22 +429,33 @@ export function DesignWorkspace({
     const maxTop = viewportHeight - BAR_HEIGHT - 8;
     const top = below <= maxTop ? below : above >= minTop ? above : maxTop;
     // Keep the whole bar inside the canvas when the selection sits near an edge.
-    const groupable = selectedItems.length >= 2 && !selectedItems.some((item) => item.textContent || item.dotPrint || item.dashed?.enabled);
-    const buttonCount = 4 + (selectedItems.length === 1 && importedSvgs.length > 1 ? 2 : 0) + (groupable ? 1 : 0) + (canUngroupSelection ? 1 : 0);
+    const groupable =
+      selectedItems.length >= 2 &&
+      !selectedItems.some((item) => item.textContent || item.dotPrint || item.dashed?.enabled);
+    const buttonCount =
+      4 +
+      (selectedItems.length === 1 && importedSvgs.length > 1 ? 2 : 0) +
+      (groupable ? 1 : 0) +
+      (canUngroupSelection ? 1 : 0);
     const halfWidth = buttonCount * 40 + 8;
     const viewportWidth = viewportRef.current?.clientWidth ?? Infinity;
     const center = WORKSPACE_STAGE_LEFT_OFFSET + pan.x + bounds.center.x * zoom;
     return {
-      left: Math.max(WORKSPACE_STAGE_LEFT_OFFSET + 8 + halfWidth, Math.min(viewportWidth - 8 - halfWidth, center)),
+      left: Math.max(
+        WORKSPACE_STAGE_LEFT_OFFSET + 8 + halfWidth,
+        Math.min(viewportWidth - 8 - halfWidth, center),
+      ),
       top: Math.max(minTop, top),
     };
   })();
   // Text renders with preserveAspectRatio="meet" (never stretches) and is cut from a
   // re-measured frame, so a non-uniform scale would make display, edit overlay, and cut
   // disagree. Force uniform scaling whenever the whole selection is text.
-  const selectionIsAllText = selectedItems.length > 0 && selectedItems.every((item) => Boolean(item.textContent));
+  const selectionIsAllText =
+    selectedItems.length > 0 && selectedItems.every((item) => Boolean(item.textContent));
   // A line only has a length, so it only gets the two end handles.
-  const selectionIsAllLines = selectedItems.length > 0 && selectedItems.every((item) => item.shapeKind === "line");
+  const selectionIsAllLines =
+    selectedItems.length > 0 && selectedItems.every((item) => item.shapeKind === 'line');
 
   useEffect(() => {
     const root = workpieceTransformRef.current;
@@ -711,13 +466,16 @@ export function DesignWorkspace({
     }
     setMoveableTargets(
       selectedItems
-        .map((item) => root.querySelector<HTMLElement>(`[data-workspace-item-id="${cssEscape(item.id)}"]`))
+        .map((item) =>
+          root.querySelector<HTMLElement>(`[data-workspace-item-id="${cssEscape(item.id)}"]`),
+        )
         .filter((target): target is HTMLElement => Boolean(target)),
     );
     // Everything that isn't selected is something to line the selection up with.
     setSnapElements(
-      Array.from(root.querySelectorAll<HTMLElement>("[data-workspace-item-id]"))
-        .filter((element) => !selectedSvgIdSet.has(element.dataset.workspaceItemId ?? "")),
+      Array.from(root.querySelectorAll<HTMLElement>('[data-workspace-item-id]')).filter(
+        (element) => !selectedSvgIdSet.has(element.dataset.workspaceItemId ?? ''),
+      ),
     );
   }, [selectedItems, selectedSvgIdSet, importedSvgs.length]);
 
@@ -726,18 +484,20 @@ export function DesignWorkspace({
       setSnapSuspended(event.metaKey || event.ctrlKey);
     }
     const release = () => setSnapSuspended(false);
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("keyup", onKey);
-    window.addEventListener("blur", release);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    window.addEventListener('blur', release);
     return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("keyup", onKey);
-      window.removeEventListener("blur", release);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+      window.removeEventListener('blur', release);
     };
   }, []);
 
   useEffect(() => {
-    requestAnimationFrame(() => { moveableRef.current?.updateRect(); });
+    requestAnimationFrame(() => {
+      moveableRef.current?.updateRect();
+    });
   }, [importedSvgs]);
 
   // Modifier (Ctrl/Cmd/Shift) + click toggles an item in/out of the selection. Handled
@@ -754,29 +514,29 @@ export function DesignWorkspace({
       event.stopPropagation();
       toggleLayerSelection(id);
     }
-    el.addEventListener("pointerdown", onCapturePointerDown, true);
-    return () => el.removeEventListener("pointerdown", onCapturePointerDown, true);
+    el.addEventListener('pointerdown', onCapturePointerDown, true);
+    return () => el.removeEventListener('pointerdown', onCapturePointerDown, true);
   }, [selectedSvgIds]);
 
   // Hold Space to pan with a left drag (trackpad-friendly fallback for right/middle drag).
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
-      if (event.code !== "Space" || event.repeat) return;
+      if (event.code !== 'Space' || event.repeat) return;
       if (editingTextId || isEditableKeyboardTarget(event.target)) return;
       event.preventDefault(); // stop the page from scrolling
       spaceHeldRef.current = true;
       setSpacePanReady(true);
     }
     function onKeyUp(event: globalThis.KeyboardEvent) {
-      if (event.code !== "Space") return;
+      if (event.code !== 'Space') return;
       spaceHeldRef.current = false;
       setSpacePanReady(false);
     }
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
     };
   }, [editingTextId]);
 
@@ -853,7 +613,10 @@ export function DesignWorkspace({
     const fit = fitMatToView({
       paper: { width: workpieceWidth, height: workpieceHeight },
       border: getMatBorder(getMatKind(selectedMatPreset)),
-      available: { width: rect.width - WORKSPACE_STAGE_LEFT_OFFSET, height: rect.height - WORKSPACE_STAGE_TOP_OFFSET },
+      available: {
+        width: rect.width - WORKSPACE_STAGE_LEFT_OFFSET,
+        height: rect.height - WORKSPACE_STAGE_TOP_OFFSET,
+      },
     });
     viewIsAutoFit.current = true;
     setZoom(fit.zoom);
@@ -865,7 +628,7 @@ export function DesignWorkspace({
   }, [selectedMatPreset]);
   useEffect(() => {
     const el = viewportRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    if (!el || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
       if (viewIsAutoFit.current) fitMatRef.current();
     });
@@ -886,7 +649,9 @@ export function DesignWorkspace({
         height: (rect.height - WORKSPACE_STAGE_TOP_OFFSET) / zoom,
       };
     };
-    return () => { visibleAreaRef.current = null; };
+    return () => {
+      visibleAreaRef.current = null;
+    };
   }, [visibleAreaRef, zoom, pan]);
 
   // Wheel handling lives on a native, non-passive listener (attached below). React's own
@@ -899,12 +664,18 @@ export function DesignWorkspace({
       const sensitivity = event.deltaMode === 0 ? 0.01 : 0.005;
       const rect = viewportRef.current?.getBoundingClientRect();
       if (!rect) return;
-      zoomAroundPoint(zoom - event.deltaY * sensitivity, event.clientX - rect.left, event.clientY - rect.top);
+      zoomAroundPoint(
+        zoom - event.deltaY * sensitivity,
+        event.clientX - rect.left,
+        event.clientY - rect.top,
+      );
       return;
     }
     recentScrollRef.current = true;
     if (recentScrollTimerRef.current) clearTimeout(recentScrollTimerRef.current);
-    recentScrollTimerRef.current = setTimeout(() => { recentScrollRef.current = false; }, 300);
+    recentScrollTimerRef.current = setTimeout(() => {
+      recentScrollRef.current = false;
+    }, 300);
     viewIsAutoFit.current = false;
     setPan((current) => clampPan({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
   };
@@ -912,8 +683,8 @@ export function DesignWorkspace({
     const el = viewportRef.current;
     if (!el) return;
     const listener = (event: globalThis.WheelEvent) => wheelHandlerRef.current(event);
-    el.addEventListener("wheel", listener, { passive: false });
-    return () => el.removeEventListener("wheel", listener);
+    el.addEventListener('wheel', listener, { passive: false });
+    return () => el.removeEventListener('wheel', listener);
   }, []);
 
   const DRAG_THRESHOLD = 4; // px before a press becomes a drag (vs a click)
@@ -926,12 +697,18 @@ export function DesignWorkspace({
     if (event.button === 1 || event.button === 2 || (event.button === 0 && spaceHeldRef.current)) {
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
-      panRef.current = { pointerId: event.pointerId, start: { x: event.clientX, y: event.clientY }, pan, button: event.button, moved: false };
+      panRef.current = {
+        pointerId: event.pointerId,
+        start: { x: event.clientX, y: event.clientY },
+        pan,
+        button: event.button,
+        moved: false,
+      };
       return;
     }
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
-    if (target.closest(".moveable-control-box") || target.closest(".workspace-image-item")) return;
+    if (target.closest('.moveable-control-box') || target.closest('.workspace-image-item')) return;
     // Left press on empty canvas → start a marquee (only becomes visible once it moves).
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -939,24 +716,32 @@ export function DesignWorkspace({
       pointerId: event.pointerId,
       origin: { x: event.clientX, y: event.clientY },
       baseSelection: selectedSvgIds.slice(),
-      mode: event.shiftKey ? "add" : (event.metaKey || event.ctrlKey) ? "toggle" : "replace",
+      mode: event.shiftKey ? 'add' : event.metaKey || event.ctrlKey ? 'toggle' : 'replace',
       moved: false,
     };
   }
 
-  function updateMarquee(m: NonNullable<typeof marqueeRef.current>, clientX: number, clientY: number) {
+  function updateMarquee(
+    m: NonNullable<typeof marqueeRef.current>,
+    clientX: number,
+    clientY: number,
+  ) {
     const rect = viewportRef.current?.getBoundingClientRect();
     if (!rect) return;
     const ox = m.origin.x - rect.left;
     const oy = m.origin.y - rect.top;
     const cx = clientX - rect.left;
     const cy = clientY - rect.top;
-    const left = Math.min(ox, cx), top = Math.min(oy, cy);
-    const width = Math.abs(cx - ox), height = Math.abs(cy - oy);
+    const left = Math.min(ox, cx),
+      top = Math.min(oy, cy);
+    const width = Math.abs(cx - ox),
+      height = Math.abs(cy - oy);
     setMarqueeRect({ left, top, width, height });
     // Marquee rect in workpiece/world coordinates.
-    const wl = (left - pan.x) / zoom, wt = (top - pan.y) / zoom;
-    const wr = (left + width - pan.x) / zoom, wb = (top + height - pan.y) / zoom;
+    const wl = (left - pan.x) / zoom,
+      wt = (top - pan.y) / zoom;
+    const wr = (left + width - pan.x) / zoom,
+      wb = (top + height - pan.y) / zoom;
     const hits = importedSvgs
       .filter((item) => {
         const b = getWorkspaceSelectionBounds([item]);
@@ -964,12 +749,15 @@ export function DesignWorkspace({
       })
       .map((item) => item.id);
     let next: string[];
-    if (m.mode === "add") {
+    if (m.mode === 'add') {
       next = Array.from(new Set([...m.baseSelection, ...hits]));
-    } else if (m.mode === "toggle") {
+    } else if (m.mode === 'toggle') {
       const hitSet = new Set(hits);
       const baseSet = new Set(m.baseSelection);
-      next = [...m.baseSelection.filter((id) => !hitSet.has(id)), ...hits.filter((id) => !baseSet.has(id))];
+      next = [
+        ...m.baseSelection.filter((id) => !hitSet.has(id)),
+        ...hits.filter((id) => !baseSet.has(id)),
+      ];
     } else {
       next = hits;
     }
@@ -981,7 +769,8 @@ export function DesignWorkspace({
     if (panState && panState.pointerId === event.pointerId) {
       const dx = event.clientX - panState.start.x;
       const dy = event.clientY - panState.start.y;
-      if (!panState.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) panState.moved = true;
+      if (!panState.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD))
+        panState.moved = true;
       viewIsAutoFit.current = false;
       setPan(clampPan({ x: panState.pan.x + dx, y: panState.pan.y + dy }));
       return;
@@ -990,7 +779,8 @@ export function DesignWorkspace({
     if (m && m.pointerId === event.pointerId) {
       const dx = event.clientX - m.origin.x;
       const dy = event.clientY - m.origin.y;
-      if (!m.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) m.moved = true;
+      if (!m.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD))
+        m.moved = true;
       if (m.moved) updateMarquee(m, event.clientX, event.clientY);
     }
   }
@@ -999,7 +789,8 @@ export function DesignWorkspace({
     const panState = panRef.current;
     if (panState && panState.pointerId === event.pointerId) {
       panRef.current = null;
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      if (event.currentTarget.hasPointerCapture(event.pointerId))
+        event.currentTarget.releasePointerCapture(event.pointerId);
       // A right-click without movement opens the context menu (panning suppresses it).
       if (panState.button === 2 && !panState.moved) {
         requestContextMenu(itemIdAtPoint(event.clientX, event.clientY));
@@ -1010,9 +801,10 @@ export function DesignWorkspace({
     if (m && m.pointerId === event.pointerId) {
       marqueeRef.current = null;
       setMarqueeRect(null);
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      if (event.currentTarget.hasPointerCapture(event.pointerId))
+        event.currentTarget.releasePointerCapture(event.pointerId);
       // A plain click on empty canvas (no drag) clears the selection.
-      if (!m.moved && m.mode === "replace") onSelectSvg(null);
+      if (!m.moved && m.mode === 'replace') onSelectSvg(null);
     }
   }
 
@@ -1047,7 +839,7 @@ export function DesignWorkspace({
   // control box (which sits on top of the selection and would otherwise be the target).
   function itemIdAtPoint(x: number, y: number): string | undefined {
     for (const el of document.elementsFromPoint(x, y)) {
-      const itemEl = (el as Element).closest?.("[data-workspace-item-id]") as HTMLElement | null;
+      const itemEl = (el as Element).closest?.('[data-workspace-item-id]') as HTMLElement | null;
       if (itemEl?.dataset.workspaceItemId) return itemEl.dataset.workspaceItemId;
     }
     return undefined;
@@ -1126,7 +918,12 @@ export function DesignWorkspace({
     if (Math.abs(rawX) > 0.5 || Math.abs(rawY) > 0.5) {
       drag.moved = true;
     }
-    const { x: deltaX, y: deltaY } = snapDirectDrag(drag, item, { x: rawX, y: rawY }, event.metaKey || event.ctrlKey);
+    const { x: deltaX, y: deltaY } = snapDirectDrag(
+      drag,
+      item,
+      { x: rawX, y: rawY },
+      event.metaKey || event.ctrlKey,
+    );
     const next = clampWorkspaceItemTransform({
       ...drag.transform,
       x: drag.transform.x + deltaX,
@@ -1143,25 +940,35 @@ export function DesignWorkspace({
     delta: Point,
     suspended: boolean,
   ): Point {
-    const bounds = suspended || !drag.moved ? null : getWorkspaceSelectionBounds([{ frame: item.frame, transform: drag.transform }]);
+    const bounds =
+      suspended || !drag.moved
+        ? null
+        : getWorkspaceSelectionBounds([{ frame: item.frame, transform: drag.transform }]);
     const snapped = bounds
-      ? snapDragDelta({ bounds, delta, targets: drag.snapTargets, threshold: SNAP_SCREEN_PX / zoom })
+      ? snapDragDelta({
+          bounds,
+          delta,
+          targets: drag.snapTargets,
+          threshold: SNAP_SCREEN_PX / zoom,
+        })
       : { delta, guides: [] };
     showSnapGuides(snapped.guides);
     return snapped.delta;
   }
 
-  function showSnapGuides(guides: Array<{ axis: "x" | "y"; position: number }>) {
+  function showSnapGuides(guides: Array<{ axis: 'x' | 'y'; position: number }>) {
     const layer = snapGuideLayerRef.current;
     if (!layer) return;
-    layer.replaceChildren(...guides.map((guide) => {
-      const line = document.createElement("div");
-      line.className = `snap-guide snap-guide--${guide.axis}`;
-      line.style[guide.axis === "x" ? "left" : "top"] = `${guide.position}px`;
-      // Keep the line one screen pixel wide at any zoom.
-      line.style[guide.axis === "x" ? "width" : "height"] = `${1 / zoom}px`;
-      return line;
-    }));
+    layer.replaceChildren(
+      ...guides.map((guide) => {
+        const line = document.createElement('div');
+        line.className = `snap-guide snap-guide--${guide.axis}`;
+        line.style[guide.axis === 'x' ? 'left' : 'top'] = `${guide.position}px`;
+        // Keep the line one screen pixel wide at any zoom.
+        line.style[guide.axis === 'x' ? 'width' : 'height'] = `${1 / zoom}px`;
+        return line;
+      }),
+    );
   }
 
   function stopDirectItemDrag(event: PointerEvent<HTMLDivElement>, item: WorkspaceSvgItem) {
@@ -1200,7 +1007,7 @@ export function DesignWorkspace({
     moveableTransformStart.current = new Map(startEntries);
     latestMoveableTransforms.current = new Map(moveableTransformStart.current);
     // The action bar would lag behind the moving object, so hide it until the gesture ends.
-    if (selectionBarRef.current) selectionBarRef.current.style.visibility = "hidden";
+    if (selectionBarRef.current) selectionBarRef.current.style.visibility = 'hidden';
     const startItems = startEntries.flatMap(([id, transform]) => {
       const item = importedSvgs.find((candidate) => candidate.id === id);
       return item ? [{ frame: item.frame, transform }] : [];
@@ -1227,7 +1034,10 @@ export function DesignWorkspace({
   }
 
   function handleMoveableDrag(event: OnDrag) {
-    updateMoveableTargetTransform(event.target, { x: event.beforeTranslate[0], y: event.beforeTranslate[1] });
+    updateMoveableTargetTransform(event.target, {
+      x: event.beforeTranslate[0],
+      y: event.beforeTranslate[1],
+    });
   }
 
   function handleMoveableDragGroup(event: OnDragGroup) {
@@ -1243,7 +1053,9 @@ export function DesignWorkspace({
       if (isCornerScaleDirection(event.direction)) {
         event.setRatio(item.frame.width / item.frame.height);
       }
-      event.setFixedDirection(getScaleFixedDirection(event.direction, isCenterScaleModifier(event.inputEvent)));
+      event.setFixedDirection(
+        getScaleFixedDirection(event.direction, isCenterScaleModifier(event.inputEvent)),
+      );
     }
   }
 
@@ -1255,7 +1067,9 @@ export function DesignWorkspace({
         event.setRatio(bounds.width / bounds.height);
       }
     }
-    event.setFixedDirection(getScaleFixedDirection(event.direction, isCenterScaleModifier(event.inputEvent)));
+    event.setFixedDirection(
+      getScaleFixedDirection(event.direction, isCenterScaleModifier(event.inputEvent)),
+    );
     event.events.forEach((childEvent) => {
       const item = getWorkspaceItemFromTarget(childEvent.target);
       if (item) {
@@ -1264,7 +1078,12 @@ export function DesignWorkspace({
         if (isCornerScaleDirection(childEvent.direction)) {
           childEvent.setRatio(item.frame.width / item.frame.height);
         }
-        childEvent.setFixedDirection(getScaleFixedDirection(childEvent.direction, isCenterScaleModifier(childEvent.inputEvent)));
+        childEvent.setFixedDirection(
+          getScaleFixedDirection(
+            childEvent.direction,
+            isCenterScaleModifier(childEvent.inputEvent),
+          ),
+        );
       }
     });
   }
@@ -1318,7 +1137,12 @@ export function DesignWorkspace({
   }
 
   function handleMoveableRotate(event: OnRotate) {
-    updateMoveableTargetRotation(event.target, event.rotation, isPreciseRotationModifier(event.inputEvent), null);
+    updateMoveableTargetRotation(
+      event.target,
+      event.rotation,
+      isPreciseRotationModifier(event.inputEvent),
+      null,
+    );
   }
 
   function handleMoveableRotateGroup(event: OnRotateGroup) {
@@ -1344,7 +1168,11 @@ export function DesignWorkspace({
     const start = moveableTransformStart.current.get(item.id) ?? item.transform;
     // Live frame → clamp (sub-pixel), not normalize (0.01 quantised) so the element
     // tracks Moveable's control box exactly. Commit re-rounds via handleSvgTransformsCommit.
-    applyMoveableTargetTransform(target, item.id, clampWorkspaceItemTransform({ ...start, ...transformPart }));
+    applyMoveableTargetTransform(
+      target,
+      item.id,
+      clampWorkspaceItemTransform({ ...start, ...transformPart }),
+    );
   }
 
   function updateMoveableTargetScale(
@@ -1376,7 +1204,7 @@ export function DesignWorkspace({
     // per-item aspect snapping would break them — skip when groupBounds is set.)
     if (!groupBounds && !isCornerScaleDirection(direction)) {
       const snapped = snapScaleFactorToAspect({
-        axis: direction[1] === 0 ? "x" : "y",
+        axis: direction[1] === 0 ? 'x' : 'y',
         startScaleX: start.scaleX,
         startScaleY: start.scaleY,
         scaleFactorX,
@@ -1390,7 +1218,13 @@ export function DesignWorkspace({
     const anchor = groupBounds
       ? getScaleAnchorForBounds(groupBounds, direction, fromCenter)
       : getScaleAnchorForItem(start, item.frame, direction, fromCenter);
-    const next = scaleWorkspaceItemTransformFromAnchor(start, item.frame, anchor, scaleFactorX, scaleFactorY);
+    const next = scaleWorkspaceItemTransformFromAnchor(
+      start,
+      item.frame,
+      anchor,
+      scaleFactorX,
+      scaleFactorY,
+    );
     applyMoveableTargetTransform(target, item.id, next);
   }
 
@@ -1413,7 +1247,11 @@ export function DesignWorkspace({
     applyMoveableTargetTransform(target, item.id, next);
   }
 
-  function applyMoveableTargetTransform(target: HTMLElement | SVGElement, id: string, transform: WorkspaceItemTransform) {
+  function applyMoveableTargetTransform(
+    target: HTMLElement | SVGElement,
+    id: string,
+    transform: WorkspaceItemTransform,
+  ) {
     latestMoveableTransforms.current.set(id, transform);
     if (target instanceof HTMLElement) {
       target.style.transform = getWorkspaceItemTransform(transform);
@@ -1426,18 +1264,21 @@ export function DesignWorkspace({
         // even pen-width while resizing. Match the artwork's actual-size viewBox approach:
         // update the SVG viewBox to the actual size and the path to that same space.
         if (item.shapeKind) {
-          const svgEl = target.querySelector("svg");
+          const svgEl = target.querySelector('svg');
           // The outline and the pen-fill clip both carry the shape geometry.
-          const pathEls = svgEl?.querySelectorAll("[data-shape-geometry]") ?? [];
+          const pathEls = svgEl?.querySelectorAll('[data-shape-geometry]') ?? [];
           if (svgEl && pathEls.length > 0) {
             const sx = Math.abs(transform.scaleX) || 1;
             const sy = Math.abs(transform.scaleY) || 1;
             const aw = Math.max(1, item.frame.width * sx);
             const ah = Math.max(1, item.frame.height * sy);
-            const worldRadius = Math.min((item.cornerRadius ?? 0) * Math.min(sx, sy), Math.min(aw, ah) / 2);
+            const worldRadius = Math.min(
+              (item.cornerRadius ?? 0) * Math.min(sx, sy),
+              Math.min(aw, ah) / 2,
+            );
             const d = buildShapePath(item.shapeKind, aw, ah, worldRadius);
-            svgEl.setAttribute("viewBox", `0 0 ${aw} ${ah}`);
-            pathEls.forEach((pathEl) => pathEl.setAttribute("d", d));
+            svgEl.setAttribute('viewBox', `0 0 ${aw} ${ah}`);
+            pathEls.forEach((pathEl) => pathEl.setAttribute('d', d));
           }
         }
       }
@@ -1445,8 +1286,11 @@ export function DesignWorkspace({
   }
 
   function commitMoveableTransforms() {
-    if (selectionBarRef.current) selectionBarRef.current.style.visibility = "";
-    const updates = Array.from(latestMoveableTransforms.current, ([id, transform]) => ({ id, transform }));
+    if (selectionBarRef.current) selectionBarRef.current.style.visibility = '';
+    const updates = Array.from(latestMoveableTransforms.current, ([id, transform]) => ({
+      id,
+      transform,
+    }));
     moveableTransformStart.current = new Map();
     moveableGroupCenterStart.current = null;
     latestMoveableTransforms.current = new Map();
@@ -1455,10 +1299,13 @@ export function DesignWorkspace({
 
   function getWorkspaceItemFromTarget(target: HTMLElement | SVGElement): WorkspaceSvgItem | null {
     const id = target instanceof HTMLElement ? target.dataset.workspaceItemId : undefined;
-    return id ? importedSvgs.find((item) => item.id === id) ?? null : null;
+    return id ? (importedSvgs.find((item) => item.id === id) ?? null) : null;
   }
 
-  function getWorkspaceItemCenterPoint(transform: WorkspaceItemTransform, frame: { width: number; height: number }): Point {
+  function getWorkspaceItemCenterPoint(
+    transform: WorkspaceItemTransform,
+    frame: { width: number; height: number },
+  ): Point {
     const centerOffset = localOffsetToWorld(
       { x: (frame.width * transform.scaleX) / 2, y: (frame.height * transform.scaleY) / 2 },
       transform,
@@ -1470,7 +1317,12 @@ export function DesignWorkspace({
     const startItems = Array.from(moveableTransformStart.current, ([id, transform]) => {
       const item = importedSvgs.find((candidate) => candidate.id === id);
       return item ? { frame: item.frame, transform } : null;
-    }).filter((item): item is { frame: { width: number; height: number }; transform: WorkspaceItemTransform } => Boolean(item));
+    }).filter(
+      (
+        item,
+      ): item is { frame: { width: number; height: number }; transform: WorkspaceItemTransform } =>
+        Boolean(item),
+    );
     return getWorkspaceSelectionBounds(startItems);
   }
 
@@ -1518,7 +1370,7 @@ export function DesignWorkspace({
   function recolorMatchingObjects(oldColor: string, newColor: string) {
     if (oldColor.toLowerCase() === newColor.toLowerCase()) return;
     importedSvgs.forEach((obj) => {
-      if (obj.paths.some((p) => (p.stroke ?? "").toLowerCase() === oldColor.toLowerCase())) {
+      if (obj.paths.some((p) => (p.stroke ?? '').toLowerCase() === oldColor.toLowerCase())) {
         onChangeObjectColor(obj.id, newColor);
       }
     });
@@ -1544,7 +1396,8 @@ export function DesignWorkspace({
     if (preciseRotation) {
       return rotation;
     }
-    const snapped = Math.round(rotation / ROTATION_SNAP_INTERVAL_DEGREES) * ROTATION_SNAP_INTERVAL_DEGREES;
+    const snapped =
+      Math.round(rotation / ROTATION_SNAP_INTERVAL_DEGREES) * ROTATION_SNAP_INTERVAL_DEGREES;
     return Math.abs(rotation - snapped) <= ROTATION_SNAP_THRESHOLD_DEGREES ? snapped : rotation;
   }
 
@@ -1554,43 +1407,43 @@ export function DesignWorkspace({
         return;
       }
       const usesModifier = event.metaKey || event.ctrlKey;
-      if (usesModifier && event.key.toLowerCase() === "z") {
+      if (usesModifier && event.key.toLowerCase() === 'z') {
         const handled = event.shiftKey ? onRedoSvgs() : onUndoSvgs();
         if (handled) {
           event.preventDefault();
         }
         return;
       }
-      if (usesModifier && event.key.toLowerCase() === "y") {
+      if (usesModifier && event.key.toLowerCase() === 'y') {
         if (onRedoSvgs()) {
           event.preventDefault();
         }
         return;
       }
-      if (usesModifier && event.key.toLowerCase() === "a") {
+      if (usesModifier && event.key.toLowerCase() === 'a') {
         event.preventDefault();
         onSelectAllSvgs();
         return;
       }
-      if (usesModifier && event.key.toLowerCase() === "c") {
+      if (usesModifier && event.key.toLowerCase() === 'c') {
         if (onCopySvgs()) {
           event.preventDefault();
         }
         return;
       }
-      if (usesModifier && event.key.toLowerCase() === "v") {
+      if (usesModifier && event.key.toLowerCase() === 'v') {
         if (onPasteSvgs()) {
           event.preventDefault();
         }
         return;
       }
-      if (usesModifier && event.key.toLowerCase() === "x") {
+      if (usesModifier && event.key.toLowerCase() === 'x') {
         if (onCutSvgs()) {
           event.preventDefault();
         }
         return;
       }
-      if (event.key === "Backspace" || event.key === "Delete") {
+      if (event.key === 'Backspace' || event.key === 'Delete') {
         if (onDeleteSvgs()) {
           event.preventDefault();
         }
@@ -1599,16 +1452,29 @@ export function DesignWorkspace({
       // Arrow keys move the selection: 1 mm, Shift for 1 cm, Alt for a tenth of a millimetre.
       const direction = ARROW_DIRECTIONS[event.key];
       if (direction && !usesModifier) {
-        const step = nudgeStepPx(measurementUnit, event.shiftKey ? "large" : event.altKey ? "fine" : "normal");
+        const step = nudgeStepPx(
+          measurementUnit,
+          event.shiftKey ? 'large' : event.altKey ? 'fine' : 'normal',
+        );
         if (onNudge(direction.x * step, direction.y * step)) {
           event.preventDefault();
         }
       }
     }
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCopySvgs, onCutSvgs, onDeleteSvgs, onPasteSvgs, onRedoSvgs, onSelectAllSvgs, onUndoSvgs, onNudge, measurementUnit]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    onCopySvgs,
+    onCutSvgs,
+    onDeleteSvgs,
+    onPasteSvgs,
+    onRedoSvgs,
+    onSelectAllSvgs,
+    onUndoSvgs,
+    onNudge,
+    measurementUnit,
+  ]);
 
   return (
     <main className="app-shell design-shell">
@@ -1619,13 +1485,24 @@ export function DesignWorkspace({
             className="workspace-home-button no-drag"
             type="button"
             onClick={onBackWelcome}
-            aria-label={language === "nl" ? "Terug naar projectstart" : "Back to project start"}
-            title={language === "nl" ? "Projectstart" : "Project start"}
+            aria-label={language === 'nl' ? 'Terug naar projectstart' : 'Back to project start'}
+            title={language === 'nl' ? 'Projectstart' : 'Project start'}
           >
-            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9.5 10 3l7 6.5"/><path d="M5 8v8a1 1 0 0 0 1 1h3v-4h2v4h3a1 1 0 0 0 1-1V8"/></svg>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 9.5 10 3l7 6.5" />
+              <path d="M5 8v8a1 1 0 0 0 1 1h3v-4h2v4h3a1 1 0 0 0 1-1V8" />
+            </svg>
           </button>
           <div>
-            <p className="eyebrow">{language === "nl" ? "Werkruimte" : "Workspace"}</p>
+            <p className="eyebrow">{language === 'nl' ? 'Werkruimte' : 'Workspace'}</p>
             <h1>{APP_NAME}</h1>
           </div>
         </div>
@@ -1647,76 +1524,149 @@ export function DesignWorkspace({
             className="workspace-home-button no-drag"
             type="button"
             onClick={onOpenSettings}
-            aria-label={language === "nl" ? "Instellingen" : "Settings"}
-            title={language === "nl" ? "Instellingen" : "Settings"}
+            aria-label={language === 'nl' ? 'Instellingen' : 'Settings'}
+            title={language === 'nl' ? 'Instellingen' : 'Settings'}
           >
-            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="10" cy="10" r="2.5"/>
-              <path d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.22 4.22l1.06 1.06M14.72 14.72l1.06 1.06M4.22 15.78l1.06-1.06M14.72 5.28l1.06-1.06"/>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="10" cy="10" r="2.5" />
+              <path d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.22 4.22l1.06 1.06M14.72 14.72l1.06 1.06M4.22 15.78l1.06-1.06M14.72 5.28l1.06-1.06" />
             </svg>
           </button>
-          <button className="cut-button" type="button" data-native-intent="connect" disabled={!canCut} onClick={onStartCut}>
+          <button
+            className="cut-button"
+            type="button"
+            data-native-intent="connect"
+            disabled={!canCut}
+            onClick={onStartCut}
+          >
             <span aria-hidden="true">▶</span>
-            {cutBusy ? t("buttons.starting") : t("buttons.startCut")}
+            {cutBusy ? t('buttons.starting') : t('buttons.startCut')}
           </button>
         </div>
       </header>
 
       <section
-        className={drawerOpen ? "design-frame design-frame--shape-drawer" : "design-frame"}
-        aria-label={language === "nl" ? "Ontwerpwerkruimte" : "Design workspace"}
+        className={drawerOpen ? 'design-frame design-frame--shape-drawer' : 'design-frame'}
+        aria-label={language === 'nl' ? 'Ontwerpwerkruimte' : 'Design workspace'}
       >
-        <aside className="tool-rail no-drag" aria-label={language === "nl" ? "Gereedschappen" : "Tools"}>
+        <aside
+          className="tool-rail no-drag"
+          aria-label={language === 'nl' ? 'Gereedschappen' : 'Tools'}
+        >
           <button
-            className={activeDrawer === "image" ? "tool-button tool-button--active" : "tool-button"}
+            className={activeDrawer === 'image' ? 'tool-button tool-button--active' : 'tool-button'}
             type="button"
-            onClick={() => toggleDrawer("image")}
-            aria-expanded={activeDrawer === "image"}
+            onClick={() => toggleDrawer('image')}
+            aria-expanded={activeDrawer === 'image'}
           >
-            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="16" height="16" rx="2.5"/><path d="M3 14.5 7.5 10l3.5 3.5 2.5-2.5 5.5 5.5"/><circle cx="14.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
-            {language === "nl" ? "Beeld" : "Image"}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 22 22"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="16" height="16" rx="2.5" />
+              <path d="M3 14.5 7.5 10l3.5 3.5 2.5-2.5 5.5 5.5" />
+              <circle cx="14.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" />
+            </svg>
+            {language === 'nl' ? 'Beeld' : 'Image'}
           </button>
           <button className="tool-button" type="button" onClick={onAddText}>
-            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6 5h10M11 5v12M8 17h6"/></svg>
-            {language === "nl" ? "Tekst" : "Text"}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 22 22"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M6 5h10M11 5v12M8 17h6" />
+            </svg>
+            {language === 'nl' ? 'Tekst' : 'Text'}
           </button>
           <button
-            className={activeDrawer === "shapes" ? "tool-button tool-button--active" : "tool-button"}
+            className={
+              activeDrawer === 'shapes' ? 'tool-button tool-button--active' : 'tool-button'
+            }
             type="button"
-            onClick={() => toggleDrawer("shapes")}
-            aria-expanded={activeDrawer === "shapes"}
+            onClick={() => toggleDrawer('shapes')}
+            aria-expanded={activeDrawer === 'shapes'}
             aria-controls="shape-library-panel"
           >
-            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="11" width="9" height="9" rx="1.5"/><circle cx="15.5" cy="6.5" r="4.5"/></svg>
-            {language === "nl" ? "Vormen" : "Shapes"}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 22 22"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="2" y="11" width="9" height="9" rx="1.5" />
+              <circle cx="15.5" cy="6.5" r="4.5" />
+            </svg>
+            {language === 'nl' ? 'Vormen' : 'Shapes'}
           </button>
           <button
-            className={activeDrawer === "spotify" ? "tool-button tool-button--active" : "tool-button"}
+            className={
+              activeDrawer === 'spotify' ? 'tool-button tool-button--active' : 'tool-button'
+            }
             type="button"
-            onClick={() => toggleDrawer("spotify")}
-            aria-expanded={activeDrawer === "spotify"}
+            onClick={() => toggleDrawer('spotify')}
+            aria-expanded={activeDrawer === 'spotify'}
           >
-            <svg aria-hidden="true" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="11" r="3.2"/><path d="M11 9.5v3M13.5 6.5v9M16 8.5v5M18.5 10v2"/></svg>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 22 22"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="5" cy="11" r="3.2" />
+              <path d="M11 9.5v3M13.5 6.5v9M16 8.5v5M18.5 10v2" />
+            </svg>
             Spotify
           </button>
         </aside>
 
-        {activeDrawer === "image" ? (
+        {activeDrawer === 'image' ? (
           <ImageLibraryPanel
             language={language}
             hasActiveAiKey={hasActiveAiKey}
             images={imageLibrary}
             loading={imageLibraryLoading}
-            onAskAi={() => { onOpenAiGenerate(); }}
+            onAskAi={() => {
+              onOpenAiGenerate();
+            }}
             onFileImport={onSvgFileChange}
-            onDotPrintImport={(event) => { onDotPrintImport(event); setActiveDrawer(null); }}
-            onUseImage={(img) => { onAddLibraryImageToWorkspace(img); setActiveDrawer(null); }}
+            onDotPrintImport={(event) => {
+              onDotPrintImport(event);
+              setActiveDrawer(null);
+            }}
+            onUseImage={(img) => {
+              onAddLibraryImageToWorkspace(img);
+              setActiveDrawer(null);
+            }}
             onRenameImage={onRenameLibraryImage}
             onDeleteImage={onDeleteLibraryImage}
           />
         ) : null}
 
-        {activeDrawer === "shapes" ? (
+        {activeDrawer === 'shapes' ? (
           <ShapeLibraryPanel
             language={language}
             onAddShape={(shapeKind, options) => {
@@ -1726,7 +1676,7 @@ export function DesignWorkspace({
           />
         ) : null}
 
-        {activeDrawer === "spotify" ? (
+        {activeDrawer === 'spotify' ? (
           <SpotifyCodePanel
             language={language}
             replacing={spotifyReplaceTarget?.fileName ?? null}
@@ -1740,878 +1690,135 @@ export function DesignWorkspace({
           />
         ) : null}
 
-        <section className="workspace-stage no-drag">
-          <div className="stage-statusbar">
-            <strong>{matName}</strong>
-            <span>{materialName}</span>
-            <span>{formatLength(matDimensions.width, measurementUnit, language).replace(/ \S+$/, "")} × {formatLength(matDimensions.height, measurementUnit, language)}</span>
-          </div>
-          <div className="ruler-corner">0</div>
-          <Ruler axis="x" ticks={xTicks} unit={measurementUnit} />
-          <Ruler axis="y" ticks={yTicks} unit={measurementUnit} />
-          <div
-            ref={viewportRef}
-            className="viewport"
-            style={spacePanReady ? { cursor: "grab" } : undefined}
-            onPointerDown={handleViewportPointerDown}
-            onPointerMove={handleViewportPointerMove}
-            onPointerUp={handleViewportPointerUp}
-            onPointerCancel={handleViewportPointerCancel}
-            onContextMenu={(e) => e.preventDefault()}
-          >
-            <div className="infinite-grid" />
-            {selectionBarPosition ? (
-              <div
-                ref={selectionBarRef}
-                className="selection-bar"
-                style={{ left: selectionBarPosition.left, top: selectionBarPosition.top }}
-                onPointerDown={(event) => event.stopPropagation()}
-                onContextMenu={(event) => event.stopPropagation()}
-              >
-                <SelectionActionBar
-                  language={language}
-                  canGroup={selectedItems.length >= 2 && !selectedItems.some((item) => item.textContent || item.dotPrint || item.dashed?.enabled)}
-                  canUngroup={canUngroupSelection}
-                  canReorder={selectedSvgIds.length === 1 && importedSvgs.length > 1}
-                  onDuplicate={() => { if (onCopySvgs()) onPasteSvgs(); }}
-                  onDelete={onDeleteSvgs}
-                  onGroup={onGroupSvgs}
-                  onUngroup={onUngroupSvg}
-                  onFlipX={onFlipX}
-                  onFlipY={onFlipY}
-                  onBringForward={() => onMoveLayer("forward")}
-                  onSendBackward={() => onMoveLayer("backward")}
-                />
-              </div>
-            ) : null}
-            {marqueeRect ? (
-              <div
-                className="marquee-box"
-                style={{ left: marqueeRect.left, top: marqueeRect.top, width: marqueeRect.width, height: marqueeRect.height }}
-              />
-            ) : null}
-            <div
-              ref={workpieceTransformRef}
-              className="workpiece-transform"
-              style={{ transform: getViewportTransform({ zoom, pan }) }}
-            >
-              <WorkspaceMat kind={getMatKind(selectedMatPreset)} width={workpieceWidth} height={workpieceHeight} />
-              {(() => {
-                const gridPx = measurementUnit === "in"
-                  ? WORKSPACE_PIXELS_PER_INCH * 0.25
-                  : measurementUnit === "cm"
-                    ? WORKSPACE_PIXELS_PER_INCH * 0.5 / 2.54
-                    : WORKSPACE_PIXELS_PER_INCH * 5 / 25.4;
-                const gridStyle = {
-                  backgroundImage: "linear-gradient(rgba(41,37,33,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(41,37,33,0.06) 1px,transparent 1px)",
-                  backgroundSize: `${gridPx}px ${gridPx}px`,
-                  backgroundPosition: "-1px -1px",
-                };
-                const squareCorners = getMatKind(selectedMatPreset) === "card";
-                const emptyState = importedSvgs.length === 0 ? (
-                  <div className="empty-workpiece">
-                    <strong>{language === "nl" ? "Leeg project" : "Blank project"}</strong>
-                    <span>{language === "nl" ? "Kies een vorm of voeg een eigen ontwerp toe." : "Choose a shape or add your own design."}</span>
-                  </div>
-                ) : null;
-                return (
-                  <div
-                    className="workpiece-paper"
-                    style={{
-                      width: workpieceWidth,
-                      height: workpieceHeight,
-                      borderRadius: squareCorners ? 0 : undefined,
-                      // With a card size chosen, only that area is paper; the rest of the
-                      // sheet shows the plain workspace background — but the grid spans both.
-                      backgroundColor: activeCardSize ? "rgb(243,242,239)" : paperColor,
-                      ...gridStyle,
-                    }}
-                  >
-                    {activeCardSize ? (
-                      // The card area: paper colour on top, and it hosts the empty-state
-                      // text so the message is centred in the selected card size.
-                      <div
-                        className="workpiece-card-paper"
-                        style={{ width: cardWidth, height: cardHeight, backgroundColor: paperColor, borderRadius: squareCorners ? 0 : undefined, ...gridStyle }}
-                      >
-                        {emptyState}
-                      </div>
-                    ) : (
-                      emptyState
-                    )}
-                  </div>
-                );
-              })()}
-              {getMatKind(selectedMatPreset) === "card" ? (
-                <WorkspaceCardGuides width={workpieceWidth} height={workpieceHeight} activeCardSize={activeCardSize} />
-              ) : null}
-              {isInsertCard && insertSlots ? (
-                <InsertSlotsOverlay width={cardWidth} height={cardHeight} color={getBehindColor(tools)} />
-              ) : null}
-              <div
-                className="workspace-image-layer"
-                style={{ width: workpieceWidth, height: workpieceHeight }}
-                aria-label={language === "nl" ? "Afbeeldingslaag" : "Image layer"}
-              >
-                {importedSvgs.length > 0
-                  ? (
-                  importedSvgs.map((item) => (
-                    <div
-                      key={item.id}
-                      role="button"
-                      tabIndex={0}
-                      data-workspace-item-id={item.id}
-                      className={`workspace-image-item${selectedSvgIdSet.has(item.id) ? " workspace-image-item--selected" : ""}${item.id === selectedSvgId ? " workspace-image-item--primary-selected" : ""}${editingTextId === item.id ? " workspace-image-item--text-editing" : ""}`}
-                      style={{
-                        width: getWorkspaceItemVisualSize(item.frame, item.transform).width,
-                        height: getWorkspaceItemVisualSize(item.frame, item.transform).height,
-                        transform: getWorkspaceItemTransform(item.transform),
-                      }}
-                      aria-label={
-                        language === "nl"
-                          ? `${item.fileName} kiezen en verplaatsen`
-                          : `Select and move ${item.fileName}`
-                      }
-                      onPointerDown={(event) => handleItemPointerDown(event, item)}
-                      onPointerMove={(event) => handleItemPointerMove(event, item)}
-                      onPointerUp={(event) => stopDirectItemDrag(event, item)}
-                      onPointerCancel={(event) => stopDirectItemDrag(event, item)}
-                      onContextMenu={(event) => event.preventDefault()}
-                    >
-                      {editingTextId === item.id && item.textContent ? (
-                        <TextEditOverlay
-                          item={item}
-                          onChange={(text) => onTextContentChange(item.id, { text })}
-                          onCommit={(text) => {
-                            onTextContentChange(item.id, { text });
-                            onExitTextEdit(item.id);
-                          }}
-                          onCancel={() => onExitTextEdit(item.id)}
-                        />
-                      ) : (
-                        <WorkspaceObjectArtwork item={item} tools={tools} />
-                      )}
-                    </div>
-                  ))
-                    )
-                  : null}
-                <div ref={snapGuideLayerRef} className="snap-guides" aria-hidden="true" />
-                {moveableTargets.length > 0 && !isDirectItemDragging && !editingTextId ? (
-                  <Moveable
-                    ref={moveableRef}
-                    target={moveableTargets.length === 1 ? moveableTargets[0] : moveableTargets}
-                    draggable
-                    scalable
-                    rotatable
-                    groupable={moveableTargets.length > 1}
-                    origin={false}
-                    keepRatio={selectionIsAllText}
-                    throttleDrag={0}
-                    throttleScale={0}
-                    throttleRotate={0}
-                    zoom={1 / Math.max(0.01, zoom)}
-                    renderDirections={selectionIsAllLines ? ["w", "e"] : ["nw", "n", "ne", "w", "e", "sw", "s", "se"]}
-                    snappable={!snapSuspended}
-                    snapThreshold={SNAP_SCREEN_PX / Math.max(0.01, zoom)}
-                    snapDirections={SNAP_ALL_DIRECTIONS}
-                    elementSnapDirections={SNAP_ALL_DIRECTIONS}
-                    elementGuidelines={snapElements}
-                    verticalGuidelines={[0, cardWidth / 2, cardWidth]}
-                    horizontalGuidelines={[0, cardHeight / 2, cardHeight]}
-                    snapGap={false}
-                    isDisplaySnapDigit={false}
-                    isDisplayInnerSnapDigit={false}
-                    onClick={handleMoveableModifierClick}
-                    onClickGroup={handleMoveableModifierClick}
-                    onDragStart={handleMoveableDragStart}
-                    onDrag={handleMoveableDrag}
-                    onDragEnd={commitMoveableTransforms}
-                    onDragGroupStart={handleMoveableDragGroupStart}
-                    onDragGroup={handleMoveableDragGroup}
-                    onDragGroupEnd={commitMoveableTransforms}
-                    onScaleStart={handleMoveableScaleStart}
-                    onScale={handleMoveableScale}
-                    onScaleEnd={commitMoveableTransforms}
-                    onScaleGroupStart={handleMoveableScaleGroupStart}
-                    onScaleGroup={handleMoveableScaleGroup}
-                    onScaleGroupEnd={commitMoveableTransforms}
-                    onRotateStart={handleMoveableRotateStart}
-                    onRotate={handleMoveableRotate}
-                    onRotateEnd={commitMoveableTransforms}
-                    onRotateGroupStart={handleMoveableRotateGroupStart}
-                    onRotateGroup={handleMoveableRotateGroup}
-                    onRotateGroupEnd={commitMoveableTransforms}
-                  />
-                ) : null}
-              </div>
-            </div>
-          </div>
-          <div className="zoom-controls no-drag" aria-label={language === "nl" ? "Zoom" : "Zoom"}>
-            <button type="button" onClick={() => zoomFromCenter(zoom - 0.1)}>−</button>
-            <button type="button" onClick={resetZoomToActualSize}>{Math.round(zoom * 100)}%</button>
-            <button type="button" onClick={() => zoomFromCenter(zoom + 0.1)}>＋</button>
-          </div>
-        </section>
+        <CanvasViewport
+          model={{
+            matName,
+            materialName,
+            matDimensions,
+            measurementUnit,
+            language,
+            xTicks,
+            yTicks,
+            spacePanReady,
+            selectionBarPosition,
+            selectedItems,
+            canUngroupSelection,
+            selectedSvgIds,
+            importedSvgs,
+            marqueeRect,
+            zoom,
+            pan,
+            selectedMatPreset,
+            workpieceWidth,
+            workpieceHeight,
+            activeCardSize,
+            paperColor,
+            cardWidth,
+            cardHeight,
+            isInsertCard,
+            insertSlots,
+            tools,
+            selectedSvgIdSet,
+            selectedSvgId,
+            editingTextId,
+            moveableTargets,
+            isDirectItemDragging,
+            selectionIsAllText,
+            selectionIsAllLines,
+            snapSuspended,
+            SNAP_SCREEN_PX,
+            snapElements,
+          }}
+          actions={{
+            handleViewportPointerDown,
+            handleViewportPointerMove,
+            handleViewportPointerUp,
+            handleViewportPointerCancel,
+            onCopySvgs,
+            onPasteSvgs,
+            onDeleteSvgs,
+            onGroupSvgs,
+            onUngroupSvg,
+            onFlipX,
+            onFlipY,
+            onMoveLayer,
+            handleItemPointerDown,
+            handleItemPointerMove,
+            stopDirectItemDrag,
+            onTextContentChange,
+            onExitTextEdit,
+            handleMoveableModifierClick,
+            handleMoveableDragStart,
+            handleMoveableDrag,
+            commitMoveableTransforms,
+            handleMoveableDragGroupStart,
+            handleMoveableDragGroup,
+            handleMoveableScaleStart,
+            handleMoveableScale,
+            handleMoveableScaleGroupStart,
+            handleMoveableScaleGroup,
+            handleMoveableRotateStart,
+            handleMoveableRotate,
+            handleMoveableRotateGroupStart,
+            handleMoveableRotateGroup,
+            zoomFromCenter,
+            resetZoomToActualSize,
+          }}
+          refs={{
+            viewportRef,
+            selectionBarRef,
+            workpieceTransformRef,
+            snapGuideLayerRef,
+            moveableRef,
+          }}
+        />
 
-        <aside className="project-drawer no-drag">
-          {projectMessage ? <p className="ok project-message">{projectMessage}</p> : null}
-          {importMessage ? <p className="warn">{importMessage}</p> : null}
-
-          <div className="drawer-section">
-            {(() => {
-              const nl = language === "nl";
-              // Selected objects in SELECTION order — the first one drives the shown values.
-              const selectedObjs = selectedSvgIds
-                .map((id) => importedSvgs.find((x) => x.id === id))
-                .filter((x): x is WorkspaceSvgItem => Boolean(x));
-              const primary = selectedObjs[0] ?? null;
-              const pens = getPens(tools);
-              const behindColor = getBehindColor(tools);
-
-              if (!primary) return (
-                <>
-                  <p className="drawer-section__title">{nl ? "Werkstuk" : "Workpiece"}</p>
-                  <div className="object-settings">
-                    <div className="object-settings__row object-settings__row--mat object-settings__row--first">
-                      <label className="object-settings__label">{nl ? "Materiaal" : "Material"}</label>
-                      <div className="mat-picker" role="group">
-                        {([
-                          { key: "paper" as const, label: nl ? "Papier" : "Paper", defaultId: 218 },
-                          { key: "insert" as const, label: nl ? "Inlegkaart" : "Insert card", defaultId: MATERIAL_INSERT_ID },
-                          { key: "vinyl" as const, label: "Vinyl", defaultId: MATERIAL_VINYL_ID },
-                        ]).map((c) => {
-                          const active = materialCategoryOf(selectedMaterialId) === c.key;
-                          return (
-                            <button
-                              key={c.key}
-                              type="button"
-                              className={`material-btn${active ? " material-btn--active" : ""}`}
-                              onClick={() => onMaterialChange(active ? selectedMaterialId : c.defaultId)}
-                              aria-pressed={active}
-                              title={c.label}
-                            >
-                              <MaterialIcon kind={c.key} />
-                              <span className="mat-btn__label">{c.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {materialCategoryOf(selectedMaterialId) === "paper" ? (
-                        <div className="weight-picker">
-                          <span className="weight-picker__caption">{nl ? "Dikte" : "Weight"}</span>
-                          <div className="weight-seg" role="group">
-                            {([
-                              { id: 218, label: nl ? "Licht" : "Light", level: "light" as const },
-                              { id: 19, label: nl ? "Middel" : "Medium", level: "medium" as const },
-                              { id: 211, label: nl ? "Zwaar" : "Heavy", level: "heavy" as const },
-                            ]).map((w) => (
-                              <button
-                                key={w.id}
-                                type="button"
-                                className={`weight-seg__btn${selectedMaterialId === w.id ? " weight-seg__btn--active" : ""}`}
-                                onClick={() => onMaterialChange(w.id)}
-                                aria-pressed={selectedMaterialId === w.id}
-                                title={w.label}
-                              >
-                                <WeightIcon level={w.level} />
-                                <span>{w.label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                      {materialCategoryOf(selectedMaterialId) === "insert" ? (
-                        <>
-                          <div className="weight-picker">
-                            <span className="weight-picker__caption">{nl ? "Kaartformaat" : "Card size"}</span>
-                            <div className="weight-seg" role="group">
-                              {([
-                                { size: "small" as const, label: nl ? "Klein" : "Small" },
-                                { size: "medium" as const, label: nl ? "Middel" : "Medium" },
-                                { size: "large" as const, label: nl ? "Groot" : "Large" },
-                              ]).map((c) => (
-                                <button
-                                  key={c.size}
-                                  type="button"
-                                  className={`weight-seg__btn${cardSize === c.size ? " weight-seg__btn--active" : ""}`}
-                                  onClick={() => onCardSizeChange(c.size)}
-                                  aria-pressed={cardSize === c.size}
-                                  title={c.label}
-                                >
-                                  <span>{c.label}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="weight-picker weight-picker--toggle">
-                            <span className="weight-picker__caption">{nl ? "Insteeksleuven" : "Insert slots"}</span>
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={insertSlots}
-                              className={`toggle-switch${insertSlots ? " toggle-switch--on" : ""}`}
-                              onClick={() => onInsertSlotsChange(!insertSlots)}
-                              title={nl ? "Hoeksleuven voor de inlegkaart toevoegen" : "Add corner slots for the insert card"}
-                            >
-                              <span className="toggle-switch__knob" />
-                            </button>
-                          </div>
-                        </>
-                      ) : null}
-                    </div>
-                    <div className="object-settings__row object-settings__row--mat">
-                      <label className="object-settings__label">{nl ? "Mat" : "Mat"}</label>
-                      <div className="mat-picker" role="group">
-                        {([
-                          { id: "joy-standard", variant: "long" as const, label: nl ? "Lang" : "Long" },
-                          { id: "joy-standard-short", variant: "short" as const, label: nl ? "Kort" : "Short" },
-                          { id: "joy-card", variant: "card" as const, label: nl ? "Kaart" : "Card" },
-                        ]).map((m) => (
-                          <button
-                            key={m.id}
-                            type="button"
-                            className={`mat-btn${selectedMatPreset === m.id ? " mat-btn--active" : ""}`}
-                            onClick={() => onMatChange(m.id)}
-                            aria-pressed={selectedMatPreset === m.id}
-                            title={getMatName(m.id, language) ?? m.id}
-                          >
-                            <span className="mat-btn__icon"><MatIcon variant={m.variant} /></span>
-                            <span className="mat-btn__label">{m.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="drawer-section__title" style={{ marginTop: 16 }}>{t("colors.sectionTitle")}</p>
-                  <div className="color-rows">
-                    <ColorRow
-                      icon={<PaperIcon />}
-                      label={t("colors.paper")}
-                      color={paperColor}
-                      onChange={onPaperColorChange}
-                    />
-                    <ColorRow
-                      icon={<BehindIcon />}
-                      label={t("colors.behind")}
-                      color={behindColor}
-                      onChange={(c) => { recolorMatchingObjects(behindColor, c); onToolsChange(withBehindColor(tools, c)); }}
-                    />
-                  </div>
-
-                  <p className="drawer-section__title" style={{ marginTop: 16 }}>{t("pens.sectionTitle")}</p>
-                  {(() => {
-                    const clashing = pens.some(
-                      (p) => p.color.toLowerCase() === paperColor.toLowerCase() || p.color.toLowerCase() === behindColor.toLowerCase(),
-                    );
-                    // A pen is a duplicate if an EARLIER pen already uses its colour.
-                    const isDuplicatePen = (index: number) =>
-                      pens.some((p, j) => j < index && p.color.toLowerCase() === pens[index]!.color.toLowerCase());
-                    const hasDuplicatePens = pens.some((_, i) => isDuplicatePen(i));
-                    // Fix: drop later pens whose colour already appears earlier. Objects keep
-                    // their colour (identical to the kept pen), so they auto-map to the first one.
-                    const dedupePens = () => {
-                      const seen = new Set<string>();
-                      const deduped = pens.filter((p) => {
-                        const key = p.color.toLowerCase();
-                        if (seen.has(key)) return false;
-                        seen.add(key);
-                        return true;
-                      });
-                      onToolsChange(withPens(tools, deduped));
-                    };
-                    return (
-                      <>
-                        <div className="pen-hexes">
-                          {pens.map((pen, index) => {
-                            const clash = pen.color.toLowerCase() === paperColor.toLowerCase() || pen.color.toLowerCase() === behindColor.toLowerCase() || isDuplicatePen(index);
-                            return (
-                              <span key={pen.id} className="pen-hex-wrap">
-                                <label
-                                  className="pen-hex"
-                                  title={nl ? "Penkleur wijzigen" : "Change pen color"}
-                                >
-                                  <HexShape color={pen.color} warn={clash} />
-                                  <input
-                                    type="color"
-                                    value={pen.color}
-                                    onChange={(e) => {
-                                      const c = e.target.value;
-                                      recolorMatchingObjects(pen.color, c);
-                                      onToolsChange(withPens(tools, pens.map((p) => (p.id === pen.id ? { ...p, color: c } : p))));
-                                    }}
-                                  />
-                                </label>
-                                {pens.length > 1 && (
-                                  <button
-                                    type="button"
-                                    className="pen-hex__remove"
-                                    aria-label={t("pens.remove")}
-                                    title={t("pens.remove")}
-                                    onClick={() => onToolsChange(withPens(tools, pens.filter((p) => p.id !== pen.id)))}
-                                  >
-                                    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 3l6 6M9 3l-6 6"/></svg>
-                                  </button>
-                                )}
-                              </span>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            className="pen-hex pen-hex--add"
-                            aria-label={t("pens.add")}
-                            title={t("pens.add")}
-                            onClick={() => {
-                              // Next unused palette colour, also avoiding the paper/behind
-                              // colours so a fresh pen never triggers a warning.
-                              const color = nextPenColor([...pens.map((p) => p.color), paperColor, behindColor]);
-                              onToolsChange(withPens(tools, [...pens, { id: `pen-${Date.now()}`, color, type: "pen" }]));
-                            }}
-                          >
-                            <HexShape add />
-                          </button>
-                        </div>
-                        {clashing && (
-                          <p className="pen-hex-warn">⚠ {nl ? "Een pen heeft dezelfde kleur als het papier of de kleur erachter." : "A pen is the same color as the paper or behind color."}</p>
-                        )}
-                        {hasDuplicatePens && (
-                          <p className="pen-hex-warn">
-                            ⚠ {t("warn.penDuplicate")}
-                            <button type="button" className="pen-hex-warn__fix" onClick={dedupePens}>
-                              {t("pens.fix")}
-                            </button>
-                          </p>
-                        )}
-                      </>
-                    );
-                  })()}
-                </>
-              );
-
-              // One or more objects selected: show only controls common to ALL of them.
-              // Values come from the first selected (primary); edits apply to every one.
-              const ids = selectedObjs.map((o) => o.id);
-              const multi = selectedObjs.length > 1;
-              const allText = selectedObjs.every((o) => Boolean(o.textContent));
-              const allCorners = selectedObjs.every((o) => o.shapeKind && shapeHasCorners(o.shapeKind));
-              // Fill is a pen option: offered only when everything selected is drawn with a pen.
-              const allPenFillable = selectedObjs.every((o) => canPenFill(o, tools));
-              // Dot prints pick their pens per ink, so they have their own panel instead of a tool.
-              const allDotPrint = selectedObjs.every((o) => o.dotPrint);
-              const primaryColor = primary.textContent ? primary.textContent.color : (primary.paths[0]?.stroke ?? "#000000");
-
-              // Apply a tool/pen colour to the whole selection (text stores it in its
-              // content, shapes/SVGs on the path stroke).
-              const applyColor = (c: string) => {
-                const textIds = selectedObjs.filter((o) => o.textContent).map((o) => o.id);
-                const otherIds = selectedObjs.filter((o) => !o.textContent).map((o) => o.id);
-                if (textIds.length) onTextContentChange(textIds, { color: c });
-                if (otherIds.length) onChangeObjectColor(otherIds, c);
-              };
-
-              const title = multi
-                ? (nl ? `${selectedObjs.length} geselecteerd` : `${selectedObjs.length} selected`)
-                : allText ? (nl ? "Tekst" : "Text") : (nl ? "Geselecteerd" : "Selection");
-
-              return (
-                <>
-                  <p className="drawer-section__title">{title}</p>
-                  <div className="object-settings">
-                    {!multi && !allText ? <p className="object-settings__name">{primary.fileName}</p> : null}
-
-                    {allDotPrint ? (
-                      <DotPrintSettingsPanel language={language} items={selectedObjs} tools={tools}
-                        onChange={(patch) => onDotPrintChange(ids, patch)} />
-                    ) : (
-                      <div className="object-settings__row object-settings__row--swatches">
-                        <label className="object-settings__label">{t("object.tool")}</label>
-                        <SwatchPicker tools={tools} selectedColor={primaryColor} onPick={applyColor} language={language} />
-                      </div>
-                    )}
-
-                    {!multi && primary.spotify ? (
-                      <div className="object-settings__row object-settings__row--swatches">
-                        <span className="object-settings__label">{nl ? "Spotify-nummer" : "Spotify song"}</span>
-                        <span className="object-settings__hint">{primary.spotify.name}</span>
-                        <button type="button" className="object-settings__edit-btn" onClick={() => openSpotifyReplace(primary.id)}>
-                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 5.5h9l-2.5-2.5M13.5 10.5h-9l2.5 2.5"/></svg>
-                          {nl ? "Ander nummer kiezen" : "Change song"}
-                        </button>
-                      </div>
-                    ) : null}
-
-                    {allText ? (() => {
-                      const tc = primary.textContent!;
-                      return (
-                        <>
-                          <div className="object-settings__row">
-                            <label className="object-settings__label" htmlFor="txt-font">{nl ? "Lettertype" : "Font"}</label>
-                            <select id="txt-font" className="object-settings__select"
-                              value={tc.fontFamily}
-                              onChange={(e) => onTextContentChange(ids, { fontFamily: e.target.value })}
-                            >
-                              <optgroup label={nl ? "Generiek" : "Generic"}>
-                                {["sans-serif","serif","monospace","cursive","fantasy"].map((f) => (
-                                  <option key={f} value={f}>{f}</option>
-                                ))}
-                              </optgroup>
-                              {FONT_GROUPS.map((g) => (
-                                <optgroup key={g.key} label={nl ? g.nl : g.en}>
-                                  {g.families.map((f) => (
-                                    <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>
-                                  ))}
-                                </optgroup>
-                              ))}
-                              {systemFonts.length > 0 ? (
-                                <optgroup label={nl ? "Systeemlettertypen" : "System fonts"}>
-                                  {systemFonts.map((f) => (
-                                    <option key={f} value={f}>{f}</option>
-                                  ))}
-                                </optgroup>
-                              ) : (
-                                <optgroup label={nl ? "Veelgebruikt" : "Common"}>
-                                  {["Arial","Arial Black","Helvetica","Helvetica Neue","Verdana","Tahoma","Trebuchet MS","Georgia","Times New Roman","Palatino","Garamond","Courier New","Lucida Console","Monaco","Menlo","Impact","Comic Sans MS","Gill Sans","Optima","Futura","Century Gothic","Calibri","Cambria","Segoe UI","Franklin Gothic Medium"].map((f) => (
-                                    <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
-                                  ))}
-                                </optgroup>
-                              )}
-                            </select>
-                          </div>
-                          <div className="object-settings__row">
-                            <label className="object-settings__label">{nl ? "Stijl" : "Style"}</label>
-                            <div className="text-style-btns">
-                              <button type="button" className={`text-style-btn${tc.fontWeight === "bold" ? " text-style-btn--active" : ""}`}
-                                onClick={() => onTextContentChange(ids, { fontWeight: tc.fontWeight === "bold" ? "normal" : "bold" })}
-                              ><strong>B</strong></button>
-                              <button type="button" className={`text-style-btn${tc.fontStyle === "italic" ? " text-style-btn--active" : ""}`}
-                                onClick={() => onTextContentChange(ids, { fontStyle: tc.fontStyle === "italic" ? "normal" : "italic" })}
-                              ><em>I</em></button>
-                              <button type="button" className={`text-style-btn${tc.textDecoration === "underline" ? " text-style-btn--active" : ""}`}
-                                onClick={() => onTextContentChange(ids, { textDecoration: tc.textDecoration === "underline" ? "none" : "underline" })}
-                              ><span style={{ textDecoration: "underline" }}>U</span></button>
-                              <span className="text-style-divider"/>
-                              {(() => {
-                                // Alignment only matters across multiple lines (a single line auto-hugs
-                                // its box), so disable until the (primary) text has a line break.
-                                const isMultiLine = tc.text.includes("\n");
-                                const disabledTip = nl
-                                  ? "Alleen voor tekst met meerdere regels"
-                                  : "Only available for multi-line text";
-                                return (["left","center","right"] as const).map((align) => (
-                                  <button key={align} type="button" disabled={!isMultiLine}
-                                    className={`text-style-btn${isMultiLine && (tc.textAlign ?? "left") === align ? " text-style-btn--active" : ""}`}
-                                    onClick={() => onTextContentChange(ids, { textAlign: align })}
-                                    title={isMultiLine ? align : disabledTip}
-                                  >
-                                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                      {align === "left"   && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="2" y1="6" x2="9" y2="6"/><line x1="2" y1="9" x2="11" y2="9"/><line x1="2" y1="12" x2="7" y2="12"/></>}
-                                      {align === "center" && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="4" y1="6" x2="10" y2="6"/><line x1="3" y1="9" x2="11" y2="9"/><line x1="5" y1="12" x2="9" y2="12"/></>}
-                                      {align === "right"  && <><line x1="2" y1="3" x2="12" y2="3"/><line x1="5" y1="6" x2="12" y2="6"/><line x1="3" y1="9" x2="12" y2="9"/><line x1="7" y1="12" x2="12" y2="12"/></>}
-                                    </svg>
-                                  </button>
-                                ));
-                              })()}
-                            </div>
-                          </div>
-                          <div className="object-settings__row">
-                            <label className="object-settings__label" htmlFor="txt-size">{nl ? "Grootte" : "Size"} <em>{formatLengthPx(tc.fontSize, measurementUnit, language)}</em></label>
-                            <input id="txt-size" type="range" min={10} max={200} step={1} value={tc.fontSize}
-                              onChange={(e) => onTextContentChange(ids, { fontSize: Number(e.target.value) })}
-                              className="text-slider"
-                            />
-                          </div>
-                          {/* Editing content is single-object only — you wouldn't retype two texts at once. */}
-                          {!multi ? (
-                            <button type="button" className="object-settings__edit-btn"
-                              onClick={() => onEnterTextEdit(primary.id)}
-                            >
-                              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M11 2l3 3-8 8H3v-3z"/></svg>
-                              {nl ? "Tekst bewerken" : "Edit text"}
-                            </button>
-                          ) : null}
-                          <MoreOptions id="text" language={language}>
-                          <div className="object-settings__row">
-                            <label className="object-settings__label" htmlFor="txt-ls">{nl ? "Letterafstand" : "Letter spacing"} <em>{formatLengthPx(tc.letterSpacing, measurementUnit === "in" ? "in" : "mm", language)}</em></label>
-                            <input id="txt-ls" type="range" min={-5} max={30} step={0.5} value={tc.letterSpacing}
-                              onChange={(e) => onTextContentChange(ids, { letterSpacing: Number(e.target.value) })}
-                              className="text-slider"
-                            />
-                          </div>
-                          <div className="object-settings__row">
-                            <label className="object-settings__label" htmlFor="txt-lh">{nl ? "Regelafstand" : "Line height"} <em>{tc.lineHeight.toFixed(2)}×</em></label>
-                            <input id="txt-lh" type="range" min={0.8} max={3} step={0.05} value={tc.lineHeight}
-                              onChange={(e) => onTextContentChange(ids, { lineHeight: Number(e.target.value) })}
-                              className="text-slider"
-                            />
-                          </div>
-                          <div className="object-settings__row object-settings__row--toggle">
-                            <label className="object-settings__label" htmlFor="txt-singleline">
-                              {nl ? "Eén lijn (pen)" : "Single line (pen)"}
-                            </label>
-                            <button id="txt-singleline" type="button" role="switch"
-                              aria-checked={Boolean(tc.singleLine)}
-                              className={`toggle-switch${tc.singleLine ? " toggle-switch--on" : ""}`}
-                              onClick={() => onTextContentChange(ids, { singleLine: !tc.singleLine })}
-                              title={nl
-                                ? "Tekst tekenen/snijden als één pennenlijn in plaats van gevulde letters"
-                                : "Draw/cut text as a single pen line instead of filled letters"}
-                            >
-                              <span className="toggle-switch__knob" />
-                            </button>
-                          </div>
-                          </MoreOptions>
-                        </>
-                      );
-                    })() : null}
-
-                    {!editingTextId ? (
-                      <AlignPanel language={language} count={selectedObjs.length} onAlign={onAlign} onDistribute={onDistribute} />
-                    ) : null}
-
-                    {allCorners ? (() => {
-                      const maxRadius = Math.round(Math.min(primary.frame.width, primary.frame.height) / 2);
-                      const radius = Math.round(primary.cornerRadius ?? 0);
-                      return (
-                        <div className="object-settings__row">
-                          <label className="object-settings__label" htmlFor="shape-radius">
-                            {nl ? "Hoekronding" : "Corner radius"} <em>{formatLengthPx(radius, measurementUnit === "in" ? "in" : "mm", language)}</em>
-                          </label>
-                          <input id="shape-radius" type="range" min={0} max={maxRadius} step={1} value={Math.min(radius, maxRadius)}
-                            onChange={(e) => onShapeCornerRadiusChange(ids, Number(e.target.value))}
-                            className="text-slider"
-                          />
-                        </div>
-                      );
-                    })() : null}
-
-                    {allPenFillable ? (() => {
-                      const fill = primary.penFill ?? { ...DEFAULT_PEN_FILL, enabled: false };
-                      return (
-                        <>
-                          <div className="object-settings__row object-settings__row--toggle">
-                            <label className="object-settings__label" htmlFor="pen-fill-toggle">
-                              {nl ? "Opvullen (pen)" : "Fill (pen)"}
-                            </label>
-                            <button id="pen-fill-toggle" type="button" role="switch"
-                              aria-checked={fill.enabled}
-                              className={`toggle-switch${fill.enabled ? " toggle-switch--on" : ""}`}
-                              onClick={() => onPenFillChange(ids, { enabled: !fill.enabled })}
-                              title={nl
-                                ? "Vul de vorm met een patroon van penlijnen"
-                                : "Fill the shape with a pattern of pen lines"}
-                            >
-                              <span className="toggle-switch__knob" />
-                            </button>
-                          </div>
-                          {fill.enabled ? (
-                            <>
-                              <div className="object-settings__row object-settings__row--swatches">
-                                <span className="object-settings__label">{nl ? "Patroon" : "Pattern"}</span>
-                                <div className="pen-fill-patterns" role="radiogroup" aria-label={nl ? "Vulpatroon" : "Fill pattern"}>
-                                  {PEN_FILL_PATTERNS.map((pattern) => (
-                                    <button key={pattern} type="button" role="radio"
-                                      aria-checked={fill.pattern === pattern}
-                                      className={`pen-fill-pattern${fill.pattern === pattern ? " pen-fill-pattern--active" : ""}`}
-                                      onClick={() => onPenFillChange(ids, { pattern })}
-                                    >
-                                      <PenFillSwatch pattern={pattern} />
-                                      <span>{PEN_FILL_LABELS[pattern][nl ? "nl" : "en"]}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="object-settings__row">
-                                <label className="object-settings__label" htmlFor="pen-fill-density">
-                                  {nl ? "Dichtheid" : "Density"} <em>{fill.density}%</em>
-                                </label>
-                                <input id="pen-fill-density" type="range" min={PEN_FILL_DENSITY_MIN} max={PEN_FILL_DENSITY_MAX} step={1}
-                                  value={fill.density}
-                                  onChange={(e) => onPenFillChange(ids, { density: Number(e.target.value) })}
-                                  className="text-slider"
-                                />
-                              </div>
-                              <MoreOptions id="pen-fill" language={language}>
-                              {fill.pattern === "dots" ? (
-                                <div className="object-settings__row">
-                                  <span className="object-settings__label">{nl ? "Stip" : "Dot"}</span>
-                                  <div className="weight-seg" role="radiogroup" aria-label={nl ? "Stipvorm" : "Dot style"}>
-                                    {DOT_STYLES.map((style) => (
-                                      <button key={style} type="button" role="radio"
-                                        aria-checked={fill.dotStyle === style}
-                                        className={`weight-seg__btn${fill.dotStyle === style ? " weight-seg__btn--active" : ""}`}
-                                        title={nl ? DOT_STYLE_LABELS[style].hintNl : DOT_STYLE_LABELS[style].hintEn}
-                                        onClick={() => onPenFillChange(ids, { dotStyle: style })}
-                                      >
-                                        {DOT_STYLE_LABELS[style][nl ? "nl" : "en"]}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : null}
-                              <div className="object-settings__row">
-                                <label className="object-settings__label" htmlFor="pen-fill-angle">
-                                  {nl ? "Hoek" : "Angle"} <em>{fill.angle}°</em>
-                                </label>
-                                <input id="pen-fill-angle" type="range" min={0} max={175} step={5}
-                                  value={fill.angle}
-                                  onChange={(e) => onPenFillChange(ids, { angle: Number(e.target.value) })}
-                                  className="text-slider"
-                                />
-                              </div>
-                              </MoreOptions>
-                            </>
-                          ) : null}
-                        </>
-                      );
-                    })() : null}
-
-                    {/* A cut shape is normally a hole in the paper. One you keep (a card, a label) is just a cut line. */}
-                    {selectedObjs.every((o) => canDash(o) && o.shapeKind !== "line" && !o.dashed?.enabled
-                      && o.paths.every((path) => (path.stroke ?? "").toLowerCase() === behindColor.toLowerCase())) ? (
-                      <div className="object-settings__row object-settings__row--toggle">
-                        <label className="object-settings__label" htmlFor="hollow-toggle">{nl ? "Dit stuk bewaar ik" : "I keep this piece"}</label>
-                        <button id="hollow-toggle" type="button" role="switch" aria-checked={Boolean(primary.hollow)}
-                          className={`toggle-switch${primary.hollow ? " toggle-switch--on" : ""}`}
-                          onClick={() => onHollowChange(ids, !primary.hollow)}
-                          title={nl
-                            ? "Aan: je snijdt de vorm uit en bewaart hem (een kaart of label), dus hij wordt als snijlijn getoond. Uit: de vorm wordt een gat in het papier."
-                            : "On: you cut the shape out and keep it (a card or label), so it shows as a cut line. Off: the shape becomes a hole in the paper."}
-                        >
-                          <span className="toggle-switch__knob" />
-                        </button>
-                      </div>
-                    ) : null}
-
-                    {selectedObjs.every((o) => canDash(o)) ? (
-                      <FoldLinePanel language={language} measurementUnit={measurementUnit} dashed={primary.dashed}
-                        onChange={(patch) => onDashChange(ids, patch)} />
-                    ) : null}
-
-                    {selectedObjs.every((o) => canOutline(o)) ? (
-                      <OutlinePanel language={language} measurementUnit={measurementUnit} outline={primary.outline} tools={tools}
-                        onChange={(patch) => onOutlineChange(ids, patch)} onDetach={() => onOutlineDetach(ids)} />
-                    ) : null}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-
-          <div className="drawer-section">
-            <p className="drawer-section__title">{language === "nl" ? "Lagen" : "Layers"}</p>
-          {importedSvgs.length > 0 ? (
-            <>
-              <div className="workspace-item-list" aria-label={language === "nl" ? "Onderdelen in dit project" : "Items in this project"}>
-                {/* Shown front-to-back (top of list = front layer), reverse of the array. */}
-                {[...importedSvgs].reverse().map((item) => {
-                  const isSelected = selectedSvgIdSet.has(item.id);
-                  const isExpanded = expandedGroups.has(item.id);
-                  const isRenaming = renamingId === item.id;
-                  return (
-                    <div
-                      key={item.id}
-                      className={`workspace-item-list__row${dragOverLayerId === item.id ? " workspace-item-list__row--dragover" : ""}${dragLayerId === item.id ? " workspace-item-list__row--dragging" : ""}`}
-                      draggable={!isRenaming}
-                      onDragStart={(e) => { setDragLayerId(item.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", item.id); }}
-                      onDragOver={(e) => { if (dragLayerId && dragLayerId !== item.id) { e.preventDefault(); setDragOverLayerId(item.id); } }}
-                      onDragLeave={() => setDragOverLayerId((cur) => (cur === item.id ? null : cur))}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        if (dragLayerId && dragLayerId !== item.id) onReorderLayerToTarget(dragLayerId, item.id);
-                        setDragLayerId(null);
-                        setDragOverLayerId(null);
-                      }}
-                      onDragEnd={() => { setDragLayerId(null); setDragOverLayerId(null); }}
-                    >
-                      <div
-                        className={`workspace-item-list__item${isSelected ? " workspace-item-list__item--selected" : ""}`}
-                      >
-                        {item.type === "group" ? (
-                          <button
-                            type="button"
-                            className="workspace-item-list__expand"
-                            aria-label={isExpanded ? "Collapse group" : "Expand group"}
-                            onClick={() => setExpandedGroups((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
-                              return next;
-                            })}
-                          >
-                            {isExpanded ? "▾" : "▸"}
-                          </button>
-                        ) : (
-                          <span className="workspace-item-list__icon">◈</span>
-                        )}
-                        <button
-                          type="button"
-                          className="workspace-item-list__select"
-                          onClick={() => {
-                            if (pendingRenameRef.current) {
-                              clearTimeout(pendingRenameRef.current.timer);
-                              pendingRenameRef.current = null;
-                            }
-                            if (isSelected && selectedSvgIds.length === 1 && renamingId !== item.id) {
-                              const timer = setTimeout(() => {
-                                setRenamingId(item.id);
-                                pendingRenameRef.current = null;
-                              }, 500);
-                              pendingRenameRef.current = { id: item.id, timer };
-                            } else {
-                              onSelectSvg(item.id);
-                            }
-                          }}
-                          aria-pressed={isSelected}
-                        >
-                          {isRenaming ? (
-                            <input
-                              className="workspace-item-list__rename-input"
-                              defaultValue={item.fileName}
-                              autoFocus
-                              onBlur={(e) => { onRenameObject(item.id, e.currentTarget.value); setRenamingId(null); }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") { onRenameObject(item.id, e.currentTarget.value); setRenamingId(null); }
-                                if (e.key === "Escape") { setRenamingId(null); }
-                                e.stopPropagation();
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          ) : (
-                            <span>
-                              {(() => {
-                                // Text layers show their actual text; everything else its name.
-                                const text = item.textContent?.text?.replace(/\s+/g, " ").trim();
-                                if (text) return text.length > 28 ? `${text.slice(0, 28)}…` : text;
-                                return item.fileName;
-                              })()}
-                              {(() => {
-                                const stroke = item.paths[0]?.stroke ?? "";
-                                const hasMatch = tools.some((t) => t.color.toLowerCase() === stroke.toLowerCase());
-                                return !hasMatch && stroke ? <span className="workspace-item-list__warn" title={language === "nl" ? "Geen gereedschap voor deze kleur" : "No tool for this color"}>⚠</span> : null;
-                              })()}
-                            </span>
-                          )}
-                        </button>
-                      </div>
-                      {item.type === "group" && isExpanded ? (
-                        <div className="workspace-item-list__children">
-                          {item.paths.map((path, i) => (
-                            <div key={path.id} className="workspace-item-list__child">
-                              <span className="workspace-item-list__icon">◈</span>
-                              <span>{path.sourceLabel ?? (language === "nl" ? `Pad ${i + 1}` : `Path ${i + 1}`)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          ) : (
-            <EmptyImportState language={language} />
-          )}
-          </div>
-        </aside>
+        <WorkspaceInspector
+          model={{
+            projectMessage,
+            importMessage,
+            language,
+            selectedSvgIds,
+            importedSvgs,
+            tools,
+            selectedMaterialId,
+            cardSize,
+            insertSlots,
+            selectedMatPreset,
+            paperColor,
+            systemFonts,
+            measurementUnit,
+            editingTextId,
+            selectedSvgIdSet,
+          }}
+          actions={{
+            onMaterialChange,
+            onCardSizeChange,
+            onInsertSlotsChange,
+            onMatChange,
+            t,
+            onPaperColorChange,
+            recolorMatchingObjects,
+            onToolsChange,
+            onTextContentChange,
+            onChangeObjectColor,
+            onDotPrintChange,
+            openSpotifyReplace,
+            onEnterTextEdit,
+            onAlign,
+            onDistribute,
+            onShapeCornerRadiusChange,
+            onPenFillChange,
+            onHollowChange,
+            onDashChange,
+            onOutlineChange,
+            onOutlineDetach,
+            onReorderLayerToTarget,
+            onSelectSvg,
+            onRenameObject,
+          }}
+          refs={{ pendingRenameRef }}
+        />
       </section>
     </main>
   );

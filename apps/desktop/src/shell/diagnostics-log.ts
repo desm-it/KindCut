@@ -1,17 +1,17 @@
-import fs from "node:fs";
-import path from "node:path";
+import fs from 'node:fs';
+import path from 'node:path';
 
 let logsDir: string | null = null;
 let logFilePath: string | null = null;
 
 export function configureDiagnosticsLog(directory: string): void {
   logsDir = directory;
-  logFilePath = path.join(directory, "kindcut.log");
+  logFilePath = path.join(directory, 'kindcut.log');
   try {
     fs.mkdirSync(directory, { recursive: true });
-    appendDiagnosticsLine("info", "Diagnostics log configured", { logFilePath });
+    appendDiagnosticsLine('info', 'Diagnostics log configured', { logFilePath });
   } catch (error) {
-    console.error("[KindCut diagnostics] Failed to configure diagnostics log", error);
+    console.error('[KindCut diagnostics] Failed to configure diagnostics log', error);
   }
 }
 
@@ -23,10 +23,14 @@ export function getDiagnosticsLogFilePath(): string | null {
   return logFilePath;
 }
 
-export function logDiagnostics(level: "debug" | "info" | "warn" | "error", message: string, details?: unknown): void {
-  if (level === "error") {
+export function logDiagnostics(
+  level: 'debug' | 'info' | 'warn' | 'error',
+  message: string,
+  details?: unknown,
+): void {
+  if (level === 'error') {
     console.error(message, details);
-  } else if (level === "warn") {
+  } else if (level === 'warn') {
     console.warn(message, details);
   } else {
     console.log(message, details);
@@ -35,7 +39,11 @@ export function logDiagnostics(level: "debug" | "info" | "warn" | "error", messa
   appendDiagnosticsLine(level, message, details);
 }
 
-function appendDiagnosticsLine(level: "debug" | "info" | "warn" | "error", message: string, details?: unknown): void {
+function appendDiagnosticsLine(
+  level: 'debug' | 'info' | 'warn' | 'error',
+  message: string,
+  details?: unknown,
+): void {
   if (!logFilePath) {
     return;
   }
@@ -50,10 +58,10 @@ function appendDiagnosticsLine(level: "debug" | "info" | "warn" | "error", messa
         message,
         details: normalizeLogDetails(details),
       })}\n`,
-      "utf8",
+      'utf8',
     );
   } catch (error) {
-    console.error("[KindCut diagnostics] Failed to write diagnostics log", error);
+    console.error('[KindCut diagnostics] Failed to write diagnostics log', error);
   }
 }
 

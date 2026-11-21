@@ -3,7 +3,7 @@
 // devtools console with:  localStorage.setItem("kindcut-debug", "1")  then reload.
 export const DEBUG: boolean = (() => {
   try {
-    return typeof localStorage !== "undefined" && localStorage.getItem("kindcut-debug") === "1";
+    return typeof localStorage !== 'undefined' && localStorage.getItem('kindcut-debug') === '1';
   } catch {
     return false;
   }

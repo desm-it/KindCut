@@ -1,4 +1,4 @@
-import type { CricutCompanionDesktopApi } from "./preload";
+import type { CricutCompanionDesktopApi } from './preload';
 
 declare global {
   interface Window {

@@ -1,2 +1,27 @@
-import{it,expect}from'vitest';import{renderToStaticMarkup}from'react-dom/server';import{NativeJoyJobView}from'./NativeJoyJobPanel';import{initialJobPanel}from'./native-joy-job-controller';
-it('explains missing calibration on CardMat rather than falsely claiming mixed tools are unsupported',()=>{const state={...initialJobPanel(),error:'A saved Joy calibration is required. Open Settings to capture it.'},h=renderToStaticMarkup(<NativeJoyJobView compact seamless language="nl" matVariant="card" plannedTools={[{tool:'pen'},{tool:'fine_point_blade'}]} state={state} available setup={{enabled:true,runtimeAvailable:true,session:{}}as any} onAction={()=>{}} makeConnection={{busy:false,onOpenSettings:()=>{}}as any}/>);expect(h).not.toContain('combinatie van gereedschappen wordt nog niet ondersteund');expect(h).toContain('kalibratie');expect(h).toContain('Instellingen');});
+import { it, expect } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { NativeJoyJobView } from './NativeJoyJobPanel';
+import { initialJobPanel } from './native-joy-job-controller';
+it('explains missing calibration on CardMat rather than falsely claiming mixed tools are unsupported', () => {
+  const state = {
+      ...initialJobPanel(),
+      error: 'A saved Joy calibration is required. Open Settings to capture it.',
+    },
+    h = renderToStaticMarkup(
+      <NativeJoyJobView
+        compact
+        seamless
+        language="nl"
+        matVariant="card"
+        plannedTools={[{ tool: 'pen' }, { tool: 'fine_point_blade' }]}
+        state={state}
+        available
+        setup={{ enabled: true, runtimeAvailable: true, session: {} } as any}
+        onAction={() => {}}
+        makeConnection={{ busy: false, onOpenSettings: () => {} } as any}
+      />,
+    );
+  expect(h).not.toContain('combinatie van gereedschappen wordt nog niet ondersteund');
+  expect(h).toContain('kalibratie');
+  expect(h).toContain('Instellingen');
+});

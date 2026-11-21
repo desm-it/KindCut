@@ -1,6 +1,6 @@
-export type MachineId = "cricut_joy" | "cricut_joy_xtra" | "cricut_explore" | "cricut_maker";
-export type OperationKind = "draw" | "cut" | "score" | "print" | "ignore";
-export type ToolId = "pen" | "fine_point_blade" | "scoring_stylus" | "printer";
+export type MachineId = 'cricut_joy' | 'cricut_joy_xtra' | 'cricut_explore' | 'cricut_maker';
+export type OperationKind = 'draw' | 'cut' | 'score' | 'print' | 'ignore';
+export type ToolId = 'pen' | 'fine_point_blade' | 'scoring_stylus' | 'printer';
 
 export interface MachineProfile {
   id: MachineId;
@@ -20,7 +20,7 @@ export interface MatPreset {
 export interface MaterialRecipe {
   id: number;
   name: string;
-  category: "cardstock" | "vinyl" | "iron_on" | "sticker" | "paper";
+  category: 'cardstock' | 'vinyl' | 'iron_on' | 'sticker' | 'paper';
   defaultTool: ToolId;
   requiresMirror: boolean;
   supportsMatlessJoy: boolean;
@@ -48,33 +48,64 @@ export interface CraftProject {
 }
 
 export const cricutJoy: MachineProfile = {
-  id: "cricut_joy",
-  displayName: "Cricut Joy",
+  id: 'cricut_joy',
+  displayName: 'Cricut Joy',
   maxMaterialWidthIn: 4.5,
-  notes: ["No physical Load/Unload or Go buttons", "Use software-button flow via SliceBug experiments"],
+  notes: [
+    'No physical Load/Unload or Go buttons',
+    'Use software-button flow via SliceBug experiments',
+  ],
 };
 
 export const joyStandardMat: MatPreset = {
-  id: "joy-standard",
-  name: "Cricut Joy StandardGrip Mat",
+  id: 'joy-standard',
+  name: 'Cricut Joy StandardGrip Mat',
   widthIn: 4.5,
   heightIn: 12,
-  machineIds: ["cricut_joy"],
+  machineIds: ['cricut_joy'],
 };
 
 export const joyCardMat: MatPreset = {
-  id: "joy-card",
-  name: "Cricut Joy Card Mat",
+  id: 'joy-card',
+  name: 'Cricut Joy Card Mat',
   widthIn: 4.5,
   heightIn: 6.25,
-  machineIds: ["cricut_joy"],
+  machineIds: ['cricut_joy'],
 };
 
 export const materials: MaterialRecipe[] = [
-  { id: 218, name: "Light Cardstock - 65 lb", category: "cardstock", defaultTool: "fine_point_blade", requiresMirror: false, supportsMatlessJoy: false },
-  { id: 19, name: "Medium Cardstock - 80 lb", category: "cardstock", defaultTool: "fine_point_blade", requiresMirror: false, supportsMatlessJoy: false },
-  { id: 524, name: "Smart Vinyl Permanent", category: "vinyl", defaultTool: "fine_point_blade", requiresMirror: false, supportsMatlessJoy: true },
-  { id: 520, name: "Smart Iron-On", category: "iron_on", defaultTool: "fine_point_blade", requiresMirror: true, supportsMatlessJoy: true },
+  {
+    id: 218,
+    name: 'Light Cardstock - 65 lb',
+    category: 'cardstock',
+    defaultTool: 'fine_point_blade',
+    requiresMirror: false,
+    supportsMatlessJoy: false,
+  },
+  {
+    id: 19,
+    name: 'Medium Cardstock - 80 lb',
+    category: 'cardstock',
+    defaultTool: 'fine_point_blade',
+    requiresMirror: false,
+    supportsMatlessJoy: false,
+  },
+  {
+    id: 524,
+    name: 'Smart Vinyl Permanent',
+    category: 'vinyl',
+    defaultTool: 'fine_point_blade',
+    requiresMirror: false,
+    supportsMatlessJoy: true,
+  },
+  {
+    id: 520,
+    name: 'Smart Iron-On',
+    category: 'iron_on',
+    defaultTool: 'fine_point_blade',
+    requiresMirror: true,
+    supportsMatlessJoy: true,
+  },
 ];
 
 export function findMaterialRecipe(id: number): MaterialRecipe {
@@ -92,8 +123,8 @@ export function buildBeginnerProject(input: {
   materialId: number;
   prompt: string;
 }): CraftProject {
-  if (input.machine !== "cricut_joy") {
-    throw new Error("Only Cricut Joy recipe scaffolding is implemented in the foundation.");
+  if (input.machine !== 'cricut_joy') {
+    throw new Error('Only Cricut Joy recipe scaffolding is implemented in the foundation.');
   }
 
   return {
@@ -105,8 +136,20 @@ export function buildBeginnerProject(input: {
     mat: input.mat,
     material: findMaterialRecipe(input.materialId),
     layers: [
-      { id: "pen-details", name: "Black pen details", operation: "draw", color: "#000000", tool: "pen" },
-      { id: "cut-border", name: "Red cut border", operation: "cut", color: "#ff0000", tool: "fine_point_blade" },
+      {
+        id: 'pen-details',
+        name: 'Black pen details',
+        operation: 'draw',
+        color: '#000000',
+        tool: 'pen',
+      },
+      {
+        id: 'cut-border',
+        name: 'Red cut border',
+        operation: 'cut',
+        color: '#ff0000',
+        tool: 'fine_point_blade',
+      },
     ],
     createdAt: new Date().toISOString(),
   };
@@ -120,26 +163,34 @@ export function validateProject(project: CraftProject): { ok: boolean; messages:
   }
 
   if (project.mat.widthIn > project.machine.maxMaterialWidthIn) {
-    messages.push(`Mat width ${project.mat.widthIn} exceeds ${project.machine.displayName} max width ${project.machine.maxMaterialWidthIn}.`);
+    messages.push(
+      `Mat width ${project.mat.widthIn} exceeds ${project.machine.displayName} max width ${project.machine.maxMaterialWidthIn}.`,
+    );
   }
 
   if (project.material.requiresMirror) {
     messages.push(`${project.material.name} usually requires mirror mode.`);
   }
 
-  if (!project.layers.some((layer) => layer.operation === "cut")) {
-    messages.push("Project has no cut layer.");
+  if (!project.layers.some((layer) => layer.operation === 'cut')) {
+    messages.push('Project has no cut layer.');
   }
 
-  return { ok: messages.length === 0, messages: messages.length ? messages : ["Project recipe is internally consistent."] };
+  return {
+    ok: messages.length === 0,
+    messages: messages.length ? messages : ['Project recipe is internally consistent.'],
+  };
 }
 
 function slugify(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 }
 
-export * from "./svg-path-geometry";
-export * from "./pen-fill";
-export * from "./dot-print";
-export * from "./outline";
-export * from "./native-joy-plan";
+export * from './svg-path-geometry';
+export * from './pen-fill';
+export * from './dot-print';
+export * from './outline';
+export * from './native-joy-plan';

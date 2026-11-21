@@ -6,10 +6,24 @@
 // regenerated whenever they are drawn, previewed or sent to the cutter, so a
 // fill can always be changed or removed again.
 
-import type { Point } from "./svg-path-geometry";
-import { type DotStyle, dotInkAreaMm2, dotPathData, dotStroke, normalizeDotStyle } from "./dot-print";
+import type { Point } from './svg-path-geometry';
+import {
+  type DotStyle,
+  dotInkAreaMm2,
+  dotPathData,
+  dotStroke,
+  normalizeDotStyle,
+} from './dot-print';
 
-export const PEN_FILL_PATTERNS = ["lines", "cross", "grid", "triangles", "cubic", "honeycomb", "dots"] as const;
+export const PEN_FILL_PATTERNS = [
+  'lines',
+  'cross',
+  'grid',
+  'triangles',
+  'cubic',
+  'honeycomb',
+  'dots',
+] as const;
 export type PenFillPattern = (typeof PEN_FILL_PATTERNS)[number];
 
 export type PenFillSettings = {
@@ -23,7 +37,13 @@ export type PenFillSettings = {
   dotStyle: DotStyle;
 };
 
-export const DEFAULT_PEN_FILL: PenFillSettings = { enabled: true, pattern: "lines", density: 25, angle: 45, dotStyle: "circle" };
+export const DEFAULT_PEN_FILL: PenFillSettings = {
+  enabled: true,
+  pattern: 'lines',
+  density: 25,
+  angle: 45,
+  dotStyle: 'circle',
+};
 
 export const PEN_FILL_DENSITY_MIN = 5;
 export const PEN_FILL_DENSITY_MAX = 100;
@@ -31,7 +51,7 @@ export const PEN_FILL_DENSITY_MAX = 100;
 /** Cricut fine point pens draw a line about 0.4 mm wide. */
 export const PEN_LINE_WIDTH_MM = 0.4;
 
-export type FillRule = "nonzero" | "evenodd";
+export type FillRule = 'nonzero' | 'evenodd';
 
 /** One painted region: closed rings plus the rule deciding which parts are inside. */
 export type FillRegion = { rings: Point[][]; fillRule: FillRule };
@@ -52,7 +72,7 @@ const EPSILON = 1e-9;
 
 /** Accepts anything (e.g. from a project file) and returns valid settings, or null. */
 export function normalizePenFill(value: unknown): PenFillSettings | null {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== 'object') {
     return null;
   }
   const record = value as Record<string, unknown>;
@@ -67,14 +87,25 @@ export function normalizePenFill(value: unknown): PenFillSettings | null {
     density: Number.isFinite(density)
       ? Math.min(PEN_FILL_DENSITY_MAX, Math.max(PEN_FILL_DENSITY_MIN, Math.round(density)))
       : DEFAULT_PEN_FILL.density,
-    angle: Number.isFinite(angle) ? ((Math.round(angle) % 180) + 180) % 180 : DEFAULT_PEN_FILL.angle,
+    angle: Number.isFinite(angle)
+      ? ((Math.round(angle) % 180) + 180) % 180
+      : DEFAULT_PEN_FILL.angle,
     dotStyle: normalizeDotStyle(record.dotStyle, DEFAULT_PEN_FILL.dotStyle),
   };
 }
 
 // ── Region queries in a rotated "pattern frame" ──────────────────────────────
 
-type Edge = { ax: number; ay: number; bx: number; by: number; minY: number; maxY: number; region: number; dir: number };
+type Edge = {
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  minY: number;
+  maxY: number;
+  region: number;
+  dir: number;
+};
 
 function rotatePoint(point: Point, cos: number, sin: number): Point {
   return { x: point.x * cos - point.y * sin, y: point.x * sin + point.y * cos };
@@ -120,9 +151,14 @@ class PatternFrame {
           maxY = Math.max(maxY, a.y);
           if (Math.abs(a.y - b.y) < EPSILON && Math.abs(a.x - b.x) < EPSILON) continue;
           const edge: Edge = {
-            ax: a.x, ay: a.y, bx: b.x, by: b.y,
-            minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y),
-            region: regionIndex, dir: b.y > a.y ? 1 : -1,
+            ax: a.x,
+            ay: a.y,
+            bx: b.x,
+            by: b.y,
+            minY: Math.min(a.y, b.y),
+            maxY: Math.max(a.y, b.y),
+            region: regionIndex,
+            dir: b.y > a.y ? 1 : -1,
           };
           this.edges.push(edge);
           const first = Math.floor(edge.minY / this.bucketSize);
@@ -167,7 +203,9 @@ class PatternFrame {
   }
 
   private isInsideRegions(windings: number[]): boolean {
-    return windings.some((winding, region) => (this.rules[region] === "evenodd" ? winding % 2 !== 0 : winding !== 0));
+    return windings.some((winding, region) =>
+      this.rules[region] === 'evenodd' ? winding % 2 !== 0 : winding !== 0,
+    );
   }
 
   /** Union of each region's inside intervals along the horizontal line at `y`. */
@@ -235,7 +273,10 @@ class PatternFrame {
       const inside = this.containsPoint({ x: a.x + dx * mid, y: a.y + dy * mid });
       if (inside && pieceStart === null) pieceStart = t0;
       if (!inside && pieceStart !== null) {
-        pieces.push([{ x: a.x + dx * pieceStart, y: a.y + dy * pieceStart }, { x: a.x + dx * t0, y: a.y + dy * t0 }]);
+        pieces.push([
+          { x: a.x + dx * pieceStart, y: a.y + dy * pieceStart },
+          { x: a.x + dx * t0, y: a.y + dy * t0 },
+        ]);
         pieceStart = null;
       }
     }
@@ -272,7 +313,13 @@ function distanceToEdge(point: Point, edge: Edge): number {
   const ex = edge.bx - edge.ax;
   const ey = edge.by - edge.ay;
   const lengthSquared = ex * ex + ey * ey;
-  const t = lengthSquared > 0 ? Math.min(1, Math.max(0, ((point.x - edge.ax) * ex + (point.y - edge.ay) * ey) / lengthSquared)) : 0;
+  const t =
+    lengthSquared > 0
+      ? Math.min(
+          1,
+          Math.max(0, ((point.x - edge.ax) * ex + (point.y - edge.ay) * ey) / lengthSquared),
+        )
+      : 0;
   return Math.hypot(point.x - (edge.ax + t * ex), point.y - (edge.ay + t * ey));
 }
 
@@ -333,7 +380,6 @@ function clipPolyline(frame: PatternFrame, points: Point[], out: Polyline[]): vo
   }
 }
 
-
 // ── Lattices ─────────────────────────────────────────────────────────────────
 //
 // Every pattern is a lattice in "pattern space": region coordinates rotated by
@@ -343,7 +389,7 @@ function clipPolyline(frame: PatternFrame, points: Point[], out: Polyline[]): vo
 type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
 
 type LineLattice = {
-  kind: "lines";
+  kind: 'lines';
   rotation: number;
   spacing: number;
   /** Line directions in degrees, relative to the lattice rotation. */
@@ -351,27 +397,46 @@ type LineLattice = {
   tileWidth: number;
   tileHeight: number;
 };
-type HexLattice = { kind: "hex"; rotation: number; side: number; cubes: boolean; tileWidth: number; tileHeight: number };
-type DotLattice = { kind: "dots"; rotation: number; spacing: number; tileWidth: number; tileHeight: number };
+type HexLattice = {
+  kind: 'hex';
+  rotation: number;
+  side: number;
+  cubes: boolean;
+  tileWidth: number;
+  tileHeight: number;
+};
+type DotLattice = {
+  kind: 'dots';
+  rotation: number;
+  spacing: number;
+  tileWidth: number;
+  tileHeight: number;
+};
 type Lattice = LineLattice | HexLattice | DotLattice;
 
 /** Pattern geometry for a coverage ratio (0–1): the feature size that gives that much ink. */
-function patternScale(pattern: PenFillPattern, penWidth: number, coverage: number, dotStyle: DotStyle, unitsPerMm: number): number {
+function patternScale(
+  pattern: PenFillPattern,
+  penWidth: number,
+  coverage: number,
+  dotStyle: DotStyle,
+  unitsPerMm: number,
+): number {
   switch (pattern) {
-    case "lines":
+    case 'lines':
       return penWidth / coverage;
-    case "cross":
-    case "grid":
+    case 'cross':
+    case 'grid':
       return (2 * penWidth) / coverage;
-    case "triangles":
+    case 'triangles':
       return (3 * penWidth) / coverage;
-    case "honeycomb":
+    case 'honeycomb':
       // Hexagon side a: line length per area is 2/(√3·a).
       return (2 * penWidth) / (Math.sqrt(3) * coverage);
-    case "cubic":
+    case 'cubic':
       // Honeycomb plus an inner "Y" per hexagon doubles the line length.
       return (4 * penWidth) / (Math.sqrt(3) * coverage);
-    case "dots": {
+    case 'dots': {
       // Each dot sits in a √3/2·s² cell of the staggered grid.
       const dotArea = dotInkAreaMm2(dotStyle, penWidth / unitsPerMm) * unitsPerMm * unitsPerMm;
       return Math.sqrt(dotArea / ((Math.sqrt(3) / 2) * coverage));
@@ -381,34 +446,61 @@ function patternScale(pattern: PenFillPattern, penWidth: number, coverage: numbe
 
 function buildLattice(pattern: PenFillPattern, angle: number, scale: number): Lattice {
   switch (pattern) {
-    case "lines":
-      return { kind: "lines", rotation: angle, spacing: scale, families: [0], tileWidth: scale, tileHeight: scale };
-    case "cross":
-      return { kind: "lines", rotation: angle, spacing: scale, families: [0, 90], tileWidth: scale, tileHeight: scale };
-    case "grid":
-      // A cross turned 45°, so the default angle gives a straight grid.
-      return { kind: "lines", rotation: angle + 45, spacing: scale, families: [0, -90], tileWidth: scale, tileHeight: scale };
-    case "triangles":
+    case 'lines':
       return {
-        kind: "lines",
+        kind: 'lines',
+        rotation: angle,
+        spacing: scale,
+        families: [0],
+        tileWidth: scale,
+        tileHeight: scale,
+      };
+    case 'cross':
+      return {
+        kind: 'lines',
+        rotation: angle,
+        spacing: scale,
+        families: [0, 90],
+        tileWidth: scale,
+        tileHeight: scale,
+      };
+    case 'grid':
+      // A cross turned 45°, so the default angle gives a straight grid.
+      return {
+        kind: 'lines',
+        rotation: angle + 45,
+        spacing: scale,
+        families: [0, -90],
+        tileWidth: scale,
+        tileHeight: scale,
+      };
+    case 'triangles':
+      return {
+        kind: 'lines',
         rotation: angle,
         spacing: scale,
         families: [0, 60, 120],
         tileWidth: (2 * scale) / Math.sqrt(3),
         tileHeight: 2 * scale,
       };
-    case "honeycomb":
-    case "cubic":
+    case 'honeycomb':
+    case 'cubic':
       return {
-        kind: "hex",
+        kind: 'hex',
         rotation: angle,
         side: scale,
-        cubes: pattern === "cubic",
+        cubes: pattern === 'cubic',
         tileWidth: Math.sqrt(3) * scale,
         tileHeight: 3 * scale,
       };
-    case "dots":
-      return { kind: "dots", rotation: angle, spacing: scale, tileWidth: scale, tileHeight: Math.sqrt(3) * scale };
+    case 'dots':
+      return {
+        kind: 'dots',
+        rotation: angle,
+        spacing: scale,
+        tileWidth: scale,
+        tileHeight: Math.sqrt(3) * scale,
+      };
   }
 }
 
@@ -448,10 +540,17 @@ function hexLatticePolylines(side: number, cubes: boolean, bounds: Bounds): Poly
     out.push(zigzag);
     for (let column = firstColumn; column <= lastColumn; column += 1) {
       const cx = column * width + shift;
-      out.push([{ x: cx - width / 2, y: cy - side / 2 }, { x: cx - width / 2, y: cy + side / 2 }]);
+      out.push([
+        { x: cx - width / 2, y: cy - side / 2 },
+        { x: cx - width / 2, y: cy + side / 2 },
+      ]);
       if (cubes) {
         const centre = { x: cx, y: cy };
-        out.push([{ x: cx - width / 2, y: cy - side / 2 }, centre, { x: cx + width / 2, y: cy - side / 2 }]);
+        out.push([
+          { x: cx - width / 2, y: cy - side / 2 },
+          centre,
+          { x: cx + width / 2, y: cy - side / 2 },
+        ]);
         out.push([centre, { x: cx, y: cy + side }]);
       }
     }
@@ -463,11 +562,19 @@ function hexLatticePolylines(side: number, cubes: boolean, bounds: Bounds): Poly
 function dotCentres(spacing: number, bounds: Bounds): Point[] {
   const rowHeight = (spacing * Math.sqrt(3)) / 2;
   const centres: Point[] = [];
-  for (let row = Math.ceil(bounds.minY / rowHeight); row <= Math.floor(bounds.maxY / rowHeight); row += 1) {
+  for (
+    let row = Math.ceil(bounds.minY / rowHeight);
+    row <= Math.floor(bounds.maxY / rowHeight);
+    row += 1
+  ) {
     const y = row * rowHeight;
     const shift = Math.abs(row % 2) === 1 ? spacing / 2 : 0;
     const columns: number[] = [];
-    for (let x = Math.ceil((bounds.minX - shift) / spacing) * spacing + shift; x <= bounds.maxX; x += spacing) {
+    for (
+      let x = Math.ceil((bounds.minX - shift) / spacing) * spacing + shift;
+      x <= bounds.maxX;
+      x += spacing
+    ) {
       columns.push(x);
     }
     if (Math.abs(row % 2) === 1) columns.reverse();
@@ -475,8 +582,6 @@ function dotCentres(spacing: number, bounds: Bounds): Point[] {
   }
   return centres;
 }
-
-
 
 // ── Generation ───────────────────────────────────────────────────────────────
 
@@ -499,11 +604,15 @@ function regionBounds(regions: FillRegion[]): { width: number; height: number } 
   return maxX > minX && maxY > minY ? { width: maxX - minX, height: maxY - minY } : null;
 }
 
-function estimateElements(lattice: Lattice, bounds: { width: number; height: number }, scale: number): number {
-  if (lattice.kind === "lines") {
+function estimateElements(
+  lattice: Lattice,
+  bounds: { width: number; height: number },
+  scale: number,
+): number {
+  if (lattice.kind === 'lines') {
     return (lattice.families.length * Math.hypot(bounds.width, bounds.height)) / scale;
   }
-  const perCell = lattice.kind === "dots" ? 1.15 : lattice.cubes ? 5 : 3;
+  const perCell = lattice.kind === 'dots' ? 1.15 : lattice.cubes ? 5 : 3;
   return (bounds.width * bounds.height * perCell) / (scale * scale);
 }
 
@@ -512,24 +621,40 @@ function estimateElements(lattice: Lattice, bounds: { width: number; height: num
  * pattern is anchored to the regions' coordinate origin, so it moves with the
  * object rather than staying fixed on the mat.
  */
-export function generatePenFill(regions: FillRegion[], settings: PenFillSettings, options: PenFillOptions): PenFillPolyline[] {
+export function generatePenFill(
+  regions: FillRegion[],
+  settings: PenFillSettings,
+  options: PenFillOptions,
+): PenFillPolyline[] {
   const normalized = normalizePenFill(settings);
   const bounds = regionBounds(regions);
   if (!normalized?.enabled || !(options.penWidth > 0) || !bounds) {
     return [];
   }
   const unitsPerMm = options.unitsPerMm ?? options.penWidth / PEN_LINE_WIDTH_MM;
-  let scale = patternScale(normalized.pattern, options.penWidth, normalized.density / 100, normalized.dotStyle, unitsPerMm);
+  let scale = patternScale(
+    normalized.pattern,
+    options.penWidth,
+    normalized.density / 100,
+    normalized.dotStyle,
+    unitsPerMm,
+  );
 
   // Spread a huge, dense fill out rather than generating an unusable number of strokes.
-  const estimate = estimateElements(buildLattice(normalized.pattern, normalized.angle, scale), bounds, scale);
+  const estimate = estimateElements(
+    buildLattice(normalized.pattern, normalized.angle, scale),
+    bounds,
+    scale,
+  );
   const maxElements = options.maxElements ?? DEFAULT_MAX_ELEMENTS;
   if (estimate > maxElements) {
-    scale *= LINE_PATTERNS.has(normalized.pattern) ? estimate / maxElements : Math.sqrt(estimate / maxElements);
+    scale *= LINE_PATTERNS.has(normalized.pattern)
+      ? estimate / maxElements
+      : Math.sqrt(estimate / maxElements);
   }
   const lattice = buildLattice(normalized.pattern, normalized.angle, scale);
 
-  if (lattice.kind === "lines") {
+  if (lattice.kind === 'lines') {
     const anchor = rotateDegrees(lineAnchor(lattice), lattice.rotation);
     const results: PenFillPolyline[] = [];
     for (const family of lattice.families) {
@@ -546,7 +671,7 @@ export function generatePenFill(regions: FillRegion[], settings: PenFillSettings
   if (frame.isEmpty) {
     return [];
   }
-  if (lattice.kind === "dots") {
+  if (lattice.kind === 'dots') {
     return dotCentres(lattice.spacing, frame)
       .filter((centre) => frame.containsPoint(centre))
       .map((centre) => {
@@ -558,10 +683,13 @@ export function generatePenFill(regions: FillRegion[], settings: PenFillSettings
   for (const polyline of hexLatticePolylines(lattice.side, lattice.cubes, frame)) {
     clipPolyline(frame, polyline, clipped);
   }
-  return clipped.map((polyline) => ({ points: polyline.map((point) => frame.toRegion(point)), closed: false }));
+  return clipped.map((polyline) => ({
+    points: polyline.map((point) => frame.toRegion(point)),
+    closed: false,
+  }));
 }
 
-const LINE_PATTERNS = new Set<PenFillPattern>(["lines", "cross", "grid", "triangles"]);
+const LINE_PATTERNS = new Set<PenFillPattern>(['lines', 'cross', 'grid', 'triangles']);
 
 // ── Canvas preview tile ──────────────────────────────────────────────────────
 
@@ -587,19 +715,29 @@ function formatTileNumber(value: number): string {
  * <pattern> instead of generating every stroke. Tile coordinates use the same
  * units as the regions passed to generatePenFill.
  */
-export function penFillPatternTile(settings: PenFillSettings, penWidth: number, unitsPerMm = penWidth / PEN_LINE_WIDTH_MM): PenFillTile | null {
+export function penFillPatternTile(
+  settings: PenFillSettings,
+  penWidth: number,
+  unitsPerMm = penWidth / PEN_LINE_WIDTH_MM,
+): PenFillTile | null {
   const normalized = normalizePenFill(settings);
   if (!normalized || !(penWidth > 0)) {
     return null;
   }
-  const scale = patternScale(normalized.pattern, penWidth, normalized.density / 100, normalized.dotStyle, unitsPerMm);
+  const scale = patternScale(
+    normalized.pattern,
+    penWidth,
+    normalized.density / 100,
+    normalized.dotStyle,
+    unitsPerMm,
+  );
   const lattice = buildLattice(normalized.pattern, normalized.angle, scale);
   const { tileWidth: width, tileHeight: height } = lattice;
   // Neighbouring tiles' strokes spill a little into this one; cover one tile around it.
   const spill: Bounds = { minX: -width, maxX: 2 * width, minY: -height, maxY: 2 * height };
   const segments: Point[][] = [];
 
-  if (lattice.kind === "lines") {
+  if (lattice.kind === 'lines') {
     const anchor = lineAnchor(lattice);
     const reach = 3 * (width + height);
     for (const family of lattice.families) {
@@ -608,26 +746,36 @@ export function penFillPatternTile(settings: PenFillSettings, penWidth: number, 
       const normal = { x: -direction.y, y: direction.x };
       const lines = Math.ceil(reach / lattice.spacing);
       for (let k = -lines; k <= lines; k += 1) {
-        const through = { x: anchor.x + normal.x * k * lattice.spacing, y: anchor.y + normal.y * k * lattice.spacing };
+        const through = {
+          x: anchor.x + normal.x * k * lattice.spacing,
+          y: anchor.y + normal.y * k * lattice.spacing,
+        };
         segments.push([
           { x: through.x - direction.x * reach, y: through.y - direction.y * reach },
           { x: through.x + direction.x * reach, y: through.y + direction.y * reach },
         ]);
       }
     }
-  } else if (lattice.kind === "hex") {
+  } else if (lattice.kind === 'hex') {
     segments.push(...hexLatticePolylines(lattice.side, lattice.cubes, spill));
   }
 
-  const dots = lattice.kind === "dots" ? dotCentres(lattice.spacing, spill) : [];
+  const dots = lattice.kind === 'dots' ? dotCentres(lattice.spacing, spill) : [];
   return {
     width,
     height,
     rotation: lattice.rotation,
     d: segments
-      .map((points) => points.map((point, index) => `${index === 0 ? "M" : "L"}${formatTileNumber(point.x)} ${formatTileNumber(point.y)}`).join(""))
-      .join(""),
+      .map((points) =>
+        points
+          .map(
+            (point, index) =>
+              `${index === 0 ? 'M' : 'L'}${formatTileNumber(point.x)} ${formatTileNumber(point.y)}`,
+          )
+          .join(''),
+      )
+      .join(''),
     dots,
-    dotD: dots.map((dot) => dotPathData(dot.x, dot.y, normalized.dotStyle, unitsPerMm)).join(""),
+    dotD: dots.map((dot) => dotPathData(dot.x, dot.y, normalized.dotStyle, unitsPerMm)).join(''),
   };
 }

@@ -1,7 +1,16 @@
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
-const root = path.resolve(__dirname, '..');
-const python = path.join(root, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
-const result = spawnSync(python, ['-W', 'error::ResourceWarning', '-m', 'unittest', 'discover', '-s', 'tests', '-v'], { cwd: root, stdio: 'inherit', env: {...process.env, TMPDIR: process.env.TMPDIR || process.env.RUNNER_TEMP || require('node:os').tmpdir()} });
-if (result.error) throw result.error;
-process.exit(result.status ?? 1);
+const { runPython, exclusionsFor } = require('../../../scripts/run-platform-tests.cjs');
+const root = path.resolve(__dirname, '../../..'),
+  workspace = 'packages/joy-runtime';
+try {
+  runPython(
+    root,
+    workspace,
+    exclusionsFor(root, process.platform)
+      .filter((e) => e.file.startsWith(workspace + '/'))
+      .map((e) => ({ ...e, file: e.file.slice(workspace.length + 1) })),
+  );
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
+}

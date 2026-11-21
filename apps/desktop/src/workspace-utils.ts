@@ -1,9 +1,9 @@
-export const MEASUREMENT_UNIT_STORAGE_KEY = "kindcutMeasurementUnit";
+export const MEASUREMENT_UNIT_STORAGE_KEY = 'kindcutMeasurementUnit';
 export const WORKSPACE_PIXELS_PER_INCH = 80;
 export const WORKSPACE_MIN_ZOOM = 0.45;
 export const WORKSPACE_MAX_ZOOM = 3;
 export const WORKSPACE_STAGE_LEFT_OFFSET = 42; // width of the Y ruler
-export const WORKSPACE_STAGE_TOP_OFFSET = 32;  // height of the X ruler (statusbar handled by grid layout)
+export const WORKSPACE_STAGE_TOP_OFFSET = 32; // height of the X ruler (statusbar handled by grid layout)
 export const WORKSPACE_HISTORY_LIMIT = 50;
 export const ROTATION_SNAP_INTERVAL_DEGREES = 45;
 export const ROTATION_SNAP_THRESHOLD_DEGREES = 4;
@@ -12,8 +12,8 @@ export const MOVEABLE_CENTER_DIRECTION = [0, 0] as const;
 // proportions before it snaps to them. Small so it only catches near-misses.
 export const ASPECT_RATIO_SNAP_SCREEN_PX = 8;
 
-export type MeasurementUnit = "in" | "cm" | "mm";
-export type RulerAxis = "x" | "y";
+export type MeasurementUnit = 'in' | 'cm' | 'mm';
+export type RulerAxis = 'x' | 'y';
 
 export type Point = {
   x: number;
@@ -28,8 +28,8 @@ export type MatDimensions = {
 export type WorkspaceItemTransform = {
   x: number;
   y: number;
-  scaleX: number;   // always positive — magnitude only
-  scaleY: number;   // always positive — magnitude only
+  scaleX: number; // always positive — magnitude only
+  scaleY: number; // always positive — magnitude only
   rotation: number;
   mirrorX?: boolean; // horizontal flip (applied last, independent of scale)
   mirrorY?: boolean; // vertical flip
@@ -63,35 +63,35 @@ export type MeasurementTick = {
 };
 
 const MAT_DIMENSIONS_INCHES: Record<string, MatDimensions> = {
-  "joy-standard": { width: 4.5, height: 12 },
-  "joy-standard-short": { width: 4.5, height: 6.5 },
-  "joy-card": { width: 4.5, height: 6.25 },
+  'joy-standard': { width: 4.5, height: 12 },
+  'joy-standard-short': { width: 4.5, height: 6.5 },
+  'joy-card': { width: 4.5, height: 6.25 },
 };
 
 export function getMatDimensionsInches(matPreset: string): MatDimensions {
   return MAT_DIMENSIONS_INCHES[matPreset] ?? { width: 4.5, height: 12 };
 }
 
-export type MatKind = "standard" | "card";
+export type MatKind = 'standard' | 'card';
 
 /** Physical mat family for visuals: the card mat is blue, the rest are the green Standard mat. */
 export function getMatKind(matPreset: string): MatKind {
-  return matPreset === "joy-card" ? "card" : "standard";
+  return matPreset === 'joy-card' ? 'card' : 'standard';
 }
 
 // ── Card sizes (insert-card sub-options) ───────────────────────────────────────────
-export type CardSize = "small" | "medium" | "large";
-export const CARD_SIZE_ORDER: CardSize[] = ["small", "medium", "large"];
+export type CardSize = 'small' | 'medium' | 'large';
+export const CARD_SIZE_ORDER: CardSize[] = ['small', 'medium', 'large'];
 
 // Card blank sizes (inches). "large" == the full card mat area.
 export const CARD_SIZES: Record<CardSize, MatDimensions> = {
-  small: { width: 3.5, height: 4.9 },   // 89 × 124 mm
+  small: { width: 3.5, height: 4.9 }, // 89 × 124 mm
   medium: { width: 4.25, height: 5.5 }, // 108 × 140 mm
-  large: { width: 4.5, height: 6.25 },  // 114 × 159 mm (whole paper)
+  large: { width: 4.5, height: 6.25 }, // 114 × 159 mm (whole paper)
 };
 
 export function isCardSize(value: unknown): value is CardSize {
-  return value === "small" || value === "medium" || value === "large";
+  return value === 'small' || value === 'medium' || value === 'large';
 }
 
 const MM_PER_INCH = 25.4;
@@ -136,7 +136,7 @@ export function buildInsertSlotsPaths(width: number, height: number, color: stri
       (s) =>
         `<path d="${d}" transform="translate(${roundCss(s.cx)} ${roundCss(s.cy)}) rotate(${roundCss(s.angle)})" fill="${color}" stroke="${color}" stroke-width="0.5"/>`,
     )
-    .join("");
+    .join('');
 }
 
 // Stadium (fully-rounded slim rectangle) centred at the origin, long axis horizontal.
@@ -151,11 +151,11 @@ export function insertSlotPathD(): string {
 
 export function inchesToDisplayValue(valueInInches: number, unit: MeasurementUnit): number {
   switch (unit) {
-    case "cm":
+    case 'cm':
       return roundMeasurement(valueInInches * 2.54);
-    case "mm":
+    case 'mm':
       return roundMeasurement(valueInInches * 25.4);
-    case "in":
+    case 'in':
     default:
       return roundMeasurement(valueInInches);
   }
@@ -165,15 +165,26 @@ export function getViewportTransform({ zoom, pan }: { zoom: number; pan: Point }
   return `translate(${roundCss(pan.x)}px, ${roundCss(pan.y)}px) scale(${roundCss(zoom)})`;
 }
 
-export function getWorkspaceItemTransform({ x, y, rotation, scaleX, scaleY, mirrorX, mirrorY }: WorkspaceItemTransform): string {
+export function getWorkspaceItemTransform({
+  x,
+  y,
+  rotation,
+  scaleX,
+  scaleY,
+  mirrorX,
+  mirrorY,
+}: WorkspaceItemTransform): string {
   // mirrorX/mirrorY are independent of scale — appended last so Moveable's scale math is unaffected.
-  const mirror = (mirrorX || mirrorY) ? ` scale(${mirrorX ? -1 : 1}, ${mirrorY ? -1 : 1})` : "";
+  const mirror = mirrorX || mirrorY ? ` scale(${mirrorX ? -1 : 1}, ${mirrorY ? -1 : 1})` : '';
   return `translate3d(${roundCss(x)}px, ${roundCss(y)}px, 0) rotate(${roundCss(rotation)}deg)${mirror}`;
 }
 
-export function getWorkspaceItemVisualSize(frame: WorkspaceItemFrame, transform: WorkspaceItemTransform): { width: number; height: number } {
+export function getWorkspaceItemVisualSize(
+  frame: WorkspaceItemFrame,
+  transform: WorkspaceItemTransform,
+): { width: number; height: number } {
   return {
-    width: frame.width * transform.scaleX,   // scaleX is always positive
+    width: frame.width * transform.scaleX, // scaleX is always positive
     height: frame.height * transform.scaleY,
   };
 }
@@ -185,7 +196,9 @@ export function getWorkspaceItemVisualSize(frame: WorkspaceItemFrame, transform:
  * to 0.01 like commit-time rounding does. Keeping live values near-exact lets the
  * rendered element track Moveable's control box without shimmer/jitter.
  */
-export function clampWorkspaceItemTransform(transform: WorkspaceItemTransform): WorkspaceItemTransform {
+export function clampWorkspaceItemTransform(
+  transform: WorkspaceItemTransform,
+): WorkspaceItemTransform {
   return {
     x: roundFine(Number.isFinite(transform.x) ? transform.x : 0),
     y: roundFine(Number.isFinite(transform.y) ? transform.y : 0),
@@ -193,7 +206,9 @@ export function clampWorkspaceItemTransform(transform: WorkspaceItemTransform): 
     scaleY: clamp(roundFine(Math.abs(transform.scaleY)), 0.01, 100),
     mirrorX: Boolean(transform.mirrorX),
     mirrorY: Boolean(transform.mirrorY),
-    rotation: normalizeRotation(Number.isFinite(transform.rotation) ? roundFine(transform.rotation) : 0),
+    rotation: normalizeRotation(
+      Number.isFinite(transform.rotation) ? roundFine(transform.rotation) : 0,
+    ),
   };
 }
 
@@ -201,7 +216,9 @@ export function clampWorkspaceItemTransform(transform: WorkspaceItemTransform): 
  * Sanitises a transform for COMMIT/persistence: clamp + quantise to 0.01 so the
  * saved project file stays tidy. Use clampWorkspaceItemTransform for live frames.
  */
-export function normalizeWorkspaceItemTransform(transform: WorkspaceItemTransform): WorkspaceItemTransform {
+export function normalizeWorkspaceItemTransform(
+  transform: WorkspaceItemTransform,
+): WorkspaceItemTransform {
   return {
     x: roundCss(Number.isFinite(transform.x) ? transform.x : 0),
     y: roundCss(Number.isFinite(transform.y) ? transform.y : 0),
@@ -209,7 +226,9 @@ export function normalizeWorkspaceItemTransform(transform: WorkspaceItemTransfor
     scaleY: clamp(roundCss(Math.abs(transform.scaleY)), 0.01, 100),
     mirrorX: Boolean(transform.mirrorX),
     mirrorY: Boolean(transform.mirrorY),
-    rotation: normalizeRotation(Number.isFinite(transform.rotation) ? roundCss(transform.rotation) : 0),
+    rotation: normalizeRotation(
+      Number.isFinite(transform.rotation) ? roundCss(transform.rotation) : 0,
+    ),
   };
 }
 
@@ -222,7 +241,7 @@ export function normalizeWorkspaceItemTransform(transform: WorkspaceItemTransfor
  */
 export function localOffsetToWorld(
   offset: Point,
-  transform: Pick<WorkspaceItemTransform, "rotation" | "mirrorX" | "mirrorY">,
+  transform: Pick<WorkspaceItemTransform, 'rotation' | 'mirrorX' | 'mirrorY'>,
 ): Point {
   const mirroredX = transform.mirrorX ? -offset.x : offset.x;
   const mirroredY = transform.mirrorY ? -offset.y : offset.y;
@@ -236,7 +255,7 @@ export function localOffsetToWorld(
  */
 export function worldOffsetToLocal(
   offset: Point,
-  transform: Pick<WorkspaceItemTransform, "rotation" | "mirrorX" | "mirrorY">,
+  transform: Pick<WorkspaceItemTransform, 'rotation' | 'mirrorX' | 'mirrorY'>,
 ): Point {
   const unrotated = rotatePoint(offset, -transform.rotation);
   return {
@@ -245,7 +264,9 @@ export function worldOffsetToLocal(
   };
 }
 
-export function getWorkspaceSelectionBounds(items: WorkspaceTransformableItem[]): WorkspaceBounds | null {
+export function getWorkspaceSelectionBounds(
+  items: WorkspaceTransformableItem[],
+): WorkspaceBounds | null {
   if (items.length === 0) {
     return null;
   }
@@ -318,7 +339,7 @@ export function scaleWorkspaceItemTransformFromAnchor(
  * Returns the (possibly adjusted) scale factors plus whether a snap occurred.
  */
 export function snapScaleFactorToAspect(params: {
-  axis: "x" | "y";
+  axis: 'x' | 'y';
   startScaleX: number;
   startScaleY: number;
   scaleFactorX: number;
@@ -328,25 +349,39 @@ export function snapScaleFactorToAspect(params: {
   thresholdScreenPx?: number;
 }): { scaleFactorX: number; scaleFactorY: number; snapped: boolean } {
   const {
-    axis, startScaleX, startScaleY, scaleFactorX, scaleFactorY, frame, zoom,
+    axis,
+    startScaleX,
+    startScaleY,
+    scaleFactorX,
+    scaleFactorY,
+    frame,
+    zoom,
     thresholdScreenPx = ASPECT_RATIO_SNAP_SCREEN_PX,
   } = params;
   const prelimScaleX = Math.max(0.01, startScaleX * scaleFactorX);
   const prelimScaleY = Math.max(0.01, startScaleY * scaleFactorY);
   const snapWorkspacePx = thresholdScreenPx / Math.max(0.01, zoom);
 
-  if (axis === "x") {
+  if (axis === 'x') {
     // Natural proportions: scaleX should equal the (fixed) scaleY.
     const targetScaleX = prelimScaleY;
     const widthDelta = frame.width * (prelimScaleX - targetScaleX);
     if (Math.abs(widthDelta) <= snapWorkspacePx) {
-      return { scaleFactorX: targetScaleX / Math.max(0.001, startScaleX), scaleFactorY, snapped: true };
+      return {
+        scaleFactorX: targetScaleX / Math.max(0.001, startScaleX),
+        scaleFactorY,
+        snapped: true,
+      };
     }
   } else {
     const targetScaleY = prelimScaleX;
     const heightDelta = frame.height * (prelimScaleY - targetScaleY);
     if (Math.abs(heightDelta) <= snapWorkspacePx) {
-      return { scaleFactorX, scaleFactorY: targetScaleY / Math.max(0.001, startScaleY), snapped: true };
+      return {
+        scaleFactorX,
+        scaleFactorY: targetScaleY / Math.max(0.001, startScaleY),
+        snapped: true,
+      };
     }
   }
   return { scaleFactorX, scaleFactorY, snapped: false };
@@ -359,7 +394,10 @@ export function rotateWorkspaceItemTransformAroundPoint(
   degrees: number,
 ): WorkspaceItemTransform {
   const itemCenter = getWorkspaceItemCenter({ transform, frame });
-  const nextCenter = addPoint(center, rotatePoint({ x: itemCenter.x - center.x, y: itemCenter.y - center.y }, degrees));
+  const nextCenter = addPoint(
+    center,
+    rotatePoint({ x: itemCenter.x - center.x, y: itemCenter.y - center.y }, degrees),
+  );
   const nextRotation = transform.rotation + degrees;
   // Offset from the item origin to its centre under the NEW rotation, mirror-aware.
   const nextCenterOffset = localOffsetToWorld(
@@ -405,21 +443,26 @@ export function getMeasurementTicks({
   pixelsPerInch: number;
 }): MeasurementTick[] {
   const maxDisplayValue = inchesToDisplayValue(lengthInches, unit);
-  const subdivisionDisplayValue = unit === "in" ? 0.25 : unit === "cm" ? 0.5 : 5;
+  const subdivisionDisplayValue = unit === 'in' ? 0.25 : unit === 'cm' ? 0.5 : 5;
   const ticks: MeasurementTick[] = [];
   const count = Math.ceil(maxDisplayValue / subdivisionDisplayValue);
 
   for (let index = 0; index <= count; index += 1) {
-    const displayValue = Math.min(maxDisplayValue, roundMeasurement(index * subdivisionDisplayValue));
+    const displayValue = Math.min(
+      maxDisplayValue,
+      roundMeasurement(index * subdivisionDisplayValue),
+    );
     const valueInches = displayValueToInches(displayValue, unit);
     const isEnd = Math.abs(displayValue - maxDisplayValue) < 0.001;
-    const label = shouldLabelWholeNumber(displayValue, unit) ? formatTickLabel(displayValue, unit) : "";
+    const label = shouldLabelWholeNumber(displayValue, unit)
+      ? formatTickLabel(displayValue, unit)
+      : '';
 
     ticks.push({
       value: displayValue,
       label,
-      position: roundCss((axis === "x" ? pan.x : pan.y) + valueInches * pixelsPerInch * zoom),
-      major: label !== "" || isEnd,
+      position: roundCss((axis === 'x' ? pan.x : pan.y) + valueInches * pixelsPerInch * zoom),
+      major: label !== '' || isEnd,
     });
 
     if (isEnd) {
@@ -432,11 +475,11 @@ export function getMeasurementTicks({
 
 function displayValueToInches(value: number, unit: MeasurementUnit): number {
   switch (unit) {
-    case "cm":
+    case 'cm':
       return value / 2.54;
-    case "mm":
+    case 'mm':
       return value / 25.4;
-    case "in":
+    case 'in':
     default:
       return value;
   }
@@ -445,7 +488,10 @@ function displayValueToInches(value: number, unit: MeasurementUnit): number {
 function getWorkspaceItemCenter({ transform, frame }: WorkspaceTransformableItem): Point {
   return addPoint(
     { x: transform.x, y: transform.y },
-    localOffsetToWorld({ x: (frame.width * transform.scaleX) / 2, y: (frame.height * transform.scaleY) / 2 }, transform),
+    localOffsetToWorld(
+      { x: (frame.width * transform.scaleX) / 2, y: (frame.height * transform.scaleY) / 2 },
+      transform,
+    ),
   );
 }
 
@@ -466,11 +512,11 @@ function shouldLabelWholeNumber(value: number, unit: MeasurementUnit): boolean {
   if (!Number.isInteger(value)) {
     return false;
   }
-  return unit !== "mm" || value % 10 === 0;
+  return unit !== 'mm' || value % 10 === 0;
 }
 
 function formatTickLabel(value: number, unit: MeasurementUnit): string {
-  if (unit === "mm") {
+  if (unit === 'mm') {
     return String(Math.round(value));
   }
   return String(value);
@@ -506,9 +552,9 @@ export function formatN(value: number): string {
 export function loadMeasurementUnitPreference(): MeasurementUnit {
   try {
     const saved = window.localStorage.getItem(MEASUREMENT_UNIT_STORAGE_KEY);
-    return saved === "in" || saved === "cm" || saved === "mm" ? saved : "cm";
+    return saved === 'in' || saved === 'cm' || saved === 'mm' ? saved : 'cm';
   } catch {
-    return "cm";
+    return 'cm';
   }
 }
 
@@ -526,7 +572,7 @@ export type WorkspaceRect = { x: number; y: number; width: number; height: numbe
 
 /** The mat's coloured border around the paper, in workspace pixels. */
 export function getMatBorder(kind: MatKind): { side: number; top: number; bottom: number } {
-  return kind === "card" ? { side: 33, top: 90, bottom: 78 } : { side: 33, top: 80, bottom: 80 };
+  return kind === 'card' ? { side: 33, top: 90, bottom: 78 } : { side: 33, top: 80, bottom: 80 };
 }
 
 /**
@@ -608,10 +654,17 @@ export function findFreePlacement(input: {
     for (const x of xs) {
       const score = [
         coveredArea({ x, y, width: size.width, height: size.height }),
-        coveredArea({ x: x - gap, y: y - gap, width: size.width + gap * 2, height: size.height + gap * 2 }),
+        coveredArea({
+          x: x - gap,
+          y: y - gap,
+          width: size.width + gap * 2,
+          height: size.height + gap * 2,
+        }),
         Math.hypot(x - centered.x, y - centered.y),
       ];
-      const better = score.findIndex((value, index) => Math.abs(value - (bestScore[index] ?? 0)) > 0.5);
+      const better = score.findIndex(
+        (value, index) => Math.abs(value - (bestScore[index] ?? 0)) > 0.5,
+      );
       if (better >= 0 && (score[better] ?? 0) < (bestScore[better] ?? 0)) {
         best = { x, y };
         bestScore = score;
@@ -625,20 +678,28 @@ export function findFreePlacement(input: {
  * A length for display in the user's unit, e.g. "1,5 cm". Workspace sizes are
  * stored in pixels (80 per inch) and mats in inches; people think in cm.
  */
-export function formatLength(inches: number, unit: MeasurementUnit, language: "nl" | "en" = "en"): string {
-  const value = unit === "in" ? inches : unit === "cm" ? inches * 2.54 : inches * 25.4;
-  const decimals = unit === "mm" ? (Math.abs(value) < 10 ? 1 : 0) : unit === "cm" ? 1 : 2;
+export function formatLength(
+  inches: number,
+  unit: MeasurementUnit,
+  language: 'nl' | 'en' = 'en',
+): string {
+  const value = unit === 'in' ? inches : unit === 'cm' ? inches * 2.54 : inches * 25.4;
+  const decimals = unit === 'mm' ? (Math.abs(value) < 10 ? 1 : 0) : unit === 'cm' ? 1 : 2;
   const text = String(Number(value.toFixed(decimals)));
-  return `${language === "nl" ? text.replace(".", ",") : text} ${unit}`;
+  return `${language === 'nl' ? text.replace('.', ',') : text} ${unit}`;
 }
 
-export function formatLengthPx(pixels: number, unit: MeasurementUnit, language: "nl" | "en" = "en"): string {
+export function formatLengthPx(
+  pixels: number,
+  unit: MeasurementUnit,
+  language: 'nl' | 'en' = 'en',
+): string {
   return formatLength(pixels / WORKSPACE_PIXELS_PER_INCH, unit, language);
 }
 
 // ── Align, distribute, snap and nudge ───────────────────────────────────────
 
-export type AlignMode = "left" | "center" | "right" | "top" | "middle" | "bottom";
+export type AlignMode = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
 
 type IdentifiedItem = WorkspaceTransformableItem & { id: string };
 type TransformUpdate = { id: string; transform: WorkspaceItemTransform };
@@ -652,56 +713,79 @@ function boundsOf(item: WorkspaceTransformableItem): WorkspaceBounds {
  * the middle of the card); several objects are aligned to each other.
  * Rotated objects are aligned by the box around them.
  */
-export function alignWorkspaceItems(items: IdentifiedItem[], mode: AlignMode, paper: WorkspaceRect): TransformUpdate[] {
+export function alignWorkspaceItems(
+  items: IdentifiedItem[],
+  mode: AlignMode,
+  paper: WorkspaceRect,
+): TransformUpdate[] {
   if (items.length === 0) return [];
   const group = getWorkspaceSelectionBounds(items) as WorkspaceBounds;
-  const reference = items.length === 1
-    ? { left: paper.x, top: paper.y, right: paper.x + paper.width, bottom: paper.y + paper.height }
-    : group;
+  const reference =
+    items.length === 1
+      ? {
+          left: paper.x,
+          top: paper.y,
+          right: paper.x + paper.width,
+          bottom: paper.y + paper.height,
+        }
+      : group;
   return items.map((item) => {
     const bounds = boundsOf(item);
     let dx = 0;
     let dy = 0;
-    if (mode === "left") dx = reference.left - bounds.left;
-    else if (mode === "right") dx = reference.right - bounds.right;
-    else if (mode === "center") dx = (reference.left + reference.right) / 2 - bounds.center.x;
-    else if (mode === "top") dy = reference.top - bounds.top;
-    else if (mode === "bottom") dy = reference.bottom - bounds.bottom;
+    if (mode === 'left') dx = reference.left - bounds.left;
+    else if (mode === 'right') dx = reference.right - bounds.right;
+    else if (mode === 'center') dx = (reference.left + reference.right) / 2 - bounds.center.x;
+    else if (mode === 'top') dy = reference.top - bounds.top;
+    else if (mode === 'bottom') dy = reference.bottom - bounds.bottom;
     else dy = (reference.top + reference.bottom) / 2 - bounds.center.y;
-    return { id: item.id, transform: { ...item.transform, x: item.transform.x + dx, y: item.transform.y + dy } };
+    return {
+      id: item.id,
+      transform: { ...item.transform, x: item.transform.x + dx, y: item.transform.y + dy },
+    };
   });
 }
 
 /** Spreads three or more objects so the gaps between them are equal; the outer two stay put. */
-export function distributeWorkspaceItems(items: IdentifiedItem[], axis: "x" | "y"): TransformUpdate[] {
+export function distributeWorkspaceItems(
+  items: IdentifiedItem[],
+  axis: 'x' | 'y',
+): TransformUpdate[] {
   if (items.length < 3) return [];
-  const start = (bounds: WorkspaceBounds) => (axis === "x" ? bounds.left : bounds.top);
-  const size = (bounds: WorkspaceBounds) => (axis === "x" ? bounds.width : bounds.height);
+  const start = (bounds: WorkspaceBounds) => (axis === 'x' ? bounds.left : bounds.top);
+  const size = (bounds: WorkspaceBounds) => (axis === 'x' ? bounds.width : bounds.height);
   const entries = items
     .map((item) => ({ item, bounds: boundsOf(item) }))
-    .sort((a, b) => (axis === "x" ? a.bounds.center.x - b.bounds.center.x : a.bounds.center.y - b.bounds.center.y));
+    .sort((a, b) =>
+      axis === 'x' ? a.bounds.center.x - b.bounds.center.x : a.bounds.center.y - b.bounds.center.y,
+    );
   const first = entries[0] as (typeof entries)[number];
   const last = entries[entries.length - 1] as (typeof entries)[number];
   const span = start(last.bounds) + size(last.bounds) - start(first.bounds);
-  const gap = (span - entries.reduce((sum, entry) => sum + size(entry.bounds), 0)) / (entries.length - 1);
+  const gap =
+    (span - entries.reduce((sum, entry) => sum + size(entry.bounds), 0)) / (entries.length - 1);
   let cursor = start(first.bounds);
   return entries.map(({ item, bounds }) => {
     const delta = cursor - start(bounds);
     cursor += size(bounds) + gap;
     return {
       id: item.id,
-      transform: axis === "x"
-        ? { ...item.transform, x: item.transform.x + delta }
-        : { ...item.transform, y: item.transform.y + delta },
+      transform:
+        axis === 'x'
+          ? { ...item.transform, x: item.transform.x + delta }
+          : { ...item.transform, y: item.transform.y + delta },
     };
   });
 }
 
 export type SnapTargets = { x: number[]; y: number[] };
-export type SnapGuide = { axis: "x" | "y"; position: number };
+export type SnapGuide = { axis: 'x' | 'y'; position: number };
 
 /** The lines a dragged object can snap to: the paper's edges and middle, and those of the other objects. */
-export function getSnapTargets(paper: WorkspaceRect, others: WorkspaceTransformableItem[]): SnapTargets {
+export function getSnapTargets(
+  paper: WorkspaceRect,
+  others: WorkspaceTransformableItem[],
+): SnapTargets {
   const x = [paper.x, paper.x + paper.width / 2, paper.x + paper.width];
   const y = [paper.y, paper.y + paper.height / 2, paper.y + paper.height];
   for (const other of others) {
@@ -712,7 +796,11 @@ export function getSnapTargets(paper: WorkspaceRect, others: WorkspaceTransforma
   return { x, y };
 }
 
-function nearestSnap(edges: number[], targets: number[], threshold: number): { shift: number; position: number } | null {
+function nearestSnap(
+  edges: number[],
+  targets: number[],
+  threshold: number,
+): { shift: number; position: number } | null {
   let best: { shift: number; position: number } | null = null;
   for (const edge of edges) {
     for (const target of targets) {
@@ -730,7 +818,7 @@ function nearestSnap(edges: number[], targets: number[], threshold: number): { s
  * `bounds` is the box before the drag, `delta` how far it was dragged.
  */
 export function snapDragDelta(input: {
-  bounds: Pick<WorkspaceBounds, "left" | "right" | "top" | "bottom">;
+  bounds: Pick<WorkspaceBounds, 'left' | 'right' | 'top' | 'bottom'>;
   delta: Point;
   targets: SnapTargets;
   threshold: number;
@@ -743,16 +831,16 @@ export function snapDragDelta(input: {
   const snapX = nearestSnap([left, (left + right) / 2, right], targets.x, threshold);
   const snapY = nearestSnap([top, (top + bottom) / 2, bottom], targets.y, threshold);
   const guides: SnapGuide[] = [];
-  if (snapX) guides.push({ axis: "x", position: snapX.position });
-  if (snapY) guides.push({ axis: "y", position: snapY.position });
+  if (snapX) guides.push({ axis: 'x', position: snapX.position });
+  if (snapY) guides.push({ axis: 'y', position: snapY.position });
   return { delta: { x: delta.x + (snapX?.shift ?? 0), y: delta.y + (snapY?.shift ?? 0) }, guides };
 }
 
 /** How far one press of an arrow key moves the selection, in workspace pixels. */
-export function nudgeStepPx(unit: MeasurementUnit, size: "fine" | "normal" | "large"): number {
-  if (unit === "in") {
-    const inches = size === "fine" ? 1 / 64 : size === "large" ? 0.25 : 1 / 16;
+export function nudgeStepPx(unit: MeasurementUnit, size: 'fine' | 'normal' | 'large'): number {
+  if (unit === 'in') {
+    const inches = size === 'fine' ? 1 / 64 : size === 'large' ? 0.25 : 1 / 16;
     return inches * WORKSPACE_PIXELS_PER_INCH;
   }
-  return mmToWorkspacePx(size === "fine" ? 0.1 : size === "large" ? 10 : 1);
+  return mmToWorkspacePx(size === 'fine' ? 0.1 : size === 'large' ? 10 : 1);
 }

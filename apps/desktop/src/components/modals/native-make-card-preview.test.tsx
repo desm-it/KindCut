@@ -1,6 +1,64 @@
-import{it,expect}from'vitest';import{renderToStaticMarkup}from'react-dom/server';import{nativeMakeCardVisual}from'./native-make-card-preview';import{buildInsertSlotsPaths,CARD_SIZES,WORKSPACE_PIXELS_PER_INCH}from'../../workspace-utils';import{compileNativeMakeDesign,NativeMakePreview}from'./native-make-design';
-const base={previewOnly:true as const,matPreset:'joy-card',cardSize:'medium' as const,insertSlots:true,svg:'<svg xmlns="http://www.w3.org/2000/svg" width="4.5in" height="6.25in" viewBox="0 0 360 500"><path fill="none" stroke="#8f4f2b" d="M80 80L120 120"/></svg>',materialId:535,mat:{widthIn:4.5,heightIn:6.25},behindColor:'#8f4f2b',strokeTools:{'#8f4f2b':{tool:'fine_point_blade' as const,operation:'cut' as const}}};
-it('uses the editor insert-slot paths byte-for-byte at the selected card dimensions',()=>{const v=nativeMakeCardVisual({width:4.5,height:6.25},'medium',true,'#8f4f2b',true),d=CARD_SIZES.medium;expect(v.slotsSvg).toBe(buildInsertSlotsPaths(d.width*WORKSPACE_PIXELS_PER_INCH,d.height*WORKSPACE_PIXELS_PER_INCH,'#8f4f2b'));expect(v.slotsSvg.match(/<path /g)).toHaveLength(4);expect(v.paper.width).toBe(d.width*WORKSPACE_PIXELS_PER_INCH);expect(v.paper.height).toBe(d.height*WORKSPACE_PIXELS_PER_INCH);});
-it('honours disabled slots and ordinary material without silently adding insert cutouts',()=>{expect(nativeMakeCardVisual({width:4.5,height:6.25},'medium',false,'#8f4f2b',true).slotsSvg).toBe('');const v=nativeMakeCardVisual({width:4.5,height:6.25},'medium',true,'#8f4f2b',false);expect(v.slotsSvg).toBe('');expect(v.paper.width).toBe(4.5*WORKSPACE_PIXELS_PER_INCH);});
-it('shows the actual blue CardMat skin, selected white card and dashed guides, without a mat grid',()=>{const h=renderToStaticMarkup(<NativeMakePreview design={compileNativeMakeDesign(base)} selected={null} language="en"/>);expect(h).toContain('workpiece-mat--card');expect(h).toContain('CardMat');expect(h).toContain('native-make__card-paper');expect(h).toContain('native-make__card-guides');expect(h).not.toContain('mat-icon__grid');});
-it('retains four corner cutouts in the no-image fallback and can turn them off',()=>{const h=(slots:boolean)=>renderToStaticMarkup(<NativeMakePreview design={compileNativeMakeDesign({...base,insertSlots:slots})} selected={null} language="en"/>);expect(h(true).match(/class="native-make__corner-slot"/g)).toHaveLength(4);expect(h(false)).not.toContain('native-make__corner-slot');});
+import { it, expect } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { nativeMakeCardVisual } from './native-make-card-preview';
+import {
+  buildInsertSlotsPaths,
+  CARD_SIZES,
+  WORKSPACE_PIXELS_PER_INCH,
+} from '../../workspace-utils';
+import { compileNativeMakeDesign, NativeMakePreview } from './native-make-design';
+const base = {
+  previewOnly: true as const,
+  matPreset: 'joy-card',
+  cardSize: 'medium' as const,
+  insertSlots: true,
+  svg: '<svg xmlns="http://www.w3.org/2000/svg" width="4.5in" height="6.25in" viewBox="0 0 360 500"><path fill="none" stroke="#8f4f2b" d="M80 80L120 120"/></svg>',
+  materialId: 535,
+  mat: { widthIn: 4.5, heightIn: 6.25 },
+  behindColor: '#8f4f2b',
+  strokeTools: { '#8f4f2b': { tool: 'fine_point_blade' as const, operation: 'cut' as const } },
+};
+it('uses the editor insert-slot paths byte-for-byte at the selected card dimensions', () => {
+  const v = nativeMakeCardVisual({ width: 4.5, height: 6.25 }, 'medium', true, '#8f4f2b', true),
+    d = CARD_SIZES.medium;
+  expect(v.slotsSvg).toBe(
+    buildInsertSlotsPaths(
+      d.width * WORKSPACE_PIXELS_PER_INCH,
+      d.height * WORKSPACE_PIXELS_PER_INCH,
+      '#8f4f2b',
+    ),
+  );
+  expect(v.slotsSvg.match(/<path /g)).toHaveLength(4);
+  expect(v.paper.width).toBe(d.width * WORKSPACE_PIXELS_PER_INCH);
+  expect(v.paper.height).toBe(d.height * WORKSPACE_PIXELS_PER_INCH);
+});
+it('honours disabled slots and ordinary material without silently adding insert cutouts', () => {
+  expect(
+    nativeMakeCardVisual({ width: 4.5, height: 6.25 }, 'medium', false, '#8f4f2b', true).slotsSvg,
+  ).toBe('');
+  const v = nativeMakeCardVisual({ width: 4.5, height: 6.25 }, 'medium', true, '#8f4f2b', false);
+  expect(v.slotsSvg).toBe('');
+  expect(v.paper.width).toBe(4.5 * WORKSPACE_PIXELS_PER_INCH);
+});
+it('shows the actual blue CardMat skin, selected white card and dashed guides, without a mat grid', () => {
+  const h = renderToStaticMarkup(
+    <NativeMakePreview design={compileNativeMakeDesign(base)} selected={null} language="en" />,
+  );
+  expect(h).toContain('workpiece-mat--card');
+  expect(h).toContain('CardMat');
+  expect(h).toContain('native-make__card-paper');
+  expect(h).toContain('native-make__card-guides');
+  expect(h).not.toContain('mat-icon__grid');
+});
+it('retains four corner cutouts in the no-image fallback and can turn them off', () => {
+  const h = (slots: boolean) =>
+    renderToStaticMarkup(
+      <NativeMakePreview
+        design={compileNativeMakeDesign({ ...base, insertSlots: slots })}
+        selected={null}
+        language="en"
+      />,
+    );
+  expect(h(true).match(/class="native-make__corner-slot"/g)).toHaveLength(4);
+  expect(h(false)).not.toContain('native-make__corner-slot');
+});

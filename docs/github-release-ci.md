@@ -1,93 +1,37 @@
-# GitHub Release CI
+# GitHub release CI
 
-KindCut release builds should run on native GitHub-hosted runners so the bundled
-SliceBug runtime is built for the same operating system as the app package.
+The workflow files and committed platform test policy are the executable source of truth. Release product source and workflow/build-tool provenance are distinct; a CI repair must not rewrite a published tag.
 
-## Repository Setup
+## Reproducible inputs
 
-Create the KindCut GitHub repository, then push this repo to it:
+- Install the committed npm lockfile with `npm ci`; use pinned tool versions.
+- Set up the Joy runtime from its pinned build requirements with Python3.12.
+- `.github/workflows/release.yml` pins SliceBug to immutable commit `f00348732cc6501b987a39cff0a1982d8b35cad7` in `desm-it/slicebug`. It does **not** accept a moving `SLICEBUG_REF=main` override. Change the reviewed workflow pin deliberately when upgrading.
+- The helper checkout is `vendor/slicebug/`, ignored by git. A read-only `SLICEBUG_TOKEN` is needed only if repository access requires it; never put credentials in source or release notes.
+- macOS ARM64 uses `macos-15`; Windows x64 uses `windows-2022`. Native runtime tests use Python3.12, while Windows legacy SliceBug packaging separately uses Python3.10 for its compatible cx-Freeze wheel. Keep those environments separate.
 
-```bash
-git remote add origin https://github.com/desm-it/KindCut.git
-git push -u origin feature/cut-flow-and-project-guards
-```
+## Checks and platform policy
 
-Set these repository variables in GitHub under Settings -> Secrets and variables
--> Actions -> Variables:
+CI runs on macOS, Linux and Windows. It uses repository test commands/platform classification rather than pretending Unix file modes/fcntl are Windows contracts. POSIX runs full inert native coverage; Windows runs supported portable contracts. No workflow connects a cutter, reads real secrets or sends movement.
 
-```text
-SLICEBUG_REPOSITORY=desm-it/slicebug
-SLICEBUG_REF=main
-```
+`TMPDIR` is initialized in a shell step through `GITHUB_ENV`; job-level expressions cannot assume a runner context. Older immutable tags can require real-interpreter compatibility aliases for POSIX-style test paths. Such aliases are build tooling, not synthetic test responses or edits to tagged source.
 
-If the SliceBug repository is private and the default `GITHUB_TOKEN` cannot read
-it, add this repository secret:
+Release checks must include the emitted CommonJS host/shared-package boundary and the frozen offline compiler with SDK inert peers, not only source tests or `--probe`. Runtime resources preserve relative framework symlinks for relocation/signature verification.
 
-```text
-SLICEBUG_TOKEN=<fine-grained token with read access to the SliceBug repo>
-```
+## Publishing
 
-The release workflow checks SliceBug out into `vendor/slicebug/`, which stays
-ignored in the KindCut repo. That keeps KindCut pullable while still letting CI
-bundle a fresh SliceBug runtime from `desm-it/slicebug` `main`.
+1. Run the canonical checks and verify a clean-source build plus isolated inert package smoke test.
+2. Commit reviewed product source only when authorized. Exclude private research, user profiles, real calibration/session keys and caches.
+3. Create an immutable version tag and explicit release notes. The published-release event triggers `.github/workflows/release.yml`; tag pushes alone do not trigger duplicate release builds.
+4. For a manual build, dispatch the workflow with `release_tag` naming the existing tag. Empty input makes smoke artifacts without attaching them to a release. There is no arbitrary mutable helper-ref input.
+5. Wait for both native platform packaging jobs and the attachment job. The exact source tag is checked out. When repair tooling comes from the workflow revision, it is checked out separately at `github.workflow_sha`, outside the tagged product source.
+6. Verify DMG, ZIP, Windows EXE, blockmaps and both `latest-mac.yml`/`latest.yml` feeds on the release. Check feed version, filenames, sizes and SHA512 against actual downloaded artifacts. A published release entry without assets is not completion.
+7. Verify the actual macOS runtime/profile resources and packaged host boundary, plus documented supported-platform smoke behavior. Do not infer physical acceptance from software checks.
 
-## Workflows
+KindCut's packaged updater reads the public `desm-it/KindCut` feed and asks before installation; installation/update acceptance remains distinct from artifact assembly. Preserve existing release notes when adding verified provenance. Record the source commit and successful workflow run, not just a green local working tree.
 
-- `.github/workflows/ci.yml` runs typecheck, tests, and production build on
-  pull requests and branch pushes.
-- `.github/workflows/release.yml` builds release artifacts on native runners:
-  macOS arm64 on `macos-15`, Windows x64 on `windows-latest`.
-- Windows packaging uses Python 3.10 because SliceBug's pinned
-  `cx-Freeze==6.13.2` provides a compatible prebuilt Windows wheel there.
-- The KindCut SliceBug bundler also constrains `lief` to `>=0.12,<0.13` so the
-  old `cx-Freeze` pin does not pick up a newer incompatible parser API.
+## Signing and support limits
 
-The release workflow runs when a GitHub Release is published. It builds native
-macOS and Windows artifacts, then uploads them to that release. It does not run
-on tag pushes, because `gh release create` creates a tag and publishes a release,
-which would otherwise trigger duplicate builds for the same version.
+Current macOS artifacts use ad-hoc signing, not Apple Developer ID notarization. Strict signature integrity is not Gatekeeper/notarization acceptance. Developer ID/notarization and Windows signing require separately configured credentials and verification; do not invent or silently alter them during a refactor.
 
-The workflow can also be started manually from GitHub Actions. Pass
-`release_tag` to attach builds to an existing release, or leave it blank to make
-smoke-test artifacts only.
-
-Release builds also generate updater metadata for GitHub Releases:
-
-```text
-latest-mac.yml
-latest.yml
-```
-
-KindCut is configured to check the public `desm-it/KindCut` GitHub Releases
-feed in packaged builds. If a newer version is found while no project is open,
-KindCut asks before downloading and installing. If GitHub is unreachable,
-metadata is missing, or there is no newer version, the automatic startup check
-stays quiet.
-
-## Release Flow
-
-1. Commit the release-ready source.
-2. Push a branch and wait for CI to pass.
-3. Start the `Release Builds` workflow manually for a smoke build, optionally
-   choosing a SliceBug ref.
-4. Download and smoke-test the artifacts.
-5. Publish a GitHub Release for the exact tag when ready:
-
-```bash
-gh release create 1.0.0 --target main --title "KindCut 1.0.0" --notes-file RELEASE_NOTES.md
-```
-
-Publishing the GitHub Release triggers the native release workflow and attaches
-the macOS DMG/zip and Windows installer to the release.
-
-## Signing Status
-
-The current workflow ad-hoc signs macOS artifacts for smoke testing. Before
-broad distribution, add:
-
-- Apple Developer ID certificate, provisioning/notarization credentials, and
-  `electron-builder` mac signing configuration.
-- Windows code-signing certificate and `electron-builder` Windows signing
-  configuration.
-
-Until signing is configured, treat CI output as smoke-test artifacts.
+Native Joy support is original Joy on macOS Apple Silicon with supported firmware and explicit on-mat recipes. Windows remains the legacy route. New device/model, Smart/matless and physical stock/fault safety claims require separate implementation and acceptance.

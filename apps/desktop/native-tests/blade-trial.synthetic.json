@@ -89,45 +89,17 @@
     "context": 0,
     "pressureRequest": 223,
     "speeds": {
-      "cutVelocity_ips": [
-        3.0,
-        3.0
-      ],
-      "moveVelocity_ips": [
-        3.0,
-        3.0
-      ],
-      "cutAcceleration_ips2": [
-        13.0,
-        13.0
-      ],
-      "moveAcceleration_ips2": [
-        38.599998474121094,
-        38.599998474121094
-      ]
+      "cutVelocity_ips": [3.0, 3.0],
+      "moveVelocity_ips": [3.0, 3.0],
+      "cutAcceleration_ips2": [13.0, 13.0],
+      "moveAcceleration_ips2": [38.599998474121094, 38.599998474121094]
     },
     "nonXY": {
       "unit": "native_unverified",
-      "cutVelocity": [
-        4.0,
-        4.0,
-        10.0
-      ],
-      "moveVelocity": [
-        4.0,
-        4.0,
-        10.0
-      ],
-      "cutAcceleration": [
-        20.0,
-        20.0,
-        25.0
-      ],
-      "moveAcceleration": [
-        38.599998474121094,
-        38.599998474121094,
-        250.0
-      ]
+      "cutVelocity": [4.0, 4.0, 10.0],
+      "moveVelocity": [4.0, 4.0, 10.0],
+      "cutAcceleration": [20.0, 20.0, 25.0],
+      "moveAcceleration": [38.599998474121094, 38.599998474121094, 250.0]
     },
     "geometry": {
       "unit": "native_unverified",
@@ -142,19 +114,9 @@
       "lift_threshold": 0.0,
       "parallel_offset": 0.0,
       "lagging_offset": 0.0,
-      "nodes": [
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
+      "nodes": [0, 0, 0, 0, 0]
     },
     "profileId": "p"
   },
-  "pressures": [
-    223,
-    223,
-    223
-  ]
+  "pressures": [223, 223, 223]
 }

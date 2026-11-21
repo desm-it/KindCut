@@ -6,7 +6,10 @@
   "scripts": {
     "build": "node scripts/build-runtime.cjs",
     "setup": "node scripts/setup-runtime.cjs",
-    "test": "node scripts/run-tests.cjs",
+    "test": "node --test scripts/setup-runtime.test.cjs && node scripts/run-tests.cjs",
     "test:setup": "node --test scripts/setup-runtime.test.cjs"
+  },
+  "kindcutTests": {
+    "platformPolicyVersion": 1
   }
 }

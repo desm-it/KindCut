@@ -1,0 +1,334 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "job-rpc-v1.schema.json",
+  "title": "Private Native Joy job RPC v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "op",
+        "action",
+        "plan",
+        "settings",
+        "pressureResponsesHex",
+        "pressureRequests",
+        "programDigest",
+        "motionApproved",
+        "bladeRemovedConfirmed",
+        "timeout",
+        "jobTimeout"
+      ],
+      "properties": {
+        "op": {
+          "const": "job"
+        },
+        "action": {
+          "const": "start"
+        },
+        "plan": {},
+        "settings": {},
+        "pressureResponsesHex": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pressureRequests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          }
+        },
+        "programDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "motionApproved": {
+          "const": true
+        },
+        "bladeRemovedConfirmed": {
+          "const": true
+        },
+        "timeout": {
+          "const": 30
+        },
+        "jobTimeout": {
+          "const": 60
+        },
+        "bladeTrial": {
+          "type": "string"
+        },
+        "bladeJob": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "settings": {
+                "type": "object",
+                "properties": {
+                  "tool": {
+                    "const": "fine_point_blade"
+                  }
+                },
+                "required": ["tool"]
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "required": ["bladeJob"],
+                "not": {
+                  "required": ["bladeTrial"]
+                }
+              },
+              {
+                "required": ["bladeTrial"],
+                "not": {
+                  "required": ["bladeJob"]
+                }
+              }
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": ["bladeTrial"]
+                },
+                {
+                  "required": ["bladeJob"]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "required": [
+        "op",
+        "action",
+        "operationId",
+        "plan",
+        "settings",
+        "pressureResponsesHex",
+        "pressureRequests",
+        "programDigest",
+        "jobTimeout"
+      ],
+      "properties": {
+        "op": {
+          "const": "job"
+        },
+        "action": {
+          "const": "next"
+        },
+        "operationId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "plan": {},
+        "settings": {},
+        "pressureResponsesHex": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pressureRequests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          }
+        },
+        "programDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "jobTimeout": {
+          "const": 60
+        },
+        "bladeTrial": {
+          "type": "string"
+        },
+        "bladeJob": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "settings": {
+                "type": "object",
+                "properties": {
+                  "tool": {
+                    "const": "fine_point_blade"
+                  }
+                },
+                "required": ["tool"]
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "required": ["bladeJob"],
+                "not": {
+                  "required": ["bladeTrial"]
+                }
+              },
+              {
+                "required": ["bladeTrial"],
+                "not": {
+                  "required": ["bladeJob"]
+                }
+              }
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": ["bladeTrial"]
+                },
+                {
+                  "required": ["bladeJob"]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "job"
+        },
+        "action": {
+          "const": "status"
+        }
+      },
+      "required": ["op", "action"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "job"
+        },
+        "action": {
+          "const": "go"
+        },
+        "operationId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "toolConfirmed": {
+          "const": true
+        },
+        "bladeInstalledConfirmed": {
+          "const": true
+        }
+      },
+      "required": ["op", "action", "operationId", "toolConfirmed"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "job"
+        },
+        "action": {
+          "const": "cancel"
+        },
+        "operationId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": ["op", "action", "operationId"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "job"
+        },
+        "action": {
+          "const": "pause"
+        },
+        "operationId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": ["op", "action", "operationId"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "job"
+        },
+        "action": {
+          "const": "resume"
+        },
+        "operationId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "resumeApproved": {
+          "const": true
+        }
+      },
+      "required": ["op", "action", "operationId", "resumeApproved"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "job"
+        },
+        "action": {
+          "const": "end"
+        },
+        "operationId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "endApproved": {
+          "const": true
+        }
+      },
+      "required": ["op", "action", "operationId", "endApproved"],
+      "additionalProperties": false
+    }
+  ]
+}

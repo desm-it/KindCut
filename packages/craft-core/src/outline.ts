@@ -3,7 +3,7 @@
 //  • a dashed line (cut as dashes, cardstock folds along it), and
 //  • an outline at a distance around an object (a border or shadow layer).
 
-import type { Point } from "./svg-path-geometry";
+import type { Point } from './svg-path-geometry';
 
 // ── Dashed lines ────────────────────────────────────────────────────────────
 
@@ -21,27 +21,47 @@ export const DASH_LIMITS = { dashMm: { min: 1, max: 10 }, gapMm: { min: 1, max: 
 export const DEFAULT_DASH: DashSettings = { enabled: true, dashMm: 3, gapMm: 3 };
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, value))
+    : fallback;
 }
 
 export function normalizeDash(value: unknown): DashSettings | null {
-  if (typeof value !== "object" || value === null) return null;
+  if (typeof value !== 'object' || value === null) return null;
   const record = value as Record<string, unknown>;
   return {
     enabled: record.enabled !== false,
-    dashMm: clampNumber(record.dashMm, DASH_LIMITS.dashMm.min, DASH_LIMITS.dashMm.max, DEFAULT_DASH.dashMm),
-    gapMm: clampNumber(record.gapMm, DASH_LIMITS.gapMm.min, DASH_LIMITS.gapMm.max, DEFAULT_DASH.gapMm),
+    dashMm: clampNumber(
+      record.dashMm,
+      DASH_LIMITS.dashMm.min,
+      DASH_LIMITS.dashMm.max,
+      DEFAULT_DASH.dashMm,
+    ),
+    gapMm: clampNumber(
+      record.gapMm,
+      DASH_LIMITS.gapMm.min,
+      DASH_LIMITS.gapMm.max,
+      DEFAULT_DASH.gapMm,
+    ),
   };
 }
 
-function pointAt(points: Point[], lengths: number[], distance: number, from: number): { point: Point; segment: number } {
+function pointAt(
+  points: Point[],
+  lengths: number[],
+  distance: number,
+  from: number,
+): { point: Point; segment: number } {
   let segment = from;
   while (segment < lengths.length - 1 && distance > (lengths[segment + 1] ?? 0)) segment++;
   const start = points[segment] ?? { x: 0, y: 0 };
   const end = points[segment + 1] ?? start;
   const span = (lengths[segment + 1] ?? 0) - (lengths[segment] ?? 0);
   const t = span > 0 ? (distance - (lengths[segment] ?? 0)) / span : 0;
-  return { point: { x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t }, segment };
+  return {
+    point: { x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t },
+    segment,
+  };
 }
 
 /**
@@ -50,11 +70,18 @@ function pointAt(points: Point[], lengths: number[], distance: number, from: num
  * a fold stay attached), a closed one gets evenly spaced dashes all the way round.
  * Lengths are in the same units as the points.
  */
-export function dashPolyline(points: Point[], closed: boolean, dash: number, gap: number): Point[][] {
+export function dashPolyline(
+  points: Point[],
+  closed: boolean,
+  dash: number,
+  gap: number,
+): Point[][] {
   if (points.length < 2 || !(dash > 0) || !(gap > 0)) return points.length > 1 ? [points] : [];
-  const path = closed && (points[0]?.x !== points[points.length - 1]?.x || points[0]?.y !== points[points.length - 1]?.y)
-    ? [...points, points[0] as Point]
-    : points;
+  const path =
+    closed &&
+    (points[0]?.x !== points[points.length - 1]?.x || points[0]?.y !== points[points.length - 1]?.y)
+      ? [...points, points[0] as Point]
+      : points;
   const lengths = [0];
   for (let index = 1; index < path.length; index++) {
     const a = path[index - 1] as Point;
@@ -68,14 +95,24 @@ export function dashPolyline(points: Point[], closed: boolean, dash: number, gap
     const margin = Math.min(gap / 2, total / 4);
     return [sliceByDistance(path, lengths, margin, total - margin)];
   }
-  const count = Math.max(1, Math.round(closed ? total / (dash + gap) : (total - gap) / (dash + gap)));
+  const count = Math.max(
+    1,
+    Math.round(closed ? total / (dash + gap) : (total - gap) / (dash + gap)),
+  );
   // Keep the dash length, let the bridges take up the slack.
   const bridge = closed ? total / count - dash : (total - count * dash) / (count + 1);
   const dashLength = bridge > 0 ? dash : (total / count) * (dash / (dash + gap));
-  const bridgeLength = bridge > 0 ? bridge : closed ? total / count - dashLength : (total - count * dashLength) / (count + 1);
+  const bridgeLength =
+    bridge > 0
+      ? bridge
+      : closed
+        ? total / count - dashLength
+        : (total - count * dashLength) / (count + 1);
   const result: Point[][] = [];
   for (let index = 0; index < count; index++) {
-    const start = closed ? index * (dashLength + bridgeLength) : bridgeLength + index * (dashLength + bridgeLength);
+    const start = closed
+      ? index * (dashLength + bridgeLength)
+      : bridgeLength + index * (dashLength + bridgeLength);
     result.push(sliceByDistance(path, lengths, start, Math.min(total, start + dashLength)));
   }
   return result.filter((piece) => piece.length > 1);
@@ -106,15 +143,25 @@ export type OutlineSettings = {
 
 export const OUTLINE_LIMITS = { distanceMm: { min: 0.5, max: 15 } } as const;
 
-export const DEFAULT_OUTLINE: OutlineSettings = { enabled: true, distanceMm: 3, penId: null, holes: false };
+export const DEFAULT_OUTLINE: OutlineSettings = {
+  enabled: true,
+  distanceMm: 3,
+  penId: null,
+  holes: false,
+};
 
 export function normalizeOutline(value: unknown): OutlineSettings | null {
-  if (typeof value !== "object" || value === null) return null;
+  if (typeof value !== 'object' || value === null) return null;
   const record = value as Record<string, unknown>;
   return {
     enabled: record.enabled !== false,
-    distanceMm: clampNumber(record.distanceMm, OUTLINE_LIMITS.distanceMm.min, OUTLINE_LIMITS.distanceMm.max, DEFAULT_OUTLINE.distanceMm),
-    penId: typeof record.penId === "string" && record.penId ? record.penId : null,
+    distanceMm: clampNumber(
+      record.distanceMm,
+      OUTLINE_LIMITS.distanceMm.min,
+      OUTLINE_LIMITS.distanceMm.max,
+      DEFAULT_OUTLINE.distanceMm,
+    ),
+    penId: typeof record.penId === 'string' && record.penId ? record.penId : null,
     holes: record.holes === true,
   };
 }
@@ -141,7 +188,12 @@ export function polygonSignedArea(points: Point[]): number {
  * result is smoother than the pixel grid. Coordinates are in pixels, with a
  * pixel's centre at +0.5. Outer edges have a positive area, holes a negative one.
  */
-export function traceAlphaContours(alpha: ArrayLike<number>, width: number, height: number, threshold = 128): ContourLoop[] {
+export function traceAlphaContours(
+  alpha: ArrayLike<number>,
+  width: number,
+  height: number,
+  threshold = 128,
+): ContourLoop[] {
   if (width <= 0 || height <= 0) return [];
   // One empty pixel all round, so every edge closes.
   const paddedWidth = width + 2;
@@ -170,28 +222,67 @@ export function traceAlphaContours(alpha: ArrayLike<number>, width: number, heig
       const right = vertical(x + 1, y);
       // Each piece runs with the inside on its right-hand side.
       switch (kind) {
-        case 1: next.set(left, bottom); break;
-        case 2: next.set(bottom, right); break;
-        case 3: next.set(left, right); break;
-        case 4: next.set(right, top); break;
-        case 6: next.set(bottom, top); break;
-        case 7: next.set(left, top); break;
-        case 8: next.set(top, left); break;
-        case 9: next.set(top, bottom); break;
-        case 11: next.set(top, right); break;
-        case 12: next.set(right, left); break;
-        case 13: next.set(right, bottom); break;
-        case 14: next.set(bottom, left); break;
+        case 1:
+          next.set(left, bottom);
+          break;
+        case 2:
+          next.set(bottom, right);
+          break;
+        case 3:
+          next.set(left, right);
+          break;
+        case 4:
+          next.set(right, top);
+          break;
+        case 6:
+          next.set(bottom, top);
+          break;
+        case 7:
+          next.set(left, top);
+          break;
+        case 8:
+          next.set(top, left);
+          break;
+        case 9:
+          next.set(top, bottom);
+          break;
+        case 11:
+          next.set(top, right);
+          break;
+        case 12:
+          next.set(right, left);
+          break;
+        case 13:
+          next.set(right, bottom);
+          break;
+        case 14:
+          next.set(bottom, left);
+          break;
         case 5:
         case 10: {
           // Two opposite corners: the middle decides whether they belong together.
-          const middle = ((grid[y * paddedWidth + x] ?? 0) + (grid[y * paddedWidth + x + 1] ?? 0)
-            + (grid[(y + 1) * paddedWidth + x + 1] ?? 0) + (grid[(y + 1) * paddedWidth + x] ?? 0)) / 4 >= threshold;
+          const middle =
+            ((grid[y * paddedWidth + x] ?? 0) +
+              (grid[y * paddedWidth + x + 1] ?? 0) +
+              (grid[(y + 1) * paddedWidth + x + 1] ?? 0) +
+              (grid[(y + 1) * paddedWidth + x] ?? 0)) /
+              4 >=
+            threshold;
           if (kind === 5) {
-            if (middle) { next.set(left, top); next.set(right, bottom); }
-            else { next.set(right, top); next.set(left, bottom); }
-          } else if (middle) { next.set(top, right); next.set(bottom, left); }
-          else { next.set(top, left); next.set(bottom, right); }
+            if (middle) {
+              next.set(left, top);
+              next.set(right, bottom);
+            } else {
+              next.set(right, top);
+              next.set(left, bottom);
+            }
+          } else if (middle) {
+            next.set(top, right);
+            next.set(bottom, left);
+          } else {
+            next.set(top, left);
+            next.set(bottom, right);
+          }
           break;
         }
       }
@@ -241,7 +332,10 @@ export function simplifyClosedPolyline(points: Point[], tolerance: number): Poin
   let farDistance = -1;
   points.forEach((point, index) => {
     const distance = Math.hypot(point.x - first.x, point.y - first.y);
-    if (distance > farDistance) { farDistance = distance; farIndex = index; }
+    if (distance > farDistance) {
+      farDistance = distance;
+      farIndex = index;
+    }
   });
   if (farIndex === 0) return points;
   const keep = new Uint8Array(points.length + 1);
@@ -249,7 +343,10 @@ export function simplifyClosedPolyline(points: Point[], tolerance: number): Poin
   keep[0] = 1;
   keep[farIndex] = 1;
   keep[points.length] = 1;
-  const stack: Array<[number, number]> = [[0, farIndex], [farIndex, points.length]];
+  const stack: Array<[number, number]> = [
+    [0, farIndex],
+    [farIndex, points.length],
+  ];
   while (stack.length > 0) {
     const [from, to] = stack.pop() as [number, number];
     if (to - from < 2) continue;
@@ -260,10 +357,14 @@ export function simplifyClosedPolyline(points: Point[], tolerance: number): Poin
     let worstDistance = tolerance;
     for (let index = from + 1; index < to; index++) {
       const p = ring[index] as Point;
-      const distance = length > 0
-        ? Math.abs((b.x - a.x) * (a.y - p.y) - (a.x - p.x) * (b.y - a.y)) / length
-        : Math.hypot(p.x - a.x, p.y - a.y);
-      if (distance > worstDistance) { worstDistance = distance; worst = index; }
+      const distance =
+        length > 0
+          ? Math.abs((b.x - a.x) * (a.y - p.y) - (a.x - p.x) * (b.y - a.y)) / length
+          : Math.hypot(p.x - a.x, p.y - a.y);
+      if (distance > worstDistance) {
+        worstDistance = distance;
+        worst = index;
+      }
     }
     if (worst >= 0) {
       keep[worst] = 1;

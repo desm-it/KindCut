@@ -4,7 +4,10 @@ export type SkippedUpdateState = {
 };
 
 function parseVersionParts(version: string): number[] {
-  return version.split(/[.-]/).slice(0, 3).map((part) => Number.parseInt(part, 10) || 0);
+  return version
+    .split(/[.-]/)
+    .slice(0, 3)
+    .map((part) => Number.parseInt(part, 10) || 0);
 }
 
 export function isVersionAtLeast(current: string, target: string): boolean {
@@ -32,5 +35,7 @@ export function shouldSuppressSkippedUpdate({
   interactive: boolean;
   skippedUpdate: SkippedUpdateState | null;
 }): boolean {
-  return !interactive && Boolean(skippedUpdate && isSameVersion(availableVersion, skippedUpdate.version));
+  return (
+    !interactive && Boolean(skippedUpdate && isSameVersion(availableVersion, skippedUpdate.version))
+  );
 }

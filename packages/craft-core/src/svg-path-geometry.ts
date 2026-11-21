@@ -37,7 +37,7 @@ export function parseSvgTransform(transform: string | null | undefined): Matrix 
   const pattern = /(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/g;
   for (const match of transform.matchAll(pattern)) {
     const name = match[1];
-    const args = (match[2] ?? "")
+    const args = (match[2] ?? '')
       .split(/[\s,]+/)
       .filter(Boolean)
       .map(Number);
@@ -46,16 +46,16 @@ export function parseSvgTransform(transform: string | null | undefined): Matrix 
     }
     let next: Matrix | null = null;
     switch (name) {
-      case "matrix":
+      case 'matrix':
         if (args.length === 6) next = args as Matrix;
         break;
-      case "translate":
+      case 'translate':
         next = [1, 0, 0, 1, args[0] ?? 0, args[1] ?? 0];
         break;
-      case "scale":
+      case 'scale':
         next = [args[0] ?? 1, 0, 0, args[1] ?? args[0] ?? 1, 0, 0];
         break;
-      case "rotate": {
+      case 'rotate': {
         const radians = ((args[0] ?? 0) * Math.PI) / 180;
         const cos = Math.cos(radians);
         const sin = Math.sin(radians);
@@ -64,10 +64,10 @@ export function parseSvgTransform(transform: string | null | undefined): Matrix 
         next = [cos, sin, -sin, cos, cx - cos * cx + sin * cy, cy - sin * cx - cos * cy];
         break;
       }
-      case "skewX":
+      case 'skewX':
         next = [1, 0, Math.tan(((args[0] ?? 0) * Math.PI) / 180), 1, 0, 0];
         break;
-      case "skewY":
+      case 'skewY':
         next = [1, Math.tan(((args[0] ?? 0) * Math.PI) / 180), 0, 1, 0, 0];
         break;
     }
@@ -80,7 +80,18 @@ export function parseSvgTransform(transform: string | null | undefined): Matrix 
 
 // ── Path data parsing ────────────────────────────────────────────────────────
 
-const PARAM_COUNTS: Record<string, number> = { m: 2, l: 2, h: 1, v: 1, c: 6, s: 4, q: 4, t: 2, a: 7, z: 0 };
+const PARAM_COUNTS: Record<string, number> = {
+  m: 2,
+  l: 2,
+  h: 1,
+  v: 1,
+  c: 6,
+  s: 4,
+  q: 4,
+  t: 2,
+  a: 7,
+  z: 0,
+};
 
 type PathCommand = { command: string; args: number[] };
 
@@ -91,7 +102,7 @@ export function parseSvgPathData(d: string): PathCommand[] {
   const length = d.length;
 
   const skipSeparators = () => {
-    while (index < length && /[\s,]/.test(d[index] ?? "")) index += 1;
+    while (index < length && /[\s,]/.test(d[index] ?? '')) index += 1;
   };
   const readNumber = (): number | null => {
     skipSeparators();
@@ -103,7 +114,7 @@ export function parseSvgPathData(d: string): PathCommand[] {
   const readFlag = (): number | null => {
     skipSeparators();
     const char = d[index];
-    if (char !== "0" && char !== "1") return null;
+    if (char !== '0' && char !== '1') return null;
     index += 1;
     return Number(char);
   };
@@ -112,12 +123,12 @@ export function parseSvgPathData(d: string): PathCommand[] {
   while (index < length) {
     skipSeparators();
     if (index >= length) break;
-    const char = d[index] ?? "";
+    const char = d[index] ?? '';
     if (/[a-zA-Z]/.test(char)) {
       if (!(char.toLowerCase() in PARAM_COUNTS)) break;
       current = char;
       index += 1;
-      if (char.toLowerCase() === "z") {
+      if (char.toLowerCase() === 'z') {
         commands.push({ command: char, args: [] });
         current = null;
       }
@@ -129,14 +140,14 @@ export function parseSvgPathData(d: string): PathCommand[] {
     const count = PARAM_COUNTS[lower] ?? 0;
     const args: number[] = [];
     for (let argIndex = 0; argIndex < count; argIndex += 1) {
-      const value = lower === "a" && (argIndex === 3 || argIndex === 4) ? readFlag() : readNumber();
+      const value = lower === 'a' && (argIndex === 3 || argIndex === 4) ? readFlag() : readNumber();
       if (value === null) return commands;
       args.push(value);
     }
     commands.push({ command: current, args });
     // Extra coordinate pairs after a moveto are implicit linetos.
-    if (current === "M") current = "L";
-    else if (current === "m") current = "l";
+    if (current === 'M') current = 'L';
+    else if (current === 'm') current = 'l';
   }
   return commands;
 }
@@ -151,10 +162,20 @@ function cubicSegmentCount(p0: Point, p1: Point, p2: Point, p3: Point, tolerance
   // Wang's formula for cubic Béziers.
   const ddx = Math.max(Math.abs(p0.x - 2 * p1.x + p2.x), Math.abs(p1.x - 2 * p2.x + p3.x));
   const ddy = Math.max(Math.abs(p0.y - 2 * p1.y + p2.y), Math.abs(p1.y - 2 * p2.y + p3.y));
-  return Math.min(256, Math.max(1, Math.ceil(Math.sqrt((0.75 * Math.hypot(ddx, ddy)) / tolerance))));
+  return Math.min(
+    256,
+    Math.max(1, Math.ceil(Math.sqrt((0.75 * Math.hypot(ddx, ddy)) / tolerance))),
+  );
 }
 
-function pushCubic(out: Point[], p0: Point, p1: Point, p2: Point, p3: Point, tolerance: number): void {
+function pushCubic(
+  out: Point[],
+  p0: Point,
+  p1: Point,
+  p2: Point,
+  p3: Point,
+  tolerance: number,
+): void {
   const count = cubicSegmentCount(p0, p1, p2, p3, tolerance);
   for (let step = 1; step <= count; step += 1) {
     const t = step / count;
@@ -163,7 +184,10 @@ function pushCubic(out: Point[], p0: Point, p1: Point, p2: Point, p3: Point, tol
     const b = 3 * mt * mt * t;
     const c = 3 * mt * t * t;
     const e = t * t * t;
-    out.push({ x: a * p0.x + b * p1.x + c * p2.x + e * p3.x, y: a * p0.y + b * p1.y + c * p2.y + e * p3.y });
+    out.push({
+      x: a * p0.x + b * p1.x + c * p2.x + e * p3.x,
+      y: a * p0.y + b * p1.y + c * p2.y + e * p3.y,
+    });
   }
 }
 
@@ -238,7 +262,9 @@ function pushArc(
     const angle = startAngle + (delta * step) / count;
     const x = rx * Math.cos(angle);
     const y = ry * Math.sin(angle);
-    out.push(step === count ? to : { x: cosPhi * x - sinPhi * y + cx, y: sinPhi * x + cosPhi * y + cy });
+    out.push(
+      step === count ? to : { x: cosPhi * x - sinPhi * y + cx, y: sinPhi * x + cosPhi * y + cy },
+    );
   }
 }
 
@@ -252,7 +278,7 @@ export function flattenSvgPath(d: string, tolerance = 0.25): FlatSubpath[] {
   let current: Point = { x: 0, y: 0 };
   let start: Point = { x: 0, y: 0 };
   let lastControl: Point | null = null;
-  let lastCommand = "";
+  let lastCommand = '';
 
   const finish = (closed: boolean) => {
     if (points.length > 1) {
@@ -269,25 +295,25 @@ export function flattenSvgPath(d: string, tolerance = 0.25): FlatSubpath[] {
     const arg = (position: number) => args[position] ?? 0;
 
     switch (lower) {
-      case "m":
+      case 'm':
         finish(false);
         current = { x: ox + arg(0), y: oy + arg(1) };
         start = current;
         points = [current];
         break;
-      case "l":
+      case 'l':
         current = { x: ox + arg(0), y: oy + arg(1) };
         points.push(current);
         break;
-      case "h":
+      case 'h':
         current = { x: ox + arg(0), y: current.y };
         points.push(current);
         break;
-      case "v":
+      case 'v':
         current = { x: current.x, y: oy + arg(0) };
         points.push(current);
         break;
-      case "c": {
+      case 'c': {
         const c1 = { x: ox + arg(0), y: oy + arg(1) };
         const c2 = { x: ox + arg(2), y: oy + arg(3) };
         const end = { x: ox + arg(4), y: oy + arg(5) };
@@ -296,10 +322,11 @@ export function flattenSvgPath(d: string, tolerance = 0.25): FlatSubpath[] {
         current = end;
         break;
       }
-      case "s": {
-        const reflected = lastControl && /[cs]/i.test(lastCommand)
-          ? { x: 2 * current.x - lastControl.x, y: 2 * current.y - lastControl.y }
-          : current;
+      case 's': {
+        const reflected =
+          lastControl && /[cs]/i.test(lastCommand)
+            ? { x: 2 * current.x - lastControl.x, y: 2 * current.y - lastControl.y }
+            : current;
         const c2 = { x: ox + arg(0), y: oy + arg(1) };
         const end = { x: ox + arg(2), y: oy + arg(3) };
         pushCubic(points, current, reflected, c2, end, tolerance);
@@ -307,7 +334,7 @@ export function flattenSvgPath(d: string, tolerance = 0.25): FlatSubpath[] {
         current = end;
         break;
       }
-      case "q": {
+      case 'q': {
         const control = { x: ox + arg(0), y: oy + arg(1) };
         const end = { x: ox + arg(2), y: oy + arg(3) };
         pushQuadratic(points, current, control, end, tolerance);
@@ -315,23 +342,24 @@ export function flattenSvgPath(d: string, tolerance = 0.25): FlatSubpath[] {
         current = end;
         break;
       }
-      case "t": {
-        const control: Point = lastControl && /[qt]/i.test(lastCommand)
-          ? { x: 2 * current.x - lastControl.x, y: 2 * current.y - lastControl.y }
-          : current;
+      case 't': {
+        const control: Point =
+          lastControl && /[qt]/i.test(lastCommand)
+            ? { x: 2 * current.x - lastControl.x, y: 2 * current.y - lastControl.y }
+            : current;
         const end = { x: ox + arg(0), y: oy + arg(1) };
         pushQuadratic(points, current, control, end, tolerance);
         lastControl = control;
         current = end;
         break;
       }
-      case "a": {
+      case 'a': {
         const end = { x: ox + arg(5), y: oy + arg(6) };
         pushArc(points, current, arg(0), arg(1), arg(2), arg(3), arg(4), end, tolerance);
         current = end;
         break;
       }
-      case "z":
+      case 'z':
         if (points.length > 0 && distance(points[points.length - 1] ?? start, start) > 1e-9) {
           points.push(start);
         }
@@ -371,7 +399,12 @@ export function clipPolylineToRect(points: Point[], rect: Rect): Point[][] {
     let t0 = 0;
     let t1 = 1;
     let visible = true;
-    for (const [p, q] of [[-dx, a.x - minX], [dx, maxX - a.x], [-dy, a.y - minY], [dy, maxY - a.y]] as const) {
+    for (const [p, q] of [
+      [-dx, a.x - minX],
+      [dx, maxX - a.x],
+      [-dy, a.y - minY],
+      [dy, maxY - a.y],
+    ] as const) {
       if (p === 0) {
         if (q < 0) visible = false;
         continue;
@@ -399,7 +432,10 @@ export function clipPolylineToRect(points: Point[], rect: Rect): Point[][] {
   return runs.filter((candidate) => candidate.length > 1);
 }
 
-export function formatPolylinePath(polylines: Array<{ points: Point[]; closed?: boolean }>, decimals = 3): string {
+export function formatPolylinePath(
+  polylines: Array<{ points: Point[]; closed?: boolean }>,
+  decimals = 3,
+): string {
   const factor = 10 ** decimals;
   const format = (value: number) => String(Math.round(value * factor) / factor);
   return polylines
@@ -407,8 +443,8 @@ export function formatPolylinePath(polylines: Array<{ points: Point[]; closed?: 
     .map((polyline) => {
       const [first, ...rest] = polyline.points;
       const head = `M${format(first?.x ?? 0)} ${format(first?.y ?? 0)}`;
-      const body = rest.map((point) => `L${format(point.x)} ${format(point.y)}`).join("");
-      return `${head}${body}${polyline.closed ? "Z" : ""}`;
+      const body = rest.map((point) => `L${format(point.x)} ${format(point.y)}`).join('');
+      return `${head}${body}${polyline.closed ? 'Z' : ''}`;
     })
-    .join("");
+    .join('');
 }

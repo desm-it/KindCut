@@ -1,11 +1,16 @@
-import type { WorkspaceShapeKind } from "./workspace-shapes";
-import type { WorkspaceItemFrame, WorkspaceItemTransform } from "./workspace-utils";
-import { traceCenterlinePathD } from "./centerline-trace";
-import { buildShapePath } from "./workspace-shapes";
-import type { DashSettings, DotPrintSettings, OutlineSettings, PenFillSettings } from "@cricut-companion/craft-core";
-import { buildPenFillStrokes } from "./pen-fill-render";
-import { activeDash, dashedFramePath } from "./dash-render";
-import { activeOutline, outlineFramePath, outlineTool } from "./outline-render";
+import type { WorkspaceShapeKind } from './workspace-shapes';
+import type { WorkspaceItemFrame, WorkspaceItemTransform } from './workspace-utils';
+import { traceCenterlinePathD } from './centerline-trace';
+import { buildShapePath } from './workspace-shapes';
+import type {
+  DashSettings,
+  DotPrintSettings,
+  OutlineSettings,
+  PenFillSettings,
+} from '@cricut-companion/craft-core';
+import { buildPenFillStrokes } from './pen-fill-render';
+import { activeDash, dashedFramePath } from './dash-render';
+import { activeOutline, outlineFramePath, outlineTool } from './outline-render';
 import {
   type Point,
   type Rect,
@@ -15,22 +20,22 @@ import {
   formatPolylinePath,
   multiplyMatrices,
   parseSvgTransform,
-} from "@cricut-companion/craft-core";
+} from '@cricut-companion/craft-core';
 
-export type WorkspaceObjectSourceKind = "image" | "shape" | "text";
+export type WorkspaceObjectSourceKind = 'image' | 'shape' | 'text';
 
 export type WorkspaceTextContent = {
   text: string;
   fontFamily: string;
-  fontSize: number;       // workspace pixels
-  fontWeight: "normal" | "bold";
-  fontStyle: "normal" | "italic";
-  textDecoration: "none" | "underline";
-  textAlign: "left" | "center" | "right";
-  letterSpacing: number;  // extra pixels between characters
-  lineHeight: number;     // multiplier (1.2 = 120%)
-  color: string;          // hex — drives the tool color match
-  singleLine?: boolean;   // draw/cut as single-line centerline strokes, not filled glyphs
+  fontSize: number; // workspace pixels
+  fontWeight: 'normal' | 'bold';
+  fontStyle: 'normal' | 'italic';
+  textDecoration: 'none' | 'underline';
+  textAlign: 'left' | 'center' | 'right';
+  letterSpacing: number; // extra pixels between characters
+  lineHeight: number; // multiplier (1.2 = 120%)
+  color: string; // hex — drives the tool color match
+  singleLine?: boolean; // draw/cut as single-line centerline strokes, not filled glyphs
 };
 
 export type WorkspacePathVisual = {
@@ -80,12 +85,12 @@ export type WorkspaceDotPrint = {
 export type WorkspaceSpotifyRef = { uri: string; name: string };
 
 export type WorkspacePathObject = WorkspaceObjectBase & {
-  type: "path";
+  type: 'path';
   paths: [WorkspacePathData];
 };
 
 export type WorkspaceGroupObject = WorkspaceObjectBase & {
-  type: "group";
+  type: 'group';
   paths: WorkspacePathData[];
 };
 
@@ -98,7 +103,7 @@ export function cloneWorkspaceObjects(items: WorkspaceObject[]): WorkspaceObject
     ...item,
     frame: { ...item.frame },
     transform: { ...item.transform },
-    paths: item.paths.map((path) => ({ ...path })) as WorkspaceObject["paths"],
+    paths: item.paths.map((path) => ({ ...path })) as WorkspaceObject['paths'],
   })) as WorkspaceObject[];
 }
 
@@ -112,12 +117,16 @@ export function buildTextContentSvg(tc: WorkspaceTextContent, frame: WorkspaceIt
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(frame.width)}" height="${formatNumber(frame.height)}" viewBox="0 0 ${formatNumber(frame.width)} ${formatNumber(frame.height)}"><path d="${escapeXml(d)}" fill="none" stroke="${escapeXml(tc.color)}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   }
   const lineH = tc.fontSize * tc.lineHeight;
-  const lines = tc.text.split("\n");
-  const anchorX = tc.textAlign === "center" ? frame.width / 2 : tc.textAlign === "right" ? frame.width - 1 : 1;
-  const anchor = tc.textAlign === "center" ? "middle" : tc.textAlign === "right" ? "end" : "start";
-  const textEls = lines.map((line, i) =>
-    `<text x="${anchorX}" y="${tc.fontSize + i * lineH}" text-anchor="${anchor}" font-family="${escapeXml(tc.fontFamily)}" font-size="${tc.fontSize}" font-weight="${tc.fontWeight}" font-style="${tc.fontStyle}" text-decoration="${tc.textDecoration}" fill="${escapeXml(tc.color)}" letter-spacing="${tc.letterSpacing}">${escapeXml(line || " ")}</text>`,
-  ).join("");
+  const lines = tc.text.split('\n');
+  const anchorX =
+    tc.textAlign === 'center' ? frame.width / 2 : tc.textAlign === 'right' ? frame.width - 1 : 1;
+  const anchor = tc.textAlign === 'center' ? 'middle' : tc.textAlign === 'right' ? 'end' : 'start';
+  const textEls = lines
+    .map(
+      (line, i) =>
+        `<text x="${anchorX}" y="${tc.fontSize + i * lineH}" text-anchor="${anchor}" font-family="${escapeXml(tc.fontFamily)}" font-size="${tc.fontSize}" font-weight="${tc.fontWeight}" font-style="${tc.fontStyle}" text-decoration="${tc.textDecoration}" fill="${escapeXml(tc.color)}" letter-spacing="${tc.letterSpacing}">${escapeXml(line || ' ')}</text>`,
+    )
+    .join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(frame.width)}" height="${formatNumber(frame.height)}" viewBox="0 0 ${formatNumber(frame.width)} ${formatNumber(frame.height)}">${textEls}</svg>`;
 }
 
@@ -127,16 +136,20 @@ export function buildWorkspaceObjectSvg(item: WorkspaceObject): string {
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(item.frame.width)}" height="${formatNumber(item.frame.height)}" viewBox="0 0 ${formatNumber(item.frame.width)} ${formatNumber(item.frame.height)}">${item.paths
     .map((path) => {
-      const transform = path.pathTransform ? ` transform="${escapeXml(path.pathTransform)}"` : "";
-      const strokeLinecap = path.strokeLinecap ? ` stroke-linecap="${escapeXml(path.strokeLinecap)}"` : "";
-      const strokeLinejoin = path.strokeLinejoin ? ` stroke-linejoin="${escapeXml(path.strokeLinejoin)}"` : "";
-      const fillRule = path.fillRule ? ` fill-rule="${escapeXml(path.fillRule)}"` : "";
+      const transform = path.pathTransform ? ` transform="${escapeXml(path.pathTransform)}"` : '';
+      const strokeLinecap = path.strokeLinecap
+        ? ` stroke-linecap="${escapeXml(path.strokeLinecap)}"`
+        : '';
+      const strokeLinejoin = path.strokeLinejoin
+        ? ` stroke-linejoin="${escapeXml(path.strokeLinejoin)}"`
+        : '';
+      const fillRule = path.fillRule ? ` fill-rule="${escapeXml(path.fillRule)}"` : '';
       return `<path d="${escapeXml(path.d)}" fill="${escapeXml(path.fill)}"${fillRule} stroke="${escapeXml(path.stroke)}" stroke-width="${escapeXml(path.strokeWidth)}"${strokeLinecap}${strokeLinejoin}${transform}/>`;
     })
-    .join("")}</svg>`;
+    .join('')}</svg>`;
 }
 
-type CutTool = { id?: string; color: string; type: "pen" | "cut" };
+type CutTool = { id?: string; color: string; type: 'pen' | 'cut' };
 
 /** One path headed for the cutter, kept as data so it can be cropped before it is written out. */
 type CutPathElement = {
@@ -154,11 +167,15 @@ type CutPathElement = {
 type CutElement = CutPathElement | string;
 
 function renderCutElement(element: CutElement): string {
-  if (typeof element === "string") return element;
-  const fillRule = element.fillRule ? ` fill-rule="${escapeXml(element.fillRule)}"` : "";
-  const strokeLinecap = element.strokeLinecap ? ` stroke-linecap="${escapeXml(element.strokeLinecap)}"` : "";
-  const strokeLinejoin = element.strokeLinejoin ? ` stroke-linejoin="${escapeXml(element.strokeLinejoin)}"` : "";
-  const transform = element.transform ? ` transform="${escapeXml(element.transform)}"` : "";
+  if (typeof element === 'string') return element;
+  const fillRule = element.fillRule ? ` fill-rule="${escapeXml(element.fillRule)}"` : '';
+  const strokeLinecap = element.strokeLinecap
+    ? ` stroke-linecap="${escapeXml(element.strokeLinecap)}"`
+    : '';
+  const strokeLinejoin = element.strokeLinejoin
+    ? ` stroke-linejoin="${escapeXml(element.strokeLinejoin)}"`
+    : '';
+  const transform = element.transform ? ` transform="${escapeXml(element.transform)}"` : '';
   return `<path d="${escapeXml(element.d)}" fill="${escapeXml(element.fill)}"${fillRule} stroke="${escapeXml(element.stroke)}" stroke-width="${escapeXml(element.strokeWidth)}"${strokeLinecap}${strokeLinejoin}${transform}/>`;
 }
 
@@ -173,14 +190,16 @@ function buildOutlineCutElements(item: WorkspaceObject, tools?: CutTool[]): CutE
   const d = outlineFramePath(item);
   if (!d) return [];
   const tool = outlineTool(outline, tools);
-  return [{
-    d,
-    fill: "none",
-    stroke: tool.color,
-    strokeWidth: tool.isPen ? "1.25" : "0.5",
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-  }];
+  return [
+    {
+      d,
+      fill: 'none',
+      stroke: tool.color,
+      strokeWidth: tool.isPen ? '1.25' : '0.5',
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+    },
+  ];
 }
 
 function buildItemCutElements(item: WorkspaceObject, tools?: CutTool[]): CutElement[] {
@@ -193,74 +212,96 @@ function buildItemOwnCutElements(item: WorkspaceObject, tools?: CutTool[]): CutE
     const tc = item.textContent;
     if (tc.singleLine) {
       // Open strokes, fill=none → slicebug reads the stroke colour and treats it as a pen draw.
-      return [{
-        d: traceCenterlinePathD(tc, item.frame),
-        fill: "none",
-        stroke: tc.color,
-        strokeWidth: "1.5",
-        strokeLinecap: "round",
-        strokeLinejoin: "round",
-      }];
+      return [
+        {
+          d: traceCenterlinePathD(tc, item.frame),
+          fill: 'none',
+          stroke: tc.color,
+          strokeWidth: '1.5',
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        },
+      ];
     }
     const lineH = tc.fontSize * tc.lineHeight;
-    const anchorX = tc.textAlign === "center" ? item.frame.width / 2 : tc.textAlign === "right" ? item.frame.width - 1 : 1;
-    const anchor = tc.textAlign === "center" ? "middle" : tc.textAlign === "right" ? "end" : "start";
-    return tc.text.split("\n").map((line, i) =>
-      `<text x="${anchorX}" y="${tc.fontSize + i * lineH}" text-anchor="${anchor}" font-family="${escapeXml(tc.fontFamily)}" font-size="${tc.fontSize}" font-weight="${tc.fontWeight}" font-style="${tc.fontStyle}" text-decoration="${tc.textDecoration}" fill="${escapeXml(tc.color)}" stroke="none" letter-spacing="${tc.letterSpacing}">${escapeXml(line || " ")}</text>`,
-    );
+    const anchorX =
+      tc.textAlign === 'center'
+        ? item.frame.width / 2
+        : tc.textAlign === 'right'
+          ? item.frame.width - 1
+          : 1;
+    const anchor =
+      tc.textAlign === 'center' ? 'middle' : tc.textAlign === 'right' ? 'end' : 'start';
+    return tc.text
+      .split('\n')
+      .map(
+        (line, i) =>
+          `<text x="${anchorX}" y="${tc.fontSize + i * lineH}" text-anchor="${anchor}" font-family="${escapeXml(tc.fontFamily)}" font-size="${tc.fontSize}" font-weight="${tc.fontWeight}" font-style="${tc.fontStyle}" text-decoration="${tc.textDecoration}" fill="${escapeXml(tc.color)}" stroke="none" letter-spacing="${tc.letterSpacing}">${escapeXml(line || ' ')}</text>`,
+      );
   }
   // SVG path items. Shapes regenerate their geometry from kind + size + corner radius
   // (scale-aware, matching the on-screen render) so the cut matches what you see.
   const shapeD = item.shapeKind
-    ? buildShapePath(item.shapeKind, item.frame.width, item.frame.height, item.cornerRadius ?? 0, item.transform.scaleX, item.transform.scaleY)
+    ? buildShapePath(
+        item.shapeKind,
+        item.frame.width,
+        item.frame.height,
+        item.cornerRadius ?? 0,
+        item.transform.scaleX,
+        item.transform.scaleY,
+      )
     : null;
   // Pen fills go out as real open strokes in the pen colour: slicebug only draws stroked
   // outlines, so a fill="url(#pattern)" or clip-path would be ignored.
   const fillStrokes: CutElement[] = buildPenFillStrokes(item, tools).map(({ color, d }) => ({
     d,
-    fill: "none",
+    fill: 'none',
     stroke: color,
-    strokeWidth: "1.25",
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
+    strokeWidth: '1.25',
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
   }));
   const dash = activeDash(item);
-  return fillStrokes.concat(item.paths.map((path) => {
-    // Determine cut vs pen using the tools list (same logic as WorkspaceObjectArtwork).
-    const matchedTool = tools?.find((t) => t.color.toLowerCase() === (path.stroke ?? "").toLowerCase());
-    const isPen = matchedTool?.type === "pen";
-    const toolColor = path.stroke && path.stroke !== "none" ? path.stroke : path.fill;
+  return fillStrokes.concat(
+    item.paths.map((path) => {
+      // Determine cut vs pen using the tools list (same logic as WorkspaceObjectArtwork).
+      const matchedTool = tools?.find(
+        (t) => t.color.toLowerCase() === (path.stroke ?? '').toLowerCase(),
+      );
+      const isPen = matchedTool?.type === 'pen';
+      const toolColor = path.stroke && path.stroke !== 'none' ? path.stroke : path.fill;
 
-    // A dashed line goes out as separate short strokes: the gaps between them are
-    // never cut, which is what lets a fold line bend without coming apart.
-    if (dash) {
+      // A dashed line goes out as separate short strokes: the gaps between them are
+      // never cut, which is what lets a fold line bend without coming apart.
+      if (dash) {
+        return {
+          d: dashedFramePath(item, shapeD ?? path.d, shapeD ? undefined : path.pathTransform, dash),
+          fill: 'none',
+          stroke: toolColor,
+          strokeWidth: isPen ? path.strokeWidth : '0.5',
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        };
+      }
+
+      // Pen paths: outline only — fill=none, stroke=tool colour (slicebug reads stroke for tool detection)
+      // Cut paths: filled shape  — fill=tool colour AND stroke=tool colour so slicebug can detect the colour
       return {
-        d: dashedFramePath(item, shapeD ?? path.d, shapeD ? undefined : path.pathTransform, dash),
-        fill: "none",
-        stroke: toolColor,
-        strokeWidth: isPen ? path.strokeWidth : "0.5",
-        strokeLinecap: "round",
-        strokeLinejoin: "round",
+        d: shapeD ?? path.d,
+        fill: isPen || item.hollow ? 'none' : toolColor,
+        fillRule: path.fillRule,
+        stroke: toolColor, // always keep stroke so slicebug can read the tool colour
+        strokeWidth: isPen ? path.strokeWidth : '0.5', // thin stroke for cut paths (visual only)
+        strokeLinecap: path.strokeLinecap,
+        strokeLinejoin: path.strokeLinejoin,
+        transform: !shapeD && path.pathTransform ? path.pathTransform : undefined,
       };
-    }
-
-    // Pen paths: outline only — fill=none, stroke=tool colour (slicebug reads stroke for tool detection)
-    // Cut paths: filled shape  — fill=tool colour AND stroke=tool colour so slicebug can detect the colour
-    return {
-      d: shapeD ?? path.d,
-      fill: isPen || item.hollow ? "none" : toolColor,
-      fillRule: path.fillRule,
-      stroke: toolColor, // always keep stroke so slicebug can read the tool colour
-      strokeWidth: isPen ? path.strokeWidth : "0.5", // thin stroke for cut paths (visual only)
-      strokeLinecap: path.strokeLinecap,
-      strokeLinejoin: path.strokeLinejoin,
-      transform: !shapeD && path.pathTransform ? path.pathTransform : undefined,
-    };
-  }));
+    }),
+  );
 }
 
 function buildItemInnerSvg(item: WorkspaceObject, tools?: CutTool[]): string {
-  return buildItemCutElements(item, tools).map(renderCutElement).join("");
+  return buildItemCutElements(item, tools).map(renderCutElement).join('');
 }
 
 function itemCutTransform(item: WorkspaceObject): string {
@@ -269,9 +310,10 @@ function itemCutTransform(item: WorkspaceObject): string {
   const W = item.frame.width * item.transform.scaleX;
   const H = item.frame.height * item.transform.scaleY;
   // mirror is applied last (innermost) — compensate position so content cuts at correct location
-  const mirrorOffset = mx !== 1 || my !== 1
-    ? ` translate(${mx !== 1 ? formatNumber(W) : 0} ${my !== 1 ? formatNumber(H) : 0}) scale(${mx} ${my})`
-    : "";
+  const mirrorOffset =
+    mx !== 1 || my !== 1
+      ? ` translate(${mx !== 1 ? formatNumber(W) : 0} ${my !== 1 ? formatNumber(H) : 0}) scale(${mx} ${my})`
+      : '';
   return `translate(${formatNumber(item.transform.x)} ${formatNumber(item.transform.y)}) rotate(${formatNumber(item.transform.rotation)}) scale(${formatNumber(item.transform.scaleX)} ${formatNumber(item.transform.scaleY)})${mirrorOffset}`;
 }
 
@@ -286,13 +328,17 @@ const CROP_EDGE_EPSILON_PX = 1e-6;
  * on the paper is drawn or cut. Cutting a shape's outline up to the paper edge
  * frees the same piece the uncropped shape would have.
  */
-function cropItemForPaper(item: WorkspaceObject, tools: CutTool[] | undefined, paper: Rect): string {
+function cropItemForPaper(
+  item: WorkspaceObject,
+  tools: CutTool[] | undefined,
+  paper: Rect,
+): string {
   const transform = itemCutTransform(item);
   const itemMatrix = parseSvgTransform(transform);
   const inside: string[] = [];
   const crossing: string[] = [];
   for (const element of buildItemCutElements(item, tools)) {
-    if (typeof element === "string") {
+    if (typeof element === 'string') {
       inside.push(element);
       continue;
     }
@@ -306,29 +352,43 @@ function cropItemForPaper(item: WorkspaceObject, tools: CutTool[] | undefined, p
     if (points.length === 0) continue;
     const xs = points.map((point) => point.x);
     const ys = points.map((point) => point.y);
-    const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const [minX, maxX, minY, maxY] = [
+      Math.min(...xs),
+      Math.max(...xs),
+      Math.min(...ys),
+      Math.max(...ys),
+    ];
     const paperRight = paper.x + paper.width;
     const paperBottom = paper.y + paper.height;
-    if (minX >= paper.x - CROP_EDGE_EPSILON_PX && maxX <= paperRight + CROP_EDGE_EPSILON_PX && minY >= paper.y - CROP_EDGE_EPSILON_PX && maxY <= paperBottom + CROP_EDGE_EPSILON_PX) {
+    if (
+      minX >= paper.x - CROP_EDGE_EPSILON_PX &&
+      maxX <= paperRight + CROP_EDGE_EPSILON_PX &&
+      minY >= paper.y - CROP_EDGE_EPSILON_PX &&
+      maxY <= paperBottom + CROP_EDGE_EPSILON_PX
+    ) {
       inside.push(renderCutElement(element));
       continue;
     }
     if (maxX <= paper.x || minX >= paperRight || maxY <= paper.y || minY >= paperBottom) {
       continue;
     }
-    const runs = subpaths.flatMap((subpath) => joinWrappedRuns(subpath, clipPolylineToRect(subpath, paper)));
+    const runs = subpaths.flatMap((subpath) =>
+      joinWrappedRuns(subpath, clipPolylineToRect(subpath, paper)),
+    );
     if (runs.length === 0) continue;
     // Open runs in mat coordinates: no fill, no transform.
-    crossing.push(renderCutElement({
-      ...element,
-      d: formatPolylinePath(runs.map((run) => ({ points: run }))),
-      fill: "none",
-      fillRule: undefined,
-      transform: undefined,
-    }));
+    crossing.push(
+      renderCutElement({
+        ...element,
+        d: formatPolylinePath(runs.map((run) => ({ points: run }))),
+        fill: 'none',
+        fillRule: undefined,
+        transform: undefined,
+      }),
+    );
   }
-  const group = inside.length > 0 ? `<g transform="${transform}">${inside.join("")}</g>` : "";
-  return group + crossing.join("");
+  const group = inside.length > 0 ? `<g transform="${transform}">${inside.join('')}</g>` : '';
+  return group + crossing.join('');
 }
 
 /**
@@ -340,13 +400,27 @@ function joinWrappedRuns(subpath: Point[], runs: Point[][]): Point[][] {
   const end = subpath[subpath.length - 1];
   const first = runs[0];
   const last = runs[runs.length - 1];
-  if (runs.length < 2 || !start || !end || !first || !last || start.x !== end.x || start.y !== end.y) return runs;
+  if (
+    runs.length < 2 ||
+    !start ||
+    !end ||
+    !first ||
+    !last ||
+    start.x !== end.x ||
+    start.y !== end.y
+  )
+    return runs;
   const lastPoint = last[last.length - 1];
   if (!lastPoint || lastPoint.x !== first[0]?.x || lastPoint.y !== first[0]?.y) return runs;
   return [[...last, ...first.slice(1)], ...runs.slice(1, -1)];
 }
 
-function svgShell(matWidthPx: number, matHeightPx: number, pixelsPerInch: number, content: string): string {
+function svgShell(
+  matWidthPx: number,
+  matHeightPx: number,
+  pixelsPerInch: number,
+  content: string,
+): string {
   const vbW = formatNumber(Math.max(1, matWidthPx));
   const vbH = formatNumber(Math.max(1, matHeightPx));
   // Express width/height in physical inches so cutters never misinterpret the DPI.
@@ -367,12 +441,16 @@ export function buildWorkspaceCutSvg(
   matHeightPx: number,
   tools?: CutTool[],
   pixelsPerInch = 80,
-  extraInnerSvg = "", // generated geometry (e.g. insert-card slots) cut alongside the objects
+  extraInnerSvg = '', // generated geometry (e.g. insert-card slots) cut alongside the objects
   paper?: Rect,
 ): string {
   const content = items
-    .map((item) => (paper ? cropItemForPaper(item, tools, paper) : `<g transform="${itemCutTransform(item)}">${buildItemInnerSvg(item, tools)}</g>`))
-    .join("");
+    .map((item) =>
+      paper
+        ? cropItemForPaper(item, tools, paper)
+        : `<g transform="${itemCutTransform(item)}">${buildItemInnerSvg(item, tools)}</g>`,
+    )
+    .join('');
   return svgShell(matWidthPx, matHeightPx, pixelsPerInch, `${content}${extraInnerSvg}`);
 }
 
@@ -386,15 +464,25 @@ export function buildWorkspaceCutPreviewSvg(
   matHeightPx: number,
   tools?: CutTool[],
   pixelsPerInch = 80,
-  extraInnerSvg = "",
+  extraInnerSvg = '',
   paper?: Rect,
 ): string {
-  const content = items.map((item) => `<g transform="${itemCutTransform(item)}">${buildItemInnerSvg(item, tools)}</g>`).join("") + extraInnerSvg;
+  const content =
+    items
+      .map(
+        (item) => `<g transform="${itemCutTransform(item)}">${buildItemInnerSvg(item, tools)}</g>`,
+      )
+      .join('') + extraInnerSvg;
   if (!paper) {
     return svgShell(matWidthPx, matHeightPx, pixelsPerInch, content);
   }
   const clip = `<defs><clipPath id="kindcut-paper"><rect x="${formatNumber(paper.x)}" y="${formatNumber(paper.y)}" width="${formatNumber(paper.width)}" height="${formatNumber(paper.height)}"/></clipPath></defs>`;
-  return svgShell(matWidthPx, matHeightPx, pixelsPerInch, `${clip}<g clip-path="url(#kindcut-paper)">${content}</g>`);
+  return svgShell(
+    matWidthPx,
+    matHeightPx,
+    pixelsPerInch,
+    `${clip}<g clip-path="url(#kindcut-paper)">${content}</g>`,
+  );
 }
 
 /** True when the cropped cutter SVG has nothing left to draw or cut. */
@@ -406,8 +494,12 @@ export function buildWorkspaceObjectsSvg(items: WorkspaceObject[]): string {
   if (items.length === 0) {
     return '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" viewBox="0 0 1 1"></svg>';
   }
-  const right = Math.max(...items.map((item) => item.transform.x + item.frame.width * item.transform.scaleX));
-  const bottom = Math.max(...items.map((item) => item.transform.y + item.frame.height * item.transform.scaleY));
+  const right = Math.max(
+    ...items.map((item) => item.transform.x + item.frame.width * item.transform.scaleX),
+  );
+  const bottom = Math.max(
+    ...items.map((item) => item.transform.y + item.frame.height * item.transform.scaleY),
+  );
   const width = Math.max(1, right);
   const height = Math.max(1, bottom);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(width)}" height="${formatNumber(height)}" viewBox="0 0 ${formatNumber(width)} ${formatNumber(height)}">${items
@@ -415,7 +507,7 @@ export function buildWorkspaceObjectsSvg(items: WorkspaceObject[]): string {
       const transform = `translate(${formatNumber(item.transform.x)} ${formatNumber(item.transform.y)}) rotate(${formatNumber(item.transform.rotation)}) scale(${formatNumber(item.transform.scaleX)} ${formatNumber(item.transform.scaleY)})`;
       return `<g transform="${transform}">${buildItemInnerSvg(item)}</g>`;
     })
-    .join("")}</svg>`;
+    .join('')}</svg>`;
 }
 
 function formatNumber(value: number): string {
@@ -424,8 +516,8 @@ function formatNumber(value: number): string {
 
 function escapeXml(value: string): string {
   return value
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

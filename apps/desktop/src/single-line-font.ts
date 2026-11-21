@@ -5,12 +5,12 @@
 //
 // Both the on-canvas display and the cut export use the helpers below, so what you
 // see is what gets drawn.
-import type { WorkspaceItemFrame } from "./workspace-utils";
-import type { WorkspaceTextContent } from "./workspace-objects";
-import { HERSHEY_FUTURAL } from "./single-line-font-data";
+import type { WorkspaceItemFrame } from './workspace-utils';
+import type { WorkspaceTextContent } from './workspace-objects';
+import { HERSHEY_FUTURAL } from './single-line-font-data';
 
 // Hershey coordinate system: each character encodes a signed value as (charCode - 'R').
-const HERSHEY_ORIGIN = "R".charCodeAt(0); // 82
+const HERSHEY_ORIGIN = 'R'.charCodeAt(0); // 82
 // Glyphs span roughly y = -16 (accents) .. +16 (descenders); baseline sits at +9.
 // Treat 32 units as one em so font-size px maps to a sensible visual height.
 const HERSHEY_EM = 32;
@@ -27,11 +27,14 @@ function parseGlyph(spec: string): Glyph {
   const strokes: Stroke[] = [];
   let current: Stroke | null = null;
   for (let i = 2; i + 1 < spec.length; i += 2) {
-    if (spec[i] === " ") {
+    if (spec[i] === ' ') {
       current = null; // pen up — start a new stroke on the next point
       continue;
     }
-    const point: [number, number] = [spec.charCodeAt(i) - HERSHEY_ORIGIN, spec.charCodeAt(i + 1) - HERSHEY_ORIGIN];
+    const point: [number, number] = [
+      spec.charCodeAt(i) - HERSHEY_ORIGIN,
+      spec.charCodeAt(i + 1) - HERSHEY_ORIGIN,
+    ];
     if (!current) {
       current = [];
       strokes.push(current);
@@ -67,25 +70,32 @@ function lineWidthUnits(line: string, letterSpacingUnits: number): number {
 export function measureSingleLineText(tc: WorkspaceTextContent): { width: number; height: number } {
   const scale = tc.fontSize / HERSHEY_EM;
   const letterSpacingUnits = tc.letterSpacing / scale;
-  const lines = tc.text.split("\n");
+  const lines = tc.text.split('\n');
   const lineH = tc.fontSize * tc.lineHeight;
   const maxW = Math.max(10, ...lines.map((l) => lineWidthUnits(l, letterSpacingUnits) * scale));
   return { width: Math.ceil(maxW) + 2, height: Math.ceil(lineH * lines.length) + 2 };
 }
 
 // Build the stroke polylines (in frame/viewBox coordinate space) for the whole text.
-export function buildSingleLineStrokes(tc: WorkspaceTextContent, frame: WorkspaceItemFrame): Stroke[] {
+export function buildSingleLineStrokes(
+  tc: WorkspaceTextContent,
+  frame: WorkspaceItemFrame,
+): Stroke[] {
   const scale = tc.fontSize / HERSHEY_EM;
   const letterSpacing = tc.letterSpacing; // px, added between glyph advances
   const letterSpacingUnits = letterSpacing / scale;
   const lineH = tc.fontSize * tc.lineHeight;
-  const lines = tc.text.split("\n");
+  const lines = tc.text.split('\n');
   const out: Stroke[] = [];
 
   lines.forEach((line, lineIndex) => {
     const lineW = lineWidthUnits(line, letterSpacingUnits) * scale;
     const xStart =
-      tc.textAlign === "center" ? (frame.width - lineW) / 2 : tc.textAlign === "right" ? frame.width - 1 - lineW : 1;
+      tc.textAlign === 'center'
+        ? (frame.width - lineW) / 2
+        : tc.textAlign === 'right'
+          ? frame.width - 1 - lineW
+          : 1;
     const baselinePx = tc.fontSize + lineIndex * lineH;
     let penX = xStart;
     for (const ch of [...line]) {
@@ -100,7 +110,7 @@ export function buildSingleLineStrokes(tc: WorkspaceTextContent, frame: Workspac
       }
       penX += (g.right - g.left) * scale + letterSpacing;
     }
-    if (tc.textDecoration === "underline") {
+    if (tc.textDecoration === 'underline') {
       const ulY = baselinePx + tc.fontSize * 0.12;
       out.push([
         [xStart, ulY],
@@ -115,11 +125,9 @@ export function buildSingleLineStrokes(tc: WorkspaceTextContent, frame: Workspac
 export function strokesToPathD(strokes: Stroke[]): string {
   return strokes
     .map((stroke) =>
-      stroke
-        .map(([x, y], i) => `${i === 0 ? "M" : "L"}${round(x)} ${round(y)}`)
-        .join(" "),
+      stroke.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${round(x)} ${round(y)}`).join(' '),
     )
-    .join(" ");
+    .join(' ');
 }
 
 function round(n: number): number {

@@ -6,9 +6,9 @@
 // map back into the item's frame coordinate space. All pure JS / canvas, no extra
 // binaries. Quality is font-dependent (great for thin/uniform fonts, messier for
 // bold/serif) — this is here so we can eyeball it before committing to an approach.
-import type { WorkspaceItemFrame } from "./workspace-utils";
-import type { WorkspaceTextContent } from "./workspace-objects";
-import type { Stroke } from "./single-line-font";
+import type { WorkspaceItemFrame } from './workspace-utils';
+import type { WorkspaceTextContent } from './workspace-objects';
+import type { Stroke } from './single-line-font';
 
 const SCALE = 4; // bitmap supersampling — higher = smoother, less-aliased skeleton
 const MARGIN = 4; // bitmap padding (px) so glyphs never touch the border (thinning skips edges)
@@ -29,13 +29,24 @@ const CACHE_MAX = 240;
 
 function cacheKey(tc: WorkspaceTextContent, frame: WorkspaceItemFrame): string {
   return [
-    tc.text, tc.fontFamily, tc.fontSize, tc.fontWeight, tc.fontStyle,
-    tc.textDecoration, tc.textAlign, tc.letterSpacing, tc.lineHeight,
-    Math.round(frame.width), Math.round(frame.height),
-  ].join("|");
+    tc.text,
+    tc.fontFamily,
+    tc.fontSize,
+    tc.fontWeight,
+    tc.fontStyle,
+    tc.textDecoration,
+    tc.textAlign,
+    tc.letterSpacing,
+    tc.lineHeight,
+    Math.round(frame.width),
+    Math.round(frame.height),
+  ].join('|');
 }
 
-export function traceCenterlineStrokes(tc: WorkspaceTextContent, frame: WorkspaceItemFrame): Stroke[] {
+export function traceCenterlineStrokes(
+  tc: WorkspaceTextContent,
+  frame: WorkspaceItemFrame,
+): Stroke[] {
   const key = cacheKey(tc, frame);
   const hit = cache.get(key);
   if (hit) return hit;
@@ -100,40 +111,42 @@ function renderBinary(
 ): { grid: Uint8Array; w: number; h: number } | null {
   const w = Math.ceil(frame.width * SCALE) + MARGIN * 2;
   const h = Math.ceil(frame.height * SCALE) + MARGIN * 2;
-  const canvas = document.createElement("canvas");
+  const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, w, h);
 
   ctx.save();
   ctx.translate(MARGIN, MARGIN);
   ctx.scale(SCALE, SCALE);
-  const fontStr = `${tc.fontStyle === "italic" ? "italic " : ""}${tc.fontWeight === "bold" ? "bold " : ""}${tc.fontSize}px ${tc.fontFamily}`;
+  const fontStr = `${tc.fontStyle === 'italic' ? 'italic ' : ''}${tc.fontWeight === 'bold' ? 'bold ' : ''}${tc.fontSize}px ${tc.fontFamily}`;
   ctx.font = fontStr;
-  ctx.fillStyle = "#000000";
-  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = '#000000';
+  ctx.textBaseline = 'alphabetic';
 
-  const lines = tc.text.split("\n");
+  const lines = tc.text.split('\n');
   const lineH = tc.fontSize * tc.lineHeight;
   lines.forEach((line, i) => {
     const chars = [...line];
-    const lineW = chars.reduce((acc, c) => acc + ctx.measureText(c).width, 0)
-      + Math.max(0, chars.length - 1) * tc.letterSpacing;
+    const lineW =
+      chars.reduce((acc, c) => acc + ctx.measureText(c).width, 0) +
+      Math.max(0, chars.length - 1) * tc.letterSpacing;
     const baseline = tc.fontSize + i * lineH;
-    const xStart = tc.textAlign === "center"
-      ? (frame.width - lineW) / 2
-      : tc.textAlign === "right"
-        ? frame.width - 1 - lineW
-        : 1;
+    const xStart =
+      tc.textAlign === 'center'
+        ? (frame.width - lineW) / 2
+        : tc.textAlign === 'right'
+          ? frame.width - 1 - lineW
+          : 1;
     let x = xStart;
     for (const c of chars) {
       ctx.fillText(c, x, baseline);
       x += ctx.measureText(c).width + tc.letterSpacing;
     }
-    if (tc.textDecoration === "underline") {
+    if (tc.textDecoration === 'underline') {
       ctx.fillRect(xStart, baseline + tc.fontSize * 0.1, lineW, Math.max(1, tc.fontSize * 0.05));
     }
   });
@@ -166,13 +179,13 @@ function thinZhangSuen(grid: Uint8Array, w: number, h: number): void {
         for (let x = 1; x < w - 1; x++) {
           if (!grid[idx(x, y)]) continue;
           const p = [
-            grid[idx(x, y - 1)]!,     // P2 N
+            grid[idx(x, y - 1)]!, // P2 N
             grid[idx(x + 1, y - 1)]!, // P3 NE
-            grid[idx(x + 1, y)]!,     // P4 E
+            grid[idx(x + 1, y)]!, // P4 E
             grid[idx(x + 1, y + 1)]!, // P5 SE
-            grid[idx(x, y + 1)]!,     // P6 S
+            grid[idx(x, y + 1)]!, // P6 S
             grid[idx(x - 1, y + 1)]!, // P7 SW
-            grid[idx(x - 1, y)]!,     // P8 W
+            grid[idx(x - 1, y)]!, // P8 W
             grid[idx(x - 1, y - 1)]!, // P9 NW
           ] as [number, number, number, number, number, number, number, number];
           const B = p[0] + p[1] + p[2] + p[3] + p[4] + p[5] + p[6] + p[7];
@@ -220,7 +233,13 @@ function distanceTransform(grid: Uint8Array, w: number, h: number): Float32Array
     for (let x = 0; x < w; x++) {
       if (!grid[idx(x, y)]) continue;
       let v = d[idx(x, y)]!;
-      v = Math.min(v, at(x - 1, y) + 1, at(x, y - 1) + 1, at(x - 1, y - 1) + SQRT2, at(x + 1, y - 1) + SQRT2);
+      v = Math.min(
+        v,
+        at(x - 1, y) + 1,
+        at(x, y - 1) + 1,
+        at(x - 1, y - 1) + SQRT2,
+        at(x + 1, y - 1) + SQRT2,
+      );
       d[idx(x, y)] = v;
     }
   }
@@ -229,7 +248,13 @@ function distanceTransform(grid: Uint8Array, w: number, h: number): Float32Array
     for (let x = w - 1; x >= 0; x--) {
       if (!grid[idx(x, y)]) continue;
       let v = d[idx(x, y)]!;
-      v = Math.min(v, at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + SQRT2, at(x - 1, y + 1) + SQRT2);
+      v = Math.min(
+        v,
+        at(x + 1, y) + 1,
+        at(x, y + 1) + 1,
+        at(x + 1, y + 1) + SQRT2,
+        at(x - 1, y + 1) + SQRT2,
+      );
       d[idx(x, y)] = v;
     }
   }
@@ -273,13 +298,19 @@ function pruneSpurs(grid: Uint8Array, w: number, h: number, minLen: number): voi
       let endDeg = 1;
       while (true) {
         const ns = neighbors(cx, cy).filter(([a, b]) => !(a === px && b === py));
-        if (ns.length !== 1) { endDeg = neighbors(cx, cy).length; break; }
+        if (ns.length !== 1) {
+          endDeg = neighbors(cx, cy).length;
+          break;
+        }
         px = cx;
         py = cy;
         [cx, cy] = ns[0]!;
         path.push([cx, cy]);
         const deg = neighbors(cx, cy).length;
-        if (deg !== 2) { endDeg = deg; break; }
+        if (deg !== 2) {
+          endDeg = deg;
+          break;
+        }
       }
       // Prune only true fuzz: the far end is a junction and the branch is below the
       // (global) minLen. A real crossbar arm / tail is ~a full stroke width or longer,
@@ -329,7 +360,10 @@ function traceSkeleton(grid: Uint8Array, w: number, h: number): Array<Array<[num
       px = cx;
       py = cy;
       [cx, cy] = next;
-      if (visited[idx(cx, cy)]) { line.push([cx, cy]); break; }
+      if (visited[idx(cx, cy)]) {
+        line.push([cx, cy]);
+        break;
+      }
     }
     return line;
   }
@@ -377,7 +411,13 @@ function smoothPolyline(pts: Stroke, passes: number): Stroke {
 }
 
 // ── Step 3b: extend free endpoints out to the glyph edge (undo skeleton retraction) ─
-function extendToEdges(line: Stroke, grid: Uint8Array, dist: Float32Array, w: number, h: number): Stroke {
+function extendToEdges(
+  line: Stroke,
+  grid: Uint8Array,
+  dist: Float32Array,
+  w: number,
+  h: number,
+): Stroke {
   const idx = (x: number, y: number) => y * w + x;
   const isFill = (x: number, y: number): boolean => {
     const rx = Math.round(x);
@@ -466,7 +506,10 @@ function simplify(points: Array<[number, number]>, eps: number): Array<[number, 
   const [bx, by] = points[points.length - 1]!;
   for (let i = 1; i < points.length - 1; i++) {
     const d = perpDist(points[i]!, ax, ay, bx, by);
-    if (d > maxDist) { maxDist = d; index = i; }
+    if (d > maxDist) {
+      maxDist = d;
+      index = i;
+    }
   }
   if (maxDist > eps) {
     const left = simplify(points.slice(0, index + 1), eps);
@@ -476,7 +519,13 @@ function simplify(points: Array<[number, number]>, eps: number): Array<[number, 
   return [points[0]!, points[points.length - 1]!];
 }
 
-function perpDist([px, py]: [number, number], ax: number, ay: number, bx: number, by: number): number {
+function perpDist(
+  [px, py]: [number, number],
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
   const dx = bx - ax;
   const dy = by - ay;
   const len = Math.hypot(dx, dy);
@@ -488,11 +537,11 @@ function perpDist([px, py]: [number, number], ax: number, ay: number, bx: number
 // run (split happened on the dense line), so just render it as one smooth Catmull-Rom →
 // cubic-Bézier curve; adjacent runs meet at the shared corner point, staying crisp. ───
 function smoothStrokesToPathD(strokes: Stroke[]): string {
-  return strokes.map(catmullRomPath).filter(Boolean).join(" ");
+  return strokes.map(catmullRomPath).filter(Boolean).join(' ');
 }
 
 function catmullRomPath(pts: Stroke): string {
-  if (pts.length < 2) return "";
+  if (pts.length < 2) return '';
   if (pts.length === 2) return `M${r(pts[0]!)} L${r(pts[1]!)}`;
   return `M${r(pts[0]!)}${catmullRom(pts)}`;
 }
@@ -500,7 +549,7 @@ function catmullRomPath(pts: Stroke): string {
 // Catmull-Rom through `run` as cubic Béziers, tangents clamped at the run ends.
 function catmullRom(run: Stroke): string {
   if (run.length === 2) return ` L${r(run[1]!)}`;
-  let d = "";
+  let d = '';
   for (let i = 0; i < run.length - 1; i++) {
     const p0 = run[i - 1] ?? run[i]!;
     const p1 = run[i]!;

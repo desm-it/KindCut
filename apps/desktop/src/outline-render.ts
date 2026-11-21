@@ -17,13 +17,13 @@ import {
   parseSvgTransform,
   simplifyClosedPolyline,
   traceAlphaContours,
-} from "@cricut-companion/craft-core";
-import type { WorkspaceObject, WorkspaceTextContent } from "./workspace-objects";
-import { WORKSPACE_PX_PER_MM, itemScale } from "./pen-fill-render";
-import { buildShapePath } from "./workspace-shapes";
-import { traceCenterlinePathD } from "./centerline-trace";
+} from '@cricut-companion/craft-core';
+import type { WorkspaceObject, WorkspaceTextContent } from './workspace-objects';
+import { WORKSPACE_PX_PER_MM, itemScale } from './pen-fill-render';
+import { buildShapePath } from './workspace-shapes';
+import { traceCenterlinePathD } from './centerline-trace';
 
-type ToolLike = { id?: string; color: string; type: "pen" | "cut" };
+type ToolLike = { id?: string; color: string; type: 'pen' | 'cut' };
 
 /** Picture pixels per workspace pixel: about 0.1 mm per pixel, placed finer still by the edge tracing. */
 const MAX_RESOLUTION = 3;
@@ -39,10 +39,15 @@ export function activeOutline(item: WorkspaceObject): OutlineSettings | null {
 }
 
 /** The tool an outline uses: its pen when that pen still exists, otherwise the blade. */
-export function outlineTool(outline: OutlineSettings, tools: ToolLike[] | undefined): { color: string; isPen: boolean } {
-  const pen = outline.penId ? tools?.find((tool) => tool.type === "pen" && tool.id === outline.penId) : undefined;
+export function outlineTool(
+  outline: OutlineSettings,
+  tools: ToolLike[] | undefined,
+): { color: string; isPen: boolean } {
+  const pen = outline.penId
+    ? tools?.find((tool) => tool.type === 'pen' && tool.id === outline.penId)
+    : undefined;
   if (pen) return { color: pen.color, isPen: true };
-  return { color: tools?.find((tool) => tool.type === "cut")?.color ?? "#000000", isPen: false };
+  return { color: tools?.find((tool) => tool.type === 'cut')?.color ?? '#000000', isPen: false };
 }
 
 // Geometry only changes when the art, its size or the outline settings change, not when
@@ -55,11 +60,20 @@ const cache = new WeakMap<object, Map<string, Point[][]>>();
  */
 export function outlineLoops(item: WorkspaceObject): Point[][] {
   const outline = activeOutline(item);
-  if (!outline || typeof document === "undefined") return [];
+  if (!outline || typeof document === 'undefined') return [];
   const { sx, sy } = itemScale(item);
   const liveText = item.textContent && item.paths.length === 0 ? item.textContent : null;
   const owner: object = liveText ?? item.paths;
-  const key = [item.shapeKind ?? "", item.frame.width, item.frame.height, sx, sy, item.cornerRadius ?? 0, outline.distanceMm, outline.holes].join("|");
+  const key = [
+    item.shapeKind ?? '',
+    item.frame.width,
+    item.frame.height,
+    sx,
+    sy,
+    item.cornerRadius ?? 0,
+    outline.distanceMm,
+    outline.holes,
+  ].join('|');
   let entries = cache.get(owner);
   if (!entries) {
     entries = new Map();
@@ -73,21 +87,30 @@ export function outlineLoops(item: WorkspaceObject): Point[][] {
   return loops;
 }
 
-function computeOutlineLoops(item: WorkspaceObject, outline: OutlineSettings, liveText: WorkspaceTextContent | null, sx: number, sy: number): Point[][] {
+function computeOutlineLoops(
+  item: WorkspaceObject,
+  outline: OutlineSettings,
+  liveText: WorkspaceTextContent | null,
+  sx: number,
+  sy: number,
+): Point[][] {
   const distance = outline.distanceMm * WORKSPACE_PX_PER_MM;
   const width = Math.max(1, item.frame.width * sx);
   const height = Math.max(1, item.frame.height * sy);
   const pad = distance + 2;
-  const resolution = Math.min(MAX_RESOLUTION, Math.sqrt(MAX_PIXELS / ((width + pad * 2) * (height + pad * 2))));
-  const canvas = document.createElement("canvas");
+  const resolution = Math.min(
+    MAX_RESOLUTION,
+    Math.sqrt(MAX_PIXELS / ((width + pad * 2) * (height + pad * 2))),
+  );
+  const canvas = document.createElement('canvas');
   canvas.width = Math.ceil((width + pad * 2) * resolution);
   canvas.height = Math.ceil((height + pad * 2) * resolution);
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return [];
-  ctx.fillStyle = "#000";
-  ctx.strokeStyle = "#000";
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
+  ctx.fillStyle = '#000';
+  ctx.strokeStyle = '#000';
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
 
   if (liveText && !liveText.singleLine) {
     // Same layout as the text on the canvas: alphabetic baseline at fontSize + line·lineHeight.
@@ -96,20 +119,34 @@ function computeOutlineLoops(item: WorkspaceObject, outline: OutlineSettings, li
     paintText(ctx, liveText, item.frame.width);
   } else {
     ctx.lineWidth = distance * 2 * resolution;
-    const toPicture = (x: number, y: number): Point => ({ x: (x + pad) * resolution, y: (y + pad) * resolution });
+    const toPicture = (x: number, y: number): Point => ({
+      x: (x + pad) * resolution,
+      y: (y + pad) * resolution,
+    });
     const shapeD = item.shapeKind
-      ? buildShapePath(item.shapeKind, width, height, Math.min((item.cornerRadius ?? 0) * Math.min(sx, sy), Math.min(width, height) / 2))
+      ? buildShapePath(
+          item.shapeKind,
+          width,
+          height,
+          Math.min((item.cornerRadius ?? 0) * Math.min(sx, sy), Math.min(width, height) / 2),
+        )
       : null;
     const sources = shapeD
       ? [{ d: shapeD, matrix: [1, 0, 0, 1, 0, 0] as const, evenOdd: false }]
       : liveText
-        // Single-line text is a set of open pen strokes, so the outline hugs the writing itself.
-        ? [{ d: traceCenterlinePathD(liveText, item.frame), matrix: [sx, 0, 0, sy, 0, 0] as const, evenOdd: false }]
+        ? // Single-line text is a set of open pen strokes, so the outline hugs the writing itself.
+          [
+            {
+              d: traceCenterlinePathD(liveText, item.frame),
+              matrix: [sx, 0, 0, sy, 0, 0] as const,
+              evenOdd: false,
+            },
+          ]
         : item.paths.map((path) => ({
-          d: path.d,
-          matrix: multiplyMatrices([sx, 0, 0, sy, 0, 0], parseSvgTransform(path.pathTransform)),
-          evenOdd: path.fillRule === "evenodd",
-        }));
+            d: path.d,
+            matrix: multiplyMatrices([sx, 0, 0, sy, 0, 0], parseSvgTransform(path.pathTransform)),
+            evenOdd: path.fillRule === 'evenodd',
+          }));
     for (const source of sources) {
       const [a, b, c, d] = source.matrix;
       const matrixScale = Math.sqrt(Math.abs(a * d - b * c)) || 1;
@@ -133,7 +170,7 @@ function computeOutlineLoops(item: WorkspaceObject, outline: OutlineSettings, li
         }
       }
       // Closed outlines are solid; open pen lines only get the band around the line.
-      ctx.fill(filled, source.evenOdd ? "evenodd" : "nonzero");
+      ctx.fill(filled, source.evenOdd ? 'evenodd' : 'nonzero');
       ctx.stroke(stroked);
     }
   }
@@ -144,22 +181,35 @@ function computeOutlineLoops(item: WorkspaceObject, outline: OutlineSettings, li
   const minArea = 4 * resolution * resolution;
   return traceAlphaContours(alpha, canvas.width, canvas.height)
     .filter((loop) => (outline.holes ? Math.abs(loop.area) >= minArea : loop.area >= minArea))
-    .map((loop) => simplifyClosedPolyline(loop.points, SIMPLIFY_TOLERANCE_PIXELS).map((point) => ({
-      x: point.x / resolution - pad,
-      y: point.y / resolution - pad,
-    })));
+    .map((loop) =>
+      simplifyClosedPolyline(loop.points, SIMPLIFY_TOLERANCE_PIXELS).map((point) => ({
+        x: point.x / resolution - pad,
+        y: point.y / resolution - pad,
+      })),
+    );
 }
 
-function paintText(ctx: CanvasRenderingContext2D, tc: WorkspaceTextContent, frameWidth: number): void {
-  ctx.font = `${tc.fontStyle === "italic" ? "italic " : ""}${tc.fontWeight === "bold" ? "bold " : ""}${tc.fontSize}px ${tc.fontFamily}`;
-  ctx.textBaseline = "alphabetic";
+function paintText(
+  ctx: CanvasRenderingContext2D,
+  tc: WorkspaceTextContent,
+  frameWidth: number,
+): void {
+  ctx.font = `${tc.fontStyle === 'italic' ? 'italic ' : ''}${tc.fontWeight === 'bold' ? 'bold ' : ''}${tc.fontSize}px ${tc.fontFamily}`;
+  ctx.textBaseline = 'alphabetic';
   const lineHeight = tc.fontSize * tc.lineHeight;
-  tc.text.split("\n").forEach((line, lineIndex) => {
+  tc.text.split('\n').forEach((line, lineIndex) => {
     const chars = [...line];
-    const lineWidth = chars.length === 0
-      ? 0
-      : chars.reduce((sum, char) => sum + ctx.measureText(char).width, 0) + Math.max(0, chars.length - 1) * tc.letterSpacing;
-    const startX = tc.textAlign === "center" ? (frameWidth - lineWidth) / 2 : tc.textAlign === "right" ? frameWidth - 1 - lineWidth : 1;
+    const lineWidth =
+      chars.length === 0
+        ? 0
+        : chars.reduce((sum, char) => sum + ctx.measureText(char).width, 0) +
+          Math.max(0, chars.length - 1) * tc.letterSpacing;
+    const startX =
+      tc.textAlign === 'center'
+        ? (frameWidth - lineWidth) / 2
+        : tc.textAlign === 'right'
+          ? frameWidth - 1 - lineWidth
+          : 1;
     const baseline = tc.fontSize + lineIndex * lineHeight;
     let x = startX;
     for (const char of chars) {
@@ -167,7 +217,7 @@ function paintText(ctx: CanvasRenderingContext2D, tc: WorkspaceTextContent, fram
       ctx.strokeText(char, x, baseline);
       x += ctx.measureText(char).width + tc.letterSpacing;
     }
-    if (tc.textDecoration === "underline" && lineWidth > 0) {
+    if (tc.textDecoration === 'underline' && lineWidth > 0) {
       const thickness = Math.max(2 / 3, tc.fontSize * 0.06);
       ctx.fillRect(startX, baseline + 2, lineWidth, thickness);
       ctx.strokeRect(startX, baseline + 2, lineWidth, thickness);
@@ -183,8 +233,10 @@ export function outlineRealSizePath(item: WorkspaceObject): string {
 /** The outline as path data in the object's frame space, so it sits inside the same transform as the object. */
 export function outlineFramePath(item: WorkspaceObject): string {
   const { sx, sy } = itemScale(item);
-  return formatPolylinePath(outlineLoops(item).map((points) => ({
-    points: points.map((point) => ({ x: point.x / sx, y: point.y / sy })),
-    closed: true,
-  })));
+  return formatPolylinePath(
+    outlineLoops(item).map((points) => ({
+      points: points.map((point) => ({ x: point.x / sx, y: point.y / sy })),
+      closed: true,
+    })),
+  );
 }

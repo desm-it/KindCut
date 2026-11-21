@@ -6,7 +6,7 @@ on:
       release_tag:
         description: Existing GitHub release tag to attach builds to; leave blank for smoke artifacts only
         required: false
-        default: ""
+        default: ''
   release:
     types:
       - published
@@ -45,13 +45,13 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: '24'
           cache: npm
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install dependencies
         shell: bash
@@ -67,10 +67,15 @@ jobs:
         run: npm run setup --workspace @cricut-companion/joy-runtime
 
       - name: Check
-        run: npm run typecheck && npm run test
+        run: npm run test:format --if-present && npm run test:policy --if-present && npm run typecheck && npm run test
 
       - name: Build mac release
         run: npm run package:desktop:mac
+
+      - name: Verify compiled host and packaged inert native runtime
+        env:
+          KINDCUT_TEST_FROZEN_RUNTIME: ${{ github.workspace }}/apps/desktop/release/mac-arm64/KindCut.app/Contents/Resources/joy/kindcut-joy-runtime
+        run: npm run test:compiled-host --if-present && npm run test:runtime-inert --if-present
 
       - name: Verify mac release metadata
         run: npm run verify:release-assets --workspace @cricut-companion/desktop
@@ -109,7 +114,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: '24'
           cache: npm
 
       - name: Check out pinned workflow tools separately from immutable release source
@@ -121,7 +126,7 @@ jobs:
       - name: Set up native runtime Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
 
       - name: Install dependencies
         shell: bash
@@ -147,10 +152,10 @@ jobs:
       - name: Set up legacy SliceBug Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: '3.10'
 
       - name: Check immutable release source with Windows platform harness
-        run: npm run typecheck && node .release-tools/scripts/run-windows-release-tests.cjs .
+        run: npm run test:format --if-present && npm run test:policy --if-present && npm run typecheck && node .release-tools/scripts/run-windows-release-tests.cjs .
 
       - name: Set up MSVC (x64)
         uses: ilammy/msvc-dev-cmd@v1

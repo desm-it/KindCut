@@ -1,21 +1,21 @@
-import type { Language } from "../i18n";
-import type { WorkspaceItemTransform } from "../workspace-utils";
-import type { WorkspaceObject, WorkspacePathData, WorkspaceSvgItem } from "../workspace-objects";
-import { cloneWorkspaceObjects } from "../workspace-objects";
-import { extractWorkspacePathsFromSvg } from "../workspace-svg-import";
-import { getSvgSizeCopy, getSvgSizeInfo } from "../svg-import";
-import type { WorkspaceShapeKind } from "../workspace-shapes";
+import type { Language } from '../i18n';
+import type { WorkspaceItemTransform } from '../workspace-utils';
+import type { WorkspaceObject, WorkspacePathData, WorkspaceSvgItem } from '../workspace-objects';
+import { cloneWorkspaceObjects } from '../workspace-objects';
+import { extractWorkspacePathsFromSvg } from '../workspace-svg-import';
+import { getSvgSizeCopy, getSvgSizeInfo } from '../svg-import';
+import type { WorkspaceShapeKind } from '../workspace-shapes';
 import {
   ROUNDED_SQUARE_DEFAULT_RADIUS,
   buildShapePath,
   defaultShapeFrame,
   getWorkspaceShapeDefinition,
-} from "../workspace-shapes";
-import { computeSnugFrame } from "./workspace-geometry";
+} from '../workspace-shapes';
+import { computeSnugFrame } from './workspace-geometry';
 
 export function createWorkspaceSvgItem({
   id,
-  kind = "image",
+  kind = 'image',
   shapeKind,
   fileName,
   fileSize,
@@ -25,7 +25,7 @@ export function createWorkspaceSvgItem({
   transform,
 }: {
   id: string;
-  kind?: "image" | "shape";
+  kind?: 'image' | 'shape';
   shapeKind?: WorkspaceShapeKind;
   fileName: string;
   fileSize: string;
@@ -45,18 +45,25 @@ export function createWorkspaceSvgItem({
     fileSize,
     sizeCopy: getSvgSizeCopy(sizeInfo, language),
     frame: extracted.frame,
-    transform: transform ?? { x: 32 + index * 24, y: 32 + index * 24, scaleX: 1, scaleY: 1, rotation: 0 },
+    transform: transform ?? {
+      x: 32 + index * 24,
+      y: 32 + index * 24,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+    },
   };
-  const item: WorkspaceSvgItem = extracted.paths.length === 1
-    ? { ...base, type: "path", paths: [extracted.paths[0]!] }
-    : { ...base, type: "group", paths: extracted.paths };
+  const item: WorkspaceSvgItem =
+    extracted.paths.length === 1
+      ? { ...base, type: 'path', paths: [extracted.paths[0]!] }
+      : { ...base, type: 'group', paths: extracted.paths };
   return computeSnugFrame(item);
 }
 
 export function createWorkspaceObjectItem({
   id,
   type,
-  kind = "image",
+  kind = 'image',
   sourceKind,
   shapeKind,
   fileName,
@@ -76,24 +83,24 @@ export function createWorkspaceObjectItem({
   hollow,
 }: {
   id: string;
-  type: "path" | "group";
-  kind?: "image" | "shape" | "text";
-  sourceKind?: "image" | "shape" | "text";
+  type: 'path' | 'group';
+  kind?: 'image' | 'shape' | 'text';
+  sourceKind?: 'image' | 'shape' | 'text';
   shapeKind?: WorkspaceShapeKind;
   fileName: string;
   fileSize: string;
   frame: { width: number; height: number };
-  paths: WorkspaceObject["paths"];
+  paths: WorkspaceObject['paths'];
   language: Language;
   index: number;
   transform?: WorkspaceItemTransform;
-  textContent?: WorkspaceObject["textContent"];
+  textContent?: WorkspaceObject['textContent'];
   cornerRadius?: number;
-  penFill?: WorkspaceObject["penFill"];
-  spotify?: WorkspaceObject["spotify"];
-  dotPrint?: WorkspaceObject["dotPrint"];
-  dashed?: WorkspaceObject["dashed"];
-  outline?: WorkspaceObject["outline"];
+  penFill?: WorkspaceObject['penFill'];
+  spotify?: WorkspaceObject['spotify'];
+  dotPrint?: WorkspaceObject['dotPrint'];
+  dashed?: WorkspaceObject['dashed'];
+  outline?: WorkspaceObject['outline'];
   hollow?: boolean;
 }): WorkspaceSvgItem {
   return {
@@ -106,8 +113,14 @@ export function createWorkspaceObjectItem({
     fileSize,
     sizeCopy: `${Math.round(frame.width)} × ${Math.round(frame.height)} px`,
     frame,
-    paths: paths.map((path) => ({ ...path })) as WorkspaceObject["paths"],
-    transform: transform ?? { x: 32 + index * 24, y: 32 + index * 24, scaleX: 1, scaleY: 1, rotation: 0 },
+    paths: paths.map((path) => ({ ...path })) as WorkspaceObject['paths'],
+    transform: transform ?? {
+      x: 32 + index * 24,
+      y: 32 + index * 24,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+    },
     textContent: textContent ? { ...textContent } : undefined,
     cornerRadius,
     penFill: penFill ? { ...penFill } : undefined,
@@ -131,28 +144,28 @@ export function createWorkspaceShapeItem({
   timestamp: number;
 }): WorkspaceSvgItem {
   const definition = getWorkspaceShapeDefinition(shapeKind);
-  const label = language === "nl" ? definition.labelNl : definition.labelEn;
+  const label = language === 'nl' ? definition.labelNl : definition.labelEn;
   // Shapes are generated bounds-tight in their frame, so no snug pass is needed.
   // "Rounded square" is just a square with a preset corner radius.
-  const cornerRadius = shapeKind === "rounded-square" ? ROUNDED_SQUARE_DEFAULT_RADIUS : 0;
+  const cornerRadius = shapeKind === 'rounded-square' ? ROUNDED_SQUARE_DEFAULT_RADIUS : 0;
   const frame = defaultShapeFrame(shapeKind);
   const path: WorkspacePathData = {
-    id: "path-1",
+    id: 'path-1',
     d: buildShapePath(shapeKind, frame.width, frame.height, cornerRadius),
-    fill: "none",
-    stroke: "#000000",
-    strokeWidth: "1.5",
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
+    fill: 'none',
+    stroke: '#000000',
+    strokeWidth: '1.5',
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
   };
   return createWorkspaceObjectItem({
     id: `shape-${timestamp}-${index}`,
-    type: "path",
-    kind: "shape",
-    sourceKind: "shape",
+    type: 'path',
+    kind: 'shape',
+    sourceKind: 'shape',
     shapeKind,
     fileName: label,
-    fileSize: language === "nl" ? "KindCut-vorm" : "KindCut shape",
+    fileSize: language === 'nl' ? 'KindCut-vorm' : 'KindCut shape',
     frame,
     paths: [path],
     language,
@@ -165,6 +178,15 @@ export function cloneWorkspaceSvgItems(items: WorkspaceSvgItem[]): WorkspaceSvgI
   return cloneWorkspaceObjects(items) as WorkspaceSvgItem[];
 }
 
-export function workspaceTransformsEqual(a: WorkspaceItemTransform, b: WorkspaceItemTransform): boolean {
-  return a.x === b.x && a.y === b.y && a.scaleX === b.scaleX && a.scaleY === b.scaleY && a.rotation === b.rotation;
+export function workspaceTransformsEqual(
+  a: WorkspaceItemTransform,
+  b: WorkspaceItemTransform,
+): boolean {
+  return (
+    a.x === b.x &&
+    a.y === b.y &&
+    a.scaleX === b.scaleX &&
+    a.scaleY === b.scaleY &&
+    a.rotation === b.rotation
+  );
 }

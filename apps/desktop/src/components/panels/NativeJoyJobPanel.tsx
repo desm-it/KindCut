@@ -1,100 +1,725 @@
-import {NativeMakeStage,type MakeConnection,type StageKind,nativeStageCss} from './native-make-stage';
+import {
+  NativeMakeStage,
+  type MakeConnection,
+  type StageKind,
+  nativeStageCss,
+} from './native-make-stage';
 
+import type { ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { NativeJoySetup } from '../../shell/native-joy-service';
+import type { NativeConfigurationSource } from '../../native-joy-configuration-types';
+import {
+  NativeJobController,
+  nativeJobApi,
+  initialJobPanel,
+  type NativeJobApi,
+  type JobPanelState,
+} from './native-joy-job-controller';
 
-import type {ReactNode} from 'react';
-import {useEffect,useRef,useState} from 'react';
-import type {NativeJoySetup} from '../../shell/native-joy-service';
-import type {NativeConfigurationSource} from '../../native-joy-configuration-types';
-import {NativeJobController,nativeJobApi,initialJobPanel,type NativeJobApi,type JobPanelState} from './native-joy-job-controller';
+export function NativeJoyJobView(p: {
+  seamless?: boolean;
+  language?: string;
+  plannedTools?: ReadonlyArray<{ tool: 'pen' | 'fine_point_blade'; color?: string }>;
+  showAdvancedInfo?: boolean;
+  compact?: boolean;
+  state: JobPanelState;
+  setup: NativeJoySetup | null;
+  available: boolean;
+  makeConnection?: MakeConnection;
+  matVariant?: 'short' | 'card';
+  onAction: (
+    a: 'prepare' | 'start' | 'go' | 'pause' | 'resume' | 'end' | 'cancel' | 'export',
+  ) => void;
+}) {
+  const { state: s } = p,
+    job = s.job,
+    active = Boolean(job?.active && !job.historical),
+    ready = active && job?.phase === 'waiting_for_go';
+  const cut = active ? job?.tool === 'fine_point_blade' : s.preview?.tool === 'fine_point_blade';
+  const workflow = job?.workflow ?? s.preview?.workflow,
+    combined = Boolean(workflow && workflow.actionCount > 1),
+    containsBlade = Boolean(workflow?.containsBlade);
+  const hasNext = Boolean(job?.workflow && job.workflow.actionIndex + 1 < job.workflow.actionCount);
+  const held = active && String(job?.phase) === 'retained_ready';
+  const cleanupFailed = Boolean(
+    job?.phase === 'failed' &&
+    job.jobStarted &&
+    job.totalPasses > 0 &&
+    job.completedPasses === job.totalPasses &&
+    job.acceptedRecords === job.totalRecords &&
+    ['aborting', 'disarming', 'closing', 'releasing'].includes(
+      job.diagnostics?.failure?.stage ?? '',
+    ),
+  );
+  const loading =
+    !active ||
+    ['loading_and_aligning', 'waiting_for_mat', 'gripped', 'measuring_y', 'positioning'].includes(
+      job?.phase ?? '',
+    );
+  const makeConnection = p.makeConnection,
+    connected = Boolean(p.setup?.session),
+    enabled = p.setup?.enabled && p.setup.runtimeAvailable,
+    nl = p.language === 'nl';
+  const needsCalibration = /A saved Joy calibration is required/i.test(
+    (makeConnection?.error ?? '') + ' ' + s.error,
+  );
+  const currentFinished = Boolean(makeConnection?.finished),
+    liveFailure = Boolean(job?.phase === 'failed' && !job.historical);
+  const connectionFailure =
+    !connected && Boolean(makeConnection?.notice || makeConnection?.connectionError);
+  const toolIndex = (workflow?.actionIndex ?? 0) + (held && hasNext ? 1 : 0),
+    requested = workflow?.actions[toolIndex] ?? p.plannedTools?.[toolIndex];
+  let stageKind: StageKind;
+  if (active && s.cancelPending) stageKind = 'refresh';
+  else if (liveFailure) stageKind = 'error';
+  else if (active)
+    stageKind = held
+      ? makeConnection?.preparing
+        ? 'refresh'
+        : hasNext
+          ? requested?.tool === 'fine_point_blade'
+            ? 'cut'
+            : 'pen'
+          : 'unload'
+      : loading
+        ? 'load'
+        : cut
+          ? 'cut'
+          : 'pen';
+  else if (currentFinished) stageKind = 'done';
+  else if (!p.available) stageKind = 'error';
+  else if (!connected)
+    stageKind = !makeConnection?.busy && connectionFailure ? 'bluetooth-failed' : 'bluetooth';
+  else if (s.error || makeConnection?.error || s.stale) stageKind = 'error';
+  else if (makeConnection?.preparing || !s.preview) stageKind = 'refresh';
+  else stageKind = 'load';
+  const stageTitle = s.cancelPending
+    ? nl
+      ? 'Proces stoppen…'
+      : 'Stopping job…'
+    : stageKind === 'bluetooth'
+      ? makeConnection?.cancelling
+        ? nl
+          ? 'Verbinding stoppen…'
+          : 'Stopping connection…'
+        : makeConnection?.busy
+          ? nl
+            ? 'Cricut zoeken en verbinden…'
+            : 'Finding and connecting to Cricut…'
+          : nl
+            ? 'Niet verbonden'
+            : 'Not connected'
+      : stageKind === 'bluetooth-failed'
+        ? nl
+          ? 'Verbinding mislukt'
+          : 'Connection failed'
+        : stageKind === 'refresh'
+          ? nl
+            ? 'Ontwerp voorbereiden…'
+            : 'Preparing design…'
+          : stageKind === 'error'
+            ? liveFailure
+              ? nl
+                ? 'Uitvoering mislukt'
+                : 'Job failed'
+              : nl
+                ? 'Voorbereiden mislukt'
+                : 'Preparation failed'
+            : stageKind === 'done'
+              ? nl
+                ? 'Gereed'
+                : 'Done'
+              : stageKind === 'unload'
+                ? nl
+                  ? 'Mat uitladen'
+                  : 'Unload mat'
+                : stageKind === 'load'
+                  ? nl
+                    ? 'Mat laden'
+                    : 'Load mat'
+                  : stageKind === 'cut'
+                    ? nl
+                      ? 'Snijden'
+                      : 'Cut shapes'
+                    : nl
+                      ? 'Tekenen'
+                      : 'Draw with this pen';
+  let stageDetail: ReactNode = undefined;
+  if (stageKind === 'bluetooth-failed')
+    stageDetail =
+      makeConnection?.notice === 'not_found'
+        ? nl
+          ? 'Zet je Cricut aan en koppel hem via de Bluetooth-instellingen van macOS. Probeer daarna opnieuw.'
+          : 'Power on and pair your Cricut in macOS Bluetooth settings, then try again.'
+        : makeConnection?.notice === 'search_failed'
+          ? nl
+            ? 'Bluetooth zoeken is niet beschikbaar. Controleer de Bluetooth-toegang in macOS en probeer opnieuw.'
+            : 'Bluetooth discovery is unavailable. Check macOS Bluetooth access, then try again.'
+          : nl
+            ? 'Haal de stroomkabel van je Cricut los, sluit hem weer aan en probeer opnieuw.'
+            : 'Power-unplug and reconnect your Cricut, then try again.';
+  else if (stageKind === 'error')
+    stageDetail = liveFailure
+      ? cleanupFailed
+        ? nl
+          ? 'De gereedschapsactie is protocolmatig voltooid, maar het afsluiten mislukte. Herhaal de actie niet. Controleer de machine en bewaar de diagnose.'
+          : 'The tool action protocol completed, but cleanup failed. Do not repeat it. Inspect the machine and preserve diagnostics.'
+        : nl
+          ? 'De machinestatus is onzeker. Controleer de machine voordat je verdergaat.'
+          : 'Machine state is unknown. Inspect the machine before continuing.'
+      : !p.available
+        ? nl
+          ? 'De bediening is niet beschikbaar in deze build.'
+          : 'Job controls are unavailable in this build.'
+        : p.showAdvancedInfo
+          ? makeConnection?.error ||
+            s.error ||
+            (nl
+              ? 'Controleer je ontwerp en opgeslagen instellingen.'
+              : 'Check your design and saved settings.')
+          : needsCalibration
+            ? nl
+              ? 'Schakel Geavanceerde info in via Instellingen. Kies of bewaar daarna je Cricut-kalibratie bij Maken.'
+              : 'Enable advanced info in Settings, then select or save your Cricut calibration in Make.'
+            : nl
+              ? 'Controleer je ontwerp, materiaal en mat en probeer daarna opnieuw.'
+              : 'Check your design, material and mat, then try again.';
+  const disabled = !p.available || s.busy || s.endPending || Boolean(makeConnection?.preparing);
+  const primaryAction = ready
+    ? 'go'
+    : held
+      ? cut || (combined && !hasNext)
+        ? 'end'
+        : s.preview
+          ? 'start'
+          : 'prepare'
+      : !active
+        ? s.preview && !s.stale
+          ? 'start'
+          : 'prepare'
+        : job?.phase === 'paused'
+          ? 'resume'
+          : null;
 
-export function NativeJoyJobView(p:{seamless?:boolean;language?:string;plannedTools?:ReadonlyArray<{tool:'pen'|'fine_point_blade';color?:string}>;showAdvancedInfo?:boolean;compact?:boolean;state:JobPanelState;setup:NativeJoySetup|null;available:boolean;makeConnection?:MakeConnection;matVariant?:'short'|'card';onAction:(a:'prepare'|'start'|'go'|'pause'|'resume'|'end'|'cancel'|'export')=>void}){
- const {state:s}=p,job=s.job,active=Boolean(job?.active&&!job.historical),ready=active&&job?.phase==='waiting_for_go';
- const cut=active?job?.tool==='fine_point_blade':s.preview?.tool==='fine_point_blade';
- const workflow=job?.workflow??s.preview?.workflow,combined=Boolean(workflow&&workflow.actionCount>1),containsBlade=Boolean(workflow?.containsBlade);
- const hasNext=Boolean(job?.workflow&&job.workflow.actionIndex+1<job.workflow.actionCount);
- const held=active&&String(job?.phase)==='retained_ready';
- const cleanupFailed=Boolean(job?.phase==='failed'&&job.jobStarted&&job.totalPasses>0&&job.completedPasses===job.totalPasses&&job.acceptedRecords===job.totalRecords&&['aborting','disarming','closing','releasing'].includes(job.diagnostics?.failure?.stage??''));
- const loading=!active||['loading_and_aligning','waiting_for_mat','gripped','measuring_y','positioning'].includes(job?.phase??'');
- const makeConnection=p.makeConnection,connected=Boolean(p.setup?.session),enabled=p.setup?.enabled&&p.setup.runtimeAvailable,nl=p.language==='nl';
- const needsCalibration=/A saved Joy calibration is required/i.test((makeConnection?.error??'')+' '+s.error);
- const currentFinished=Boolean(makeConnection?.finished),liveFailure=Boolean(job?.phase==='failed'&&!job.historical);
- const connectionFailure=!connected&&Boolean(makeConnection?.notice||makeConnection?.connectionError);
- const toolIndex=(workflow?.actionIndex??0)+(held&&hasNext?1:0),requested=workflow?.actions[toolIndex]??p.plannedTools?.[toolIndex];
- let stageKind:StageKind;
- if(active&&s.cancelPending)stageKind='refresh';
- else if(liveFailure)stageKind='error';
- else if(active)stageKind=held?(makeConnection?.preparing?'refresh':hasNext?(requested?.tool==='fine_point_blade'?'cut':'pen'):'unload'):loading?'load':cut?'cut':'pen';
- else if(currentFinished)stageKind='done';
- else if(!p.available)stageKind='error';
- else if(!connected)stageKind=!makeConnection?.busy&&connectionFailure?'bluetooth-failed':'bluetooth';
- else if(s.error||makeConnection?.error||s.stale)stageKind='error';
- else if(makeConnection?.preparing||!s.preview)stageKind='refresh';
- else stageKind='load';
- const stageTitle=s.cancelPending?(nl?'Proces stoppen…':'Stopping job…'):stageKind==='bluetooth'?(makeConnection?.cancelling?(nl?'Verbinding stoppen…':'Stopping connection…'):makeConnection?.busy?(nl?'Cricut zoeken en verbinden…':'Finding and connecting to Cricut…'):(nl?'Niet verbonden':'Not connected')):stageKind==='bluetooth-failed'?(nl?'Verbinding mislukt':'Connection failed'):stageKind==='refresh'?(nl?'Ontwerp voorbereiden…':'Preparing design…'):stageKind==='error'?(liveFailure?(nl?'Uitvoering mislukt':'Job failed'):(nl?'Voorbereiden mislukt':'Preparation failed')):stageKind==='done'?(nl?'Gereed':'Done'):stageKind==='unload'?(nl?'Mat uitladen':'Unload mat'):stageKind==='load'?(nl?'Mat laden':'Load mat'):stageKind==='cut'?(nl?'Snijden':'Cut shapes'):(nl?'Tekenen':'Draw with this pen');
- let stageDetail:ReactNode=undefined;
- if(stageKind==='bluetooth-failed')stageDetail=makeConnection?.notice==='not_found'?(nl?'Zet je Cricut aan en koppel hem via de Bluetooth-instellingen van macOS. Probeer daarna opnieuw.':'Power on and pair your Cricut in macOS Bluetooth settings, then try again.'):makeConnection?.notice==='search_failed'?(nl?'Bluetooth zoeken is niet beschikbaar. Controleer de Bluetooth-toegang in macOS en probeer opnieuw.':'Bluetooth discovery is unavailable. Check macOS Bluetooth access, then try again.'):(nl?'Haal de stroomkabel van je Cricut los, sluit hem weer aan en probeer opnieuw.':'Power-unplug and reconnect your Cricut, then try again.');
- else if(stageKind==='error')stageDetail=liveFailure?(cleanupFailed?(nl?'De gereedschapsactie is protocolmatig voltooid, maar het afsluiten mislukte. Herhaal de actie niet. Controleer de machine en bewaar de diagnose.':'The tool action protocol completed, but cleanup failed. Do not repeat it. Inspect the machine and preserve diagnostics.'):(nl?'De machinestatus is onzeker. Controleer de machine voordat je verdergaat.':'Machine state is unknown. Inspect the machine before continuing.')):!p.available?(nl?'De bediening is niet beschikbaar in deze build.':'Job controls are unavailable in this build.'):p.showAdvancedInfo?(makeConnection?.error||s.error||(nl?'Controleer je ontwerp en opgeslagen instellingen.':'Check your design and saved settings.')):(needsCalibration?(nl?'Schakel Geavanceerde info in via Instellingen. Kies of bewaar daarna je Cricut-kalibratie bij Maken.':'Enable advanced info in Settings, then select or save your Cricut calibration in Make.'):(nl?'Controleer je ontwerp, materiaal en mat en probeer daarna opnieuw.':'Check your design, material and mat, then try again.'));
- const disabled=!p.available||s.busy||s.endPending||Boolean(makeConnection?.preparing); const primaryAction=ready?'go':held?((cut||(combined&&!hasNext))?'end':s.preview?'start':'prepare'):!active?(s.preview&&!s.stale?'start':'prepare'):job?.phase==='paused'?'resume':null;
+  const button = (
+    action: 'prepare' | 'start' | 'go' | 'pause' | 'resume' | 'end' | 'cancel' | 'export',
+    label: string,
+    off: boolean,
+  ) => (
+    <button
+      type="button"
+      className={`cut-modal__btn cut-modal__btn--${p.compact && action === primaryAction && (active || connected) ? 'primary' : 'secondary'}`}
+      disabled={off}
+      data-native-intent={
+        action === 'start'
+          ? 'job-start'
+          : action === 'go'
+            ? 'job-go'
+            : action === 'resume'
+              ? 'job-resume'
+              : action === 'end'
+                ? 'job-end'
+                : undefined
+      }
+      onClick={() => p.onAction(action)}
+    >
+      {label}
+    </button>
+  );
+  if (p.compact)
+    return (
+      <section
+        className={`native-make__job${p.seamless ? ' native-make__job--seamless' : ''}`}
+        aria-label="Native Make"
+        aria-busy={s.busy}
+      >
+        {!p.seamless && <h3>Make</h3>}
+        <style>{nativeStageCss}</style>
+        <NativeMakeStage
+          kind={stageKind}
+          searching={Boolean(makeConnection?.busy && !connected)}
+          title={stageTitle}
+          detail={stageDetail}
+          matVariant={p.matVariant}
+          color={requested?.color}
+        />
+        {active && !held && !ready && job?.jobStarted && job.totalRecords > 0 && (
+          <div className="native-make__progress">
+            <progress
+              aria-label={nl ? 'Gereedschapsvoortgang' : 'Tool progress'}
+              max={job.totalRecords}
+              value={job.acceptedRecords}
+            />
+            <span>
+              {job.phase === 'sending'
+                ? nl
+                  ? 'Gereedschapspaden verzenden'
+                  : 'Sending tool paths'
+                : job.phase === 'draining'
+                  ? nl
+                    ? 'Passages afronden'
+                    : 'Finishing passes'
+                  : nl
+                    ? 'Gereedschap bezig'
+                    : 'Tool in progress'}
+            </span>
+          </div>
+        )}
+        <div className="native-make__actions">
+          {p.seamless && needsCalibration && !active && makeConnection?.onOpenSettings && (
+            <button
+              type="button"
+              className="cut-modal__btn cut-modal__btn--secondary"
+              onClick={makeConnection.onOpenSettings}
+            >
+              {nl ? 'Instellingen' : 'Settings'}
+            </button>
+          )}
 
- const button=(action:'prepare'|'start'|'go'|'pause'|'resume'|'end'|'cancel'|'export',label:string,off:boolean)=><button type="button" className={`cut-modal__btn cut-modal__btn--${p.compact&&action===primaryAction&&(active||connected)?'primary':'secondary'}`} disabled={off} data-native-intent={action==='start'?'job-start':action==='go'?'job-go':action==='resume'?'job-resume':action==='end'?'job-end':undefined} onClick={()=>p.onAction(action)}>{label}</button>;
- if(p.compact)return <section className={`native-make__job${p.seamless?' native-make__job--seamless':''}`} aria-label="Native Make" aria-busy={s.busy}>
- {!p.seamless&&<h3>Make</h3>}
- <style>{nativeStageCss}</style><NativeMakeStage kind={stageKind} searching={Boolean(makeConnection?.busy&&!connected)} title={stageTitle} detail={stageDetail} matVariant={p.matVariant} color={requested?.color}/>
- {active&&!held&&!ready&&job?.jobStarted&&job.totalRecords>0&&<div className="native-make__progress"><progress aria-label={nl?'Gereedschapsvoortgang':'Tool progress'} max={job.totalRecords} value={job.acceptedRecords}/><span>{job.phase==='sending'?(nl?'Gereedschapspaden verzenden':'Sending tool paths'):job.phase==='draining'?(nl?'Passages afronden':'Finishing passes'):(nl?'Gereedschap bezig':'Tool in progress')}</span></div>}
- <div className="native-make__actions">
- {p.seamless&&needsCalibration&&!active&&makeConnection?.onOpenSettings&&<button type="button" className="cut-modal__btn cut-modal__btn--secondary" onClick={makeConnection.onOpenSettings}>{nl?'Instellingen':'Settings'}</button>}
+          {p.seamless &&
+            !active &&
+            connectionFailure &&
+            !makeConnection?.busy &&
+            makeConnection?.onRetry && (
+              <button
+                type="button"
+                className="cut-modal__btn cut-modal__btn--secondary"
+                data-native-intent="connect"
+                onClick={makeConnection.onRetry}
+              >
+                {nl ? 'Opnieuw proberen' : 'Retry'}
+              </button>
+            )}
+          {p.seamless && !active && makeConnection?.busy && makeConnection?.onCancel && (
+            <button
+              type="button"
+              className="cut-modal__btn cut-modal__btn--secondary"
+              disabled={makeConnection.cancelling}
+              onClick={makeConnection.onCancel}
+            >
+              {makeConnection.cancelling
+                ? nl
+                  ? 'Stoppen…'
+                  : 'Stopping…'
+                : nl
+                  ? 'Verbinding annuleren'
+                  : 'Cancel connection'}
+            </button>
+          )}
 
- {p.seamless&&!active&&connectionFailure&&!makeConnection?.busy&&makeConnection?.onRetry&&<button type="button" className="cut-modal__btn cut-modal__btn--secondary" data-native-intent="connect" onClick={makeConnection.onRetry}>{nl?'Opnieuw proberen':'Retry'}</button>}
- {p.seamless&&!active&&makeConnection?.busy&&makeConnection?.onCancel&&<button type="button" className="cut-modal__btn cut-modal__btn--secondary" disabled={makeConnection.cancelling} onClick={makeConnection.onCancel}>{makeConnection.cancelling?(nl?'Stoppen…':'Stopping…'):(nl?'Verbinding annuleren':'Cancel connection')}</button>}
-
- {!p.seamless&&primaryAction==='prepare'&&button('prepare',held?'Prepare next tool':'Prepare design',disabled||(active&&!held)||(combined&&s.stale)||!enabled)}
- {!p.seamless&&primaryAction==='start'&&button('start',held?'Continue to next tool':'Load mat',disabled||!connected||s.stale||!enabled)}
- {!p.seamless&&ready&&button('go',cut?'Start cutting':'Start drawing',disabled||s.stale)}
- {!p.seamless&&held&&button('end','Unload mat',disabled)}
- {active&&!held&&!containsBlade&&!cut&&job?.jobStarted&&['setting_up','sending','draining'].includes(job.phase)&&button('pause','Pause',disabled||s.pausePending||s.resumePending||!connected)}
- {!p.seamless&&active&&!containsBlade&&!cut&&job?.phase==='paused'&&button('resume','Resume drawing',disabled||s.stale||s.resumePending||!connected)}
- {active&&!held&&button('cancel',s.cancelPending?(nl?'Stoppen…':'Stopping…'):(nl?'Annuleren':'Cancel job'),!p.available||Boolean(s.cancelPending))}
- </div>
- {p.showAdvancedInfo&&<details className="native-make__diagnostics"><summary>Job details & diagnostics</summary>{s.message&&<p role="status">{s.message}</p>}{job&&<p>{job.historical?'Previous job':'Job'}: {job.phase}. Records {job.acceptedRecords}/{job.totalRecords}; passes {job.completedPasses}/{job.totalPasses}. Physical completion and stopping are not verified.</p>}{s.preview&&!p.seamless&&<p>Material #{s.preview.materialId}; {s.preview.recordCount} records; native pressure {s.preview.pressureRequests.join(', ')} (not grams).</p>}{button('export','Export job diagnostics…',disabled||active||connected)}</details>}
- </section>;
- return <section aria-label="Native Make" aria-busy={s.busy} style={{borderTop:'1px solid #777',marginTop:20,paddingTop:16}}>
-  <h3>{combined?'Native draw → cut workflow':cut?'Native blade job':'Native pen job'}</h3>
-  <p className="settings-modal__hint">Standalone source-backed sender · pen jobs. Blade execution supports prepared fine-point blade jobs with an exact saved material recipe. Physical calibration, origin, alignment and stopping are unverified.</p>
-  <p>Select and save the matching tool profile and calibration above. Pen designs must use one pen. Blade jobs require the matching saved material recipe; every path and pressure pass is included. No guessed pressure or calibration is supplied.</p>
-  {!p.available&&<p>Job controls are unavailable in this desktop build.</p>}
-  {!active&&s.recovery?.status==='interrupted'&&<div role="alert">{s.recovery.lastKnownPhase==='retained_ready'?<><strong>Previous loaded-mat session lost its live owner — Machine state is unknown.</strong><p>Last pen action reached protocol completion. The retained session is not resumable after restart.</p></>:<strong>Previous job interrupted — Machine state is unknown.</strong>}<p>The last saved phase was {s.recovery.lastKnownPhase}; {s.recovery.acceptedRecords}/{s.recovery.totalRecords} records were host-confirmed. This is not a record of physical completion.</p><p>Interrupted jobs are never resumed or replayed automatically. Keep clear, inspect the machine and accessible power, retire any previous owner, and preserve/export the report. Use fresh material, preparation, connection and approvals for a NEW attempt. No saved cursor authorizes skipped or repeated paths.</p></div>}
-  {(combined||cut)?<p>Blade workflow: use a fresh session and sacrificial paper/mat. The blade must be removed for loading; remove the pen too. Load and align with an empty clamp. Only after the ready wait and OBSERVED stopped movement, install and secure the matching Joy fine-point blade, close the clamp and separately confirm cutting. Keep travel clear and power accessible. All saved source pressure passes are included. After ALL passes of each tool, a non-drawing return to job origin (0,0) runs before the retained wait; physical lift clearance and stopping are unverified. No automatic retry.</p>:<p>1. Disconnect and prepare. 2. Connect the same Joy. 3. Approve pen-only loading: No blade; the matching pen may remain installed. Pen clearance is unverified and loading could mark the paper. 4. At the retained-ready wait, verify the mat is held, movement stopped and the matching pen secured, then separately confirm drawing.</p>}
-  {combined&&<p><strong>Load once with an empty clamp. The FIRST action uses the PEN.</strong> Install the pen only at the first stopped ready wait. After its origin return, prepare and arm the frozen blade action; install the blade only at that new stopped tool-ready wait. Each tool needs a separate Go.</p>}
-  {!(held&&(cut||(combined&&!hasNext)))&&button('prepare',held&&combined?'Prepare next tool':held?'Prepare next pen action':'Prepare current tool plan',disabled||(active&&!held)||(combined&&s.stale)||!enabled)}
-  {s.preview&&<div role="status"><p>Prepared {s.preview.tool==='fine_point_blade'?'blade':'pen'} program · material #{s.preview.materialId} · {s.preview.heightInches}-inch mat · {s.preview.passCount} pass(es) · {s.preview.recordCount} point records.</p><p>Native pressure requests: {s.preview.pressureRequests.join(', ')} — not grams; suitability unverified.</p></div>}
-  {workflow&&<div role="status"><h4>Frozen tool actions</h4><ol>{workflow.actions.map((a,i)=><li key={i}>{i+1}. {a.tool==='pen'?'Pen':'Blade'} — {a.profileName}; {a.passCount} pass(es); {a.pressureRequests.join(', ')} (native units)</li>)}</ol><p>Action {workflow.actionIndex+1}/{workflow.actionCount}. No completed paths are redrawn; each next tool requires a new Go.</p></div>}
-  {button('start',held&&combined?'Arm next tool…':held?'Arm next pen action…':(combined||cut)?'Load and align for prepared blade job…':'Load and align for prepared pen trial…',disabled||(held&&cut)||(active&&!held)||!connected||!s.preview||s.stale||!enabled)}
-  {job&&job.phase!=='idle'&&<div role={job.phase==='failed'?'alert':'status'}>
-   {job.historical&&<p>Previous job · restored history only. No session is resumed.</p>}
-   {cleanupFailed?<><p><strong>{job.tool==='fine_point_blade'?'Cutting':'Drawing'} protocol completed; session cleanup failed.</strong> Accepted records {job.acceptedRecords}/{job.totalRecords}; drained passes {job.completedPasses}/{job.totalPasses}. Cleanup error: {job.diagnostics?.failure?.stage} / {job.diagnostics?.failure?.code}.</p><p>Do not repeat the drawing automatically. Preserve diagnostics; physical stopping and ejection require observation.</p></>:<p>Job stage: {job.phase}. Accepted records {job.acceptedRecords}/{job.totalRecords}; drained passes {job.completedPasses}/{job.totalPasses}.</p>}
-   {held&&<><p><strong>{cut?'Cut':'Pen'} action protocol completed.</strong> {combined?(hasNext?'The pen action and non-drawing origin return completed. Prepare the next frozen blade tool; do not redraw the pen paths.':'All frozen tool actions and origin returns completed. The mat remains held until explicit End / unload.'):(cut?'The blade job mat session is retained. End this session before another action.':'The loaded session is retained for another separately approved action; no automatic unload or replay.')}</p><p>Grip, alignment, pen clearance and stopped motion are not continuously verified. {combined?'Observe stopped motion before changing tools. Only the already frozen next action is admitted; editing the workspace invalidates the queue.':cut?'Blade queue pause/resume is not supported; End explicitly when finished.':'Prepare the next action from ALL current workspace pen paths; remove/exclude previously drawn paths unless intentionally redrawing.'} Mat/material/calibration must stay the same. Idle retention does not expire the completed action deadline.</p>{button('end','Unload mat',disabled)}</>}
-   {active&&job.phase==='returning_to_origin'&&<p><strong>Returning without drawing to job origin (0,0)</strong>. Keep clear; physical lift clearance and stopping are not verified.</p>}
-   {active&&job.phase==='waiting_for_mat'&&<p><strong>Insert the mat now</strong> only if the ready light is also blinking. Blinking alone is not an insertion cue.</p>}
-   {ready&&<><p>Mat-loading protocol reached its ready wait. Verify the mat is held and all movement has stopped. {cut?'Only now install and secure the matching fine-point BLADE and close the clamp. Confirming cutting will make contact with the paper and may mark the mat.':'Verify the matching pen is secured (install it now only if absent), close its clamp, and keep the front/back clear.'}</p>{button('go',cut?'Confirm blade and start cutting…':'Confirm pen and start drawing…',disabled||s.stale)}</>}
-   {active&&!containsBlade&&!cut&&job.jobStarted&&['setting_up','sending','draining'].includes(job.phase)&&button('pause','Pause queue',disabled||s.pausePending||s.resumePending||!connected)}
-   {active&&!containsBlade&&!cut&&job.phase==='paused'&&button('resume','Resume same pen program…',disabled||s.stale||s.resumePending||!connected)}
-   {active&&(s.pausePending||job.phase==='pausing')&&<p>Pause requested — already-buffered motion may continue.</p>}
-   {active&&!held&&!containsBlade&&!cut&&job.jobStarted&&<p>Queue pause is not proof of stopped motion; the pen may remain in contact. The whole60-second deadline continues while paused; timeout/cancel cleanup may move or eject. Resume requires fresh clearance on this same healthy session. No reconnect replay.</p>}
-   {active&&!held&&button('cancel',s.cancelPending?(nl?'Stoppen…':'Stopping…'):(nl?'Annuleren':'Cancel job'),!p.available||Boolean(s.cancelPending))}
-   {job.jobStarted&&<p>Job traffic was admitted; this is not proof of physical completion. Software Cancel is not a guaranteed emergency stop. Keep clear and disconnect power if necessary.</p>}
-   {!active&&<p>Session retired. Physical completion, alignment and mat ejection are not inferred from protocol status.</p>}
-  </div>}
-  {s.stale&&<p role="alert">Workspace changed. Do not start a stale prepared job. After a completed action, keep the mat retained and prepare the next action; otherwise cancel before changing an admitted action.</p>}
-  {button('export','Export pen-job diagnostics…',disabled||active||connected)}
-  {s.message&&<p role="status">{s.message}</p>}{s.error&&<p role="alert">{s.error}</p>}
- </section>;
+          {!p.seamless &&
+            primaryAction === 'prepare' &&
+            button(
+              'prepare',
+              held ? 'Prepare next tool' : 'Prepare design',
+              disabled || (active && !held) || (combined && s.stale) || !enabled,
+            )}
+          {!p.seamless &&
+            primaryAction === 'start' &&
+            button(
+              'start',
+              held ? 'Continue to next tool' : 'Load mat',
+              disabled || !connected || s.stale || !enabled,
+            )}
+          {!p.seamless &&
+            ready &&
+            button('go', cut ? 'Start cutting' : 'Start drawing', disabled || s.stale)}
+          {!p.seamless && held && button('end', 'Unload mat', disabled)}
+          {active &&
+            !held &&
+            !containsBlade &&
+            !cut &&
+            job?.jobStarted &&
+            ['setting_up', 'sending', 'draining'].includes(job.phase) &&
+            button('pause', 'Pause', disabled || s.pausePending || s.resumePending || !connected)}
+          {!p.seamless &&
+            active &&
+            !containsBlade &&
+            !cut &&
+            job?.phase === 'paused' &&
+            button(
+              'resume',
+              'Resume drawing',
+              disabled || s.stale || s.resumePending || !connected,
+            )}
+          {active &&
+            !held &&
+            button(
+              'cancel',
+              s.cancelPending ? (nl ? 'Stoppen…' : 'Stopping…') : nl ? 'Annuleren' : 'Cancel job',
+              !p.available || Boolean(s.cancelPending),
+            )}
+        </div>
+        {p.showAdvancedInfo && (
+          <details className="native-make__diagnostics">
+            <summary>Job details & diagnostics</summary>
+            {s.message && <p role="status">{s.message}</p>}
+            {job && (
+              <p>
+                {job.historical ? 'Previous job' : 'Job'}: {job.phase}. Records{' '}
+                {job.acceptedRecords}/{job.totalRecords}; passes {job.completedPasses}/
+                {job.totalPasses}. Physical completion and stopping are not verified.
+              </p>
+            )}
+            {s.preview && !p.seamless && (
+              <p>
+                Material #{s.preview.materialId}; {s.preview.recordCount} records; native pressure{' '}
+                {s.preview.pressureRequests.join(', ')} (not grams).
+              </p>
+            )}
+            {button('export', 'Export job diagnostics…', disabled || active || connected)}
+          </details>
+        )}
+      </section>
+    );
+  return (
+    <section
+      aria-label="Native Make"
+      aria-busy={s.busy}
+      style={{ borderTop: '1px solid #777', marginTop: 20, paddingTop: 16 }}
+    >
+      <h3>
+        {combined ? 'Native draw → cut workflow' : cut ? 'Native blade job' : 'Native pen job'}
+      </h3>
+      <p className="settings-modal__hint">
+        Standalone source-backed sender · pen jobs. Blade execution supports prepared fine-point
+        blade jobs with an exact saved material recipe. Physical calibration, origin, alignment and
+        stopping are unverified.
+      </p>
+      <p>
+        Select and save the matching tool profile and calibration above. Pen designs must use one
+        pen. Blade jobs require the matching saved material recipe; every path and pressure pass is
+        included. No guessed pressure or calibration is supplied.
+      </p>
+      {!p.available && <p>Job controls are unavailable in this desktop build.</p>}
+      {!active && s.recovery?.status === 'interrupted' && (
+        <div role="alert">
+          {s.recovery.lastKnownPhase === 'retained_ready' ? (
+            <>
+              <strong>
+                Previous loaded-mat session lost its live owner — Machine state is unknown.
+              </strong>
+              <p>
+                Last pen action reached protocol completion. The retained session is not resumable
+                after restart.
+              </p>
+            </>
+          ) : (
+            <strong>Previous job interrupted — Machine state is unknown.</strong>
+          )}
+          <p>
+            The last saved phase was {s.recovery.lastKnownPhase}; {s.recovery.acceptedRecords}/
+            {s.recovery.totalRecords} records were host-confirmed. This is not a record of physical
+            completion.
+          </p>
+          <p>
+            Interrupted jobs are never resumed or replayed automatically. Keep clear, inspect the
+            machine and accessible power, retire any previous owner, and preserve/export the report.
+            Use fresh material, preparation, connection and approvals for a NEW attempt. No saved
+            cursor authorizes skipped or repeated paths.
+          </p>
+        </div>
+      )}
+      {combined || cut ? (
+        <p>
+          Blade workflow: use a fresh session and sacrificial paper/mat. The blade must be removed
+          for loading; remove the pen too. Load and align with an empty clamp. Only after the ready
+          wait and OBSERVED stopped movement, install and secure the matching Joy fine-point blade,
+          close the clamp and separately confirm cutting. Keep travel clear and power accessible.
+          All saved source pressure passes are included. After ALL passes of each tool, a
+          non-drawing return to job origin (0,0) runs before the retained wait; physical lift
+          clearance and stopping are unverified. No automatic retry.
+        </p>
+      ) : (
+        <p>
+          1. Disconnect and prepare. 2. Connect the same Joy. 3. Approve pen-only loading: No blade;
+          the matching pen may remain installed. Pen clearance is unverified and loading could mark
+          the paper. 4. At the retained-ready wait, verify the mat is held, movement stopped and the
+          matching pen secured, then separately confirm drawing.
+        </p>
+      )}
+      {combined && (
+        <p>
+          <strong>Load once with an empty clamp. The FIRST action uses the PEN.</strong> Install the
+          pen only at the first stopped ready wait. After its origin return, prepare and arm the
+          frozen blade action; install the blade only at that new stopped tool-ready wait. Each tool
+          needs a separate Go.
+        </p>
+      )}
+      {!(held && (cut || (combined && !hasNext))) &&
+        button(
+          'prepare',
+          held && combined
+            ? 'Prepare next tool'
+            : held
+              ? 'Prepare next pen action'
+              : 'Prepare current tool plan',
+          disabled || (active && !held) || (combined && s.stale) || !enabled,
+        )}
+      {s.preview && (
+        <div role="status">
+          <p>
+            Prepared {s.preview.tool === 'fine_point_blade' ? 'blade' : 'pen'} program · material #
+            {s.preview.materialId} · {s.preview.heightInches}-inch mat · {s.preview.passCount}{' '}
+            pass(es) · {s.preview.recordCount} point records.
+          </p>
+          <p>
+            Native pressure requests: {s.preview.pressureRequests.join(', ')} — not grams;
+            suitability unverified.
+          </p>
+        </div>
+      )}
+      {workflow && (
+        <div role="status">
+          <h4>Frozen tool actions</h4>
+          <ol>
+            {workflow.actions.map((a, i) => (
+              <li key={i}>
+                {i + 1}. {a.tool === 'pen' ? 'Pen' : 'Blade'} — {a.profileName}; {a.passCount}{' '}
+                pass(es); {a.pressureRequests.join(', ')} (native units)
+              </li>
+            ))}
+          </ol>
+          <p>
+            Action {workflow.actionIndex + 1}/{workflow.actionCount}. No completed paths are
+            redrawn; each next tool requires a new Go.
+          </p>
+        </div>
+      )}
+      {button(
+        'start',
+        held && combined
+          ? 'Arm next tool…'
+          : held
+            ? 'Arm next pen action…'
+            : combined || cut
+              ? 'Load and align for prepared blade job…'
+              : 'Load and align for prepared pen trial…',
+        disabled ||
+          (held && cut) ||
+          (active && !held) ||
+          !connected ||
+          !s.preview ||
+          s.stale ||
+          !enabled,
+      )}
+      {job && job.phase !== 'idle' && (
+        <div role={job.phase === 'failed' ? 'alert' : 'status'}>
+          {job.historical && <p>Previous job · restored history only. No session is resumed.</p>}
+          {cleanupFailed ? (
+            <>
+              <p>
+                <strong>
+                  {job.tool === 'fine_point_blade' ? 'Cutting' : 'Drawing'} protocol completed;
+                  session cleanup failed.
+                </strong>{' '}
+                Accepted records {job.acceptedRecords}/{job.totalRecords}; drained passes{' '}
+                {job.completedPasses}/{job.totalPasses}. Cleanup error:{' '}
+                {job.diagnostics?.failure?.stage} / {job.diagnostics?.failure?.code}.
+              </p>
+              <p>
+                Do not repeat the drawing automatically. Preserve diagnostics; physical stopping and
+                ejection require observation.
+              </p>
+            </>
+          ) : (
+            <p>
+              Job stage: {job.phase}. Accepted records {job.acceptedRecords}/{job.totalRecords};
+              drained passes {job.completedPasses}/{job.totalPasses}.
+            </p>
+          )}
+          {held && (
+            <>
+              <p>
+                <strong>{cut ? 'Cut' : 'Pen'} action protocol completed.</strong>{' '}
+                {combined
+                  ? hasNext
+                    ? 'The pen action and non-drawing origin return completed. Prepare the next frozen blade tool; do not redraw the pen paths.'
+                    : 'All frozen tool actions and origin returns completed. The mat remains held until explicit End / unload.'
+                  : cut
+                    ? 'The blade job mat session is retained. End this session before another action.'
+                    : 'The loaded session is retained for another separately approved action; no automatic unload or replay.'}
+              </p>
+              <p>
+                Grip, alignment, pen clearance and stopped motion are not continuously verified.{' '}
+                {combined
+                  ? 'Observe stopped motion before changing tools. Only the already frozen next action is admitted; editing the workspace invalidates the queue.'
+                  : cut
+                    ? 'Blade queue pause/resume is not supported; End explicitly when finished.'
+                    : 'Prepare the next action from ALL current workspace pen paths; remove/exclude previously drawn paths unless intentionally redrawing.'}{' '}
+                Mat/material/calibration must stay the same. Idle retention does not expire the
+                completed action deadline.
+              </p>
+              {button('end', 'Unload mat', disabled)}
+            </>
+          )}
+          {active && job.phase === 'returning_to_origin' && (
+            <p>
+              <strong>Returning without drawing to job origin (0,0)</strong>. Keep clear; physical
+              lift clearance and stopping are not verified.
+            </p>
+          )}
+          {active && job.phase === 'waiting_for_mat' && (
+            <p>
+              <strong>Insert the mat now</strong> only if the ready light is also blinking. Blinking
+              alone is not an insertion cue.
+            </p>
+          )}
+          {ready && (
+            <>
+              <p>
+                Mat-loading protocol reached its ready wait. Verify the mat is held and all movement
+                has stopped.{' '}
+                {cut
+                  ? 'Only now install and secure the matching fine-point BLADE and close the clamp. Confirming cutting will make contact with the paper and may mark the mat.'
+                  : 'Verify the matching pen is secured (install it now only if absent), close its clamp, and keep the front/back clear.'}
+              </p>
+              {button(
+                'go',
+                cut ? 'Confirm blade and start cutting…' : 'Confirm pen and start drawing…',
+                disabled || s.stale,
+              )}
+            </>
+          )}
+          {active &&
+            !containsBlade &&
+            !cut &&
+            job.jobStarted &&
+            ['setting_up', 'sending', 'draining'].includes(job.phase) &&
+            button(
+              'pause',
+              'Pause queue',
+              disabled || s.pausePending || s.resumePending || !connected,
+            )}
+          {active &&
+            !containsBlade &&
+            !cut &&
+            job.phase === 'paused' &&
+            button(
+              'resume',
+              'Resume same pen program…',
+              disabled || s.stale || s.resumePending || !connected,
+            )}
+          {active && (s.pausePending || job.phase === 'pausing') && (
+            <p>Pause requested — already-buffered motion may continue.</p>
+          )}
+          {active && !held && !containsBlade && !cut && job.jobStarted && (
+            <p>
+              Queue pause is not proof of stopped motion; the pen may remain in contact. The
+              whole60-second deadline continues while paused; timeout/cancel cleanup may move or
+              eject. Resume requires fresh clearance on this same healthy session. No reconnect
+              replay.
+            </p>
+          )}
+          {active &&
+            !held &&
+            button(
+              'cancel',
+              s.cancelPending ? (nl ? 'Stoppen…' : 'Stopping…') : nl ? 'Annuleren' : 'Cancel job',
+              !p.available || Boolean(s.cancelPending),
+            )}
+          {job.jobStarted && (
+            <p>
+              Job traffic was admitted; this is not proof of physical completion. Software Cancel is
+              not a guaranteed emergency stop. Keep clear and disconnect power if necessary.
+            </p>
+          )}
+          {!active && (
+            <p>
+              Session retired. Physical completion, alignment and mat ejection are not inferred from
+              protocol status.
+            </p>
+          )}
+        </div>
+      )}
+      {s.stale && (
+        <p role="alert">
+          Workspace changed. Do not start a stale prepared job. After a completed action, keep the
+          mat retained and prepare the next action; otherwise cancel before changing an admitted
+          action.
+        </p>
+      )}
+      {button('export', 'Export pen-job diagnostics…', disabled || active || connected)}
+      {s.message && <p role="status">{s.message}</p>}
+      {s.error && <p role="alert">{s.error}</p>}
+    </section>
+  );
 }
 
-export function NativeJoyJobPanel({compact=false,showAdvancedInfo=false,seamless=false,language='en',makeConnection,matVariant,onControllerReady,plannedTools,onStateChange,setup,source,api=typeof window==='undefined'?undefined:nativeJobApi(window.cricutCompanion?.nativeJoy),onBusyChange}:{seamless?:boolean;language?:string;onControllerReady?:(controller:NativeJobController|null)=>void;plannedTools?:ReadonlyArray<{tool:'pen'|'fine_point_blade';color?:string}>;compact?:boolean;showAdvancedInfo?:boolean;onStateChange?:(state:JobPanelState)=>void;setup:NativeJoySetup|null;source:()=>Promise<NativeConfigurationSource>;api?:NativeJobApi;onBusyChange?:(busy:boolean)=>void;makeConnection?:MakeConnection;matVariant?:'short'|'card'}){
- const [state,setState]=useState(initialJobPanel);const owner=useRef<NativeJobController|null>(null),currentSource=useRef(source),priorSource=useRef(source);currentSource.current=source;
- useEffect(()=>{const c=new NativeJobController(api,setState,()=>currentSource.current());owner.current=c;void c.mount().finally(()=>{if(owner.current===c)onControllerReady?.(c);});return()=>{onControllerReady?.(null);c.dispose();if(owner.current===c)owner.current=null;};},[api,onControllerReady]);
- useEffect(()=>{if(priorSource.current!==source){priorSource.current=source;owner.current?.invalidate();}},[source]);
- useEffect(()=>{onBusyChange?.(state.busy||Boolean(state.job?.active));},[state.busy,state.job?.active,onBusyChange]);
- useEffect(()=>{onStateChange?.(state);},[state,onStateChange]);
- return <NativeJoyJobView seamless={seamless} language={language} plannedTools={plannedTools} showAdvancedInfo={showAdvancedInfo} compact={compact} makeConnection={makeConnection} matVariant={matVariant} state={state} setup={setup} available={Boolean(api)} onAction={a=>{void owner.current?.run(a);}}/>;
+export function NativeJoyJobPanel({
+  compact = false,
+  showAdvancedInfo = false,
+  seamless = false,
+  language = 'en',
+  makeConnection,
+  matVariant,
+  onControllerReady,
+  plannedTools,
+  onStateChange,
+  setup,
+  source,
+  api = typeof window === 'undefined' ? undefined : nativeJobApi(window.cricutCompanion?.nativeJoy),
+  onBusyChange,
+}: {
+  seamless?: boolean;
+  language?: string;
+  onControllerReady?: (controller: NativeJobController | null) => void;
+  plannedTools?: ReadonlyArray<{ tool: 'pen' | 'fine_point_blade'; color?: string }>;
+  compact?: boolean;
+  showAdvancedInfo?: boolean;
+  onStateChange?: (state: JobPanelState) => void;
+  setup: NativeJoySetup | null;
+  source: () => Promise<NativeConfigurationSource>;
+  api?: NativeJobApi;
+  onBusyChange?: (busy: boolean) => void;
+  makeConnection?: MakeConnection;
+  matVariant?: 'short' | 'card';
+}) {
+  const [state, setState] = useState(initialJobPanel);
+  const owner = useRef<NativeJobController | null>(null),
+    currentSource = useRef(source),
+    priorSource = useRef(source);
+  currentSource.current = source;
+  useEffect(() => {
+    const c = new NativeJobController(api, setState, () => currentSource.current());
+    owner.current = c;
+    void c.mount().finally(() => {
+      if (owner.current === c) onControllerReady?.(c);
+    });
+    return () => {
+      onControllerReady?.(null);
+      c.dispose();
+      if (owner.current === c) owner.current = null;
+    };
+  }, [api, onControllerReady]);
+  useEffect(() => {
+    if (priorSource.current !== source) {
+      priorSource.current = source;
+      owner.current?.invalidate();
+    }
+  }, [source]);
+  useEffect(() => {
+    onBusyChange?.(state.busy || Boolean(state.job?.active));
+  }, [state.busy, state.job?.active, onBusyChange]);
+  useEffect(() => {
+    onStateChange?.(state);
+  }, [state, onStateChange]);
+  return (
+    <NativeJoyJobView
+      seamless={seamless}
+      language={language}
+      plannedTools={plannedTools}
+      showAdvancedInfo={showAdvancedInfo}
+      compact={compact}
+      makeConnection={makeConnection}
+      matVariant={matVariant}
+      state={state}
+      setup={setup}
+      available={Boolean(api)}
+      onAction={(a) => {
+        void owner.current?.run(a);
+      }}
+    />
+  );
 }

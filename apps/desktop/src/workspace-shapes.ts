@@ -1,13 +1,13 @@
 export const WORKSPACE_SHAPE_KINDS = [
-  "square",
-  "triangle",
-  "circle",
-  "star",
-  "hexagon",
-  "octagon",
-  "rounded-square",
-  "heart",
-  "line",
+  'square',
+  'triangle',
+  'circle',
+  'star',
+  'hexagon',
+  'octagon',
+  'rounded-square',
+  'heart',
+  'line',
 ] as const;
 
 export type WorkspaceShapeKind = (typeof WORKSPACE_SHAPE_KINDS)[number];
@@ -20,15 +20,15 @@ export type WorkspaceShapeDefinition = {
 };
 
 export const WORKSPACE_SHAPES: WorkspaceShapeDefinition[] = [
-  { kind: "square", labelNl: "Vierkant", labelEn: "Square", icon: "□" },
-  { kind: "triangle", labelNl: "Driehoek", labelEn: "Triangle", icon: "△" },
-  { kind: "circle", labelNl: "Cirkel", labelEn: "Circle", icon: "○" },
-  { kind: "star", labelNl: "Ster", labelEn: "Star", icon: "☆" },
-  { kind: "hexagon", labelNl: "Zeshoek", labelEn: "Hexagon", icon: "⬡" },
-  { kind: "octagon", labelNl: "Achthoek", labelEn: "Octagon", icon: "⬣" },
-  { kind: "rounded-square", labelNl: "Afgerond vierkant", labelEn: "Rounded square", icon: "▢" },
-  { kind: "heart", labelNl: "Hart", labelEn: "Heart", icon: "♡" },
-  { kind: "line", labelNl: "Lijn", labelEn: "Line", icon: "─" },
+  { kind: 'square', labelNl: 'Vierkant', labelEn: 'Square', icon: '□' },
+  { kind: 'triangle', labelNl: 'Driehoek', labelEn: 'Triangle', icon: '△' },
+  { kind: 'circle', labelNl: 'Cirkel', labelEn: 'Circle', icon: '○' },
+  { kind: 'star', labelNl: 'Ster', labelEn: 'Star', icon: '☆' },
+  { kind: 'hexagon', labelNl: 'Zeshoek', labelEn: 'Hexagon', icon: '⬡' },
+  { kind: 'octagon', labelNl: 'Achthoek', labelEn: 'Octagon', icon: '⬣' },
+  { kind: 'rounded-square', labelNl: 'Afgerond vierkant', labelEn: 'Rounded square', icon: '▢' },
+  { kind: 'heart', labelNl: 'Hart', labelEn: 'Heart', icon: '♡' },
+  { kind: 'line', labelNl: 'Lijn', labelEn: 'Line', icon: '─' },
 ];
 
 const SHAPE_VIEWBOX_SIZE = 200;
@@ -41,7 +41,7 @@ export function getWorkspaceShapeDefinition(kind: WorkspaceShapeKind): Workspace
 }
 
 export function isWorkspaceShapeKind(value: unknown): value is WorkspaceShapeKind {
-  return typeof value === "string" && WORKSPACE_SHAPE_KINDS.includes(value as WorkspaceShapeKind);
+  return typeof value === 'string' && WORKSPACE_SHAPE_KINDS.includes(value as WorkspaceShapeKind);
 }
 
 export function buildWorkspaceShapeSvg(kind: WorkspaceShapeKind): string {
@@ -57,37 +57,42 @@ export function buildWorkspaceShapePathObject(kind: WorkspaceShapeKind): {
   return {
     frame: { width: SHAPE_VIEWBOX_SIZE, height: SHAPE_VIEWBOX_SIZE },
     path: {
-      id: "path-1",
+      id: 'path-1',
       d: getWorkspaceShapePath(kind),
-      fill: "none",
-      stroke: "#000000",
-      strokeWidth: "1.5",
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
+      fill: 'none',
+      stroke: '#000000',
+      strokeWidth: '1.5',
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
     },
   };
 }
 
 export function getWorkspaceShapePath(kind: WorkspaceShapeKind): string {
   switch (kind) {
-    case "square":
-      return "M 20 20 H 180 V 180 H 20 Z";
-    case "triangle":
+    case 'square':
+      return 'M 20 20 H 180 V 180 H 20 Z';
+    case 'triangle':
       return polygonPath(pointsOnCircle(3, -90));
-    case "circle":
-      return "M 180 100 A 80 80 0 1 1 20 100 A 80 80 0 1 1 180 100 Z";
-    case "star":
+    case 'circle':
+      return 'M 180 100 A 80 80 0 1 1 20 100 A 80 80 0 1 1 180 100 Z';
+    case 'star':
       return polygonPath(starPoints(5, SHAPE_RADIUS, SHAPE_RADIUS * 0.44, -90));
-    case "hexagon":
+    case 'hexagon':
       return polygonPath(pointsOnCircle(6, -90));
-    case "octagon":
+    case 'octagon':
       return polygonPath(pointsOnCircle(8, -90 + 22.5));
-    case "rounded-square":
-      return "M 56 20 H 144 Q 180 20 180 56 V 144 Q 180 180 144 180 H 56 Q 20 180 20 144 V 56 Q 20 20 56 20 Z";
-    case "heart":
-      return polygonPath(fitToBox(unitHeart(), SHAPE_RADIUS * 2, SHAPE_RADIUS * 2).map((p) => ({ x: p.x + SHAPE_MARGIN, y: p.y + SHAPE_MARGIN })));
-    case "line":
-      return "M 20 100 H 180";
+    case 'rounded-square':
+      return 'M 56 20 H 144 Q 180 20 180 56 V 144 Q 180 180 144 180 H 56 Q 20 180 20 144 V 56 Q 20 20 56 20 Z';
+    case 'heart':
+      return polygonPath(
+        fitToBox(unitHeart(), SHAPE_RADIUS * 2, SHAPE_RADIUS * 2).map((p) => ({
+          x: p.x + SHAPE_MARGIN,
+          y: p.y + SHAPE_MARGIN,
+        })),
+      );
+    case 'line':
+      return 'M 20 100 H 180';
   }
 }
 
@@ -100,12 +105,14 @@ export const LINE_SHAPE_HEIGHT = 14;
 
 /** The frame a freshly placed shape gets (workspace px). */
 export function defaultShapeFrame(kind: WorkspaceShapeKind): { width: number; height: number } {
-  return kind === "line" ? { width: DEFAULT_SHAPE_SIZE, height: LINE_SHAPE_HEIGHT } : { width: DEFAULT_SHAPE_SIZE, height: DEFAULT_SHAPE_SIZE };
+  return kind === 'line'
+    ? { width: DEFAULT_SHAPE_SIZE, height: LINE_SHAPE_HEIGHT }
+    : { width: DEFAULT_SHAPE_SIZE, height: DEFAULT_SHAPE_SIZE };
 }
 
 // Shapes with straight edges meeting in corners can take a corner radius.
 export function shapeHasCorners(kind: WorkspaceShapeKind): boolean {
-  return kind !== "circle" && kind !== "heart" && kind !== "line";
+  return kind !== 'circle' && kind !== 'heart' && kind !== 'line';
 }
 
 // Build a shape path filling the box [0,0,w,h] (bounds-tight — no margin/offset).
@@ -122,22 +129,22 @@ export function buildShapePath(
   scaleY = 1,
 ): string {
   switch (kind) {
-    case "circle":
+    case 'circle':
       return ellipsePath(w, h);
-    case "square":
-    case "rounded-square":
+    case 'square':
+    case 'rounded-square':
       return roundedRectPath(w, h, cornerRadius, scaleX, scaleY);
-    case "triangle":
+    case 'triangle':
       return roundedPolygonPath(fitToBox(unitPolygon(3, -90), w, h), cornerRadius);
-    case "hexagon":
+    case 'hexagon':
       return roundedPolygonPath(fitToBox(unitPolygon(6, -90), w, h), cornerRadius);
-    case "octagon":
+    case 'octagon':
       return roundedPolygonPath(fitToBox(unitPolygon(8, -90 + 22.5), w, h), cornerRadius);
-    case "star":
+    case 'star':
       return roundedPolygonPath(fitToBox(unitStar(5, 0.44, -90), w, h), cornerRadius);
-    case "heart":
+    case 'heart':
       return polygonPath(fitToBox(unitHeart(), w, h));
-    case "line":
+    case 'line':
       // A straight line through the middle of its box.
       return `M 0 ${formatNumber(h / 2)} H ${formatNumber(w)}`;
   }
@@ -165,7 +172,13 @@ function ellipsePath(w: number, h: number): string {
   return `M 0 ${formatNumber(ry)} A ${formatNumber(rx)} ${formatNumber(ry)} 0 1 0 ${formatNumber(w)} ${formatNumber(ry)} A ${formatNumber(rx)} ${formatNumber(ry)} 0 1 0 0 ${formatNumber(ry)} Z`;
 }
 
-function roundedRectPath(w: number, h: number, cornerRadius: number, scaleX: number, scaleY: number): string {
+function roundedRectPath(
+  w: number,
+  h: number,
+  cornerRadius: number,
+  scaleX: number,
+  scaleY: number,
+): string {
   const sx = Math.abs(scaleX) || 1;
   const sy = Math.abs(scaleY) || 1;
   const worldW = w * sx;
@@ -187,7 +200,7 @@ function roundedRectPath(w: number, h: number, cornerRadius: number, scaleX: num
 function roundedPolygonPath(points: Point[], cornerRadius: number): string {
   if (cornerRadius <= 0.01) return polygonPath(points);
   const n = points.length;
-  let d = "";
+  let d = '';
   for (let i = 0; i < n; i++) {
     const cur = points[i]!;
     const prev = points[(i - 1 + n) % n]!;
@@ -250,7 +263,12 @@ function pointsOnCircle(count: number, startAngleDegrees: number): Point[] {
   });
 }
 
-function starPoints(count: number, outerRadius: number, innerRadius: number, startAngleDegrees: number): Point[] {
+function starPoints(
+  count: number,
+  outerRadius: number,
+  innerRadius: number,
+  startAngleDegrees: number,
+): Point[] {
   return Array.from({ length: count * 2 }, (_value, index) => {
     const angle = toRadians(startAngleDegrees + (360 / (count * 2)) * index);
     const radius = index % 2 === 0 ? outerRadius : innerRadius;
@@ -263,7 +281,7 @@ function starPoints(count: number, outerRadius: number, innerRadius: number, sta
 
 function polygonPath(points: Point[]): string {
   const [first, ...rest] = points.map(formatPoint);
-  return `M ${first} ${rest.map((point) => `L ${point}`).join(" ")} Z`;
+  return `M ${first} ${rest.map((point) => `L ${point}`).join(' ')} Z`;
 }
 
 function formatPoint(point: Point): string {
@@ -282,4 +300,4 @@ type Point = {
   x: number;
   y: number;
 };
-import type { WorkspacePathData } from "./workspace-objects";
+import type { WorkspacePathData } from './workspace-objects';

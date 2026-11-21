@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { DEFAULT_DOT_PRINT } from "@cricut-companion/craft-core";
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_DOT_PRINT } from '@cricut-companion/craft-core';
 
 import {
   DEFAULT_BEHIND_COLOR,
@@ -13,69 +13,69 @@ import {
   serializeProjectFile,
   withBehindColor,
   withPens,
-} from "./project-file";
+} from './project-file';
 
-describe("nextPenColor", () => {
-  it("returns the first palette colour when nothing is used", () => {
+describe('nextPenColor', () => {
+  it('returns the first palette colour when nothing is used', () => {
     expect(nextPenColor([])).toBe(PEN_PALETTE[0]);
   });
 
-  it("skips colours already in use (case-insensitive) and returns the next free one", () => {
+  it('skips colours already in use (case-insensitive) and returns the next free one', () => {
     expect(nextPenColor([PEN_PALETTE[0]!.toUpperCase()])).toBe(PEN_PALETTE[1]);
     expect(nextPenColor([PEN_PALETTE[0]!, PEN_PALETTE[1]!])).toBe(PEN_PALETTE[2]);
   });
 
-  it("never returns a colour that is already used by a pen, paper, or behind", () => {
-    const used = [PEN_PALETTE[0]!, "#fffdf9", DEFAULT_BEHIND_COLOR];
+  it('never returns a colour that is already used by a pen, paper, or behind', () => {
+    const used = [PEN_PALETTE[0]!, '#fffdf9', DEFAULT_BEHIND_COLOR];
     expect(used.map((c) => c.toLowerCase())).not.toContain(nextPenColor(used).toLowerCase());
   });
 });
 
-describe("workspace tool helpers (one cut + N pens)", () => {
+describe('workspace tool helpers (one cut + N pens)', () => {
   const tools = [
-    { id: "pen-1", color: "#000000", type: "pen" as const },
-    { id: "pen-2", color: "#1d4ed8", type: "pen" as const },
-    { id: "cut-1", color: "#e23b3b", type: "cut" as const },
+    { id: 'pen-1', color: '#000000', type: 'pen' as const },
+    { id: 'pen-2', color: '#1d4ed8', type: 'pen' as const },
+    { id: 'cut-1', color: '#e23b3b', type: 'cut' as const },
   ];
 
-  it("getPens returns only pens; getBehindColor returns the cut tool colour", () => {
-    expect(getPens(tools).map((t) => t.id)).toEqual(["pen-1", "pen-2"]);
-    expect(getBehindColor(tools)).toBe("#e23b3b");
+  it('getPens returns only pens; getBehindColor returns the cut tool colour', () => {
+    expect(getPens(tools).map((t) => t.id)).toEqual(['pen-1', 'pen-2']);
+    expect(getBehindColor(tools)).toBe('#e23b3b');
   });
 
-  it("withBehindColor replaces the cut colour and keeps exactly one cut tool", () => {
-    const next = withBehindColor(tools, "#00ff00");
-    expect(getBehindColor(next)).toBe("#00ff00");
-    expect(next.filter((t) => t.type === "cut")).toHaveLength(1);
+  it('withBehindColor replaces the cut colour and keeps exactly one cut tool', () => {
+    const next = withBehindColor(tools, '#00ff00');
+    expect(getBehindColor(next)).toBe('#00ff00');
+    expect(next.filter((t) => t.type === 'cut')).toHaveLength(1);
     expect(getPens(next)).toHaveLength(2);
   });
 
-  it("withPens replaces the pen list and keeps the single cut tool", () => {
-    const next = withPens(tools, [{ id: "pen-x", color: "#abcdef", type: "pen" }]);
-    expect(getPens(next).map((t) => t.color)).toEqual(["#abcdef"]);
-    expect(next.filter((t) => t.type === "cut")).toHaveLength(1);
-    expect(getBehindColor(next)).toBe("#e23b3b");
+  it('withPens replaces the pen list and keeps the single cut tool', () => {
+    const next = withPens(tools, [{ id: 'pen-x', color: '#abcdef', type: 'pen' }]);
+    expect(getPens(next).map((t) => t.color)).toEqual(['#abcdef']);
+    expect(next.filter((t) => t.type === 'cut')).toHaveLength(1);
+    expect(getBehindColor(next)).toBe('#e23b3b');
   });
 });
 
-describe("KindCut project files", () => {
-  it("serializes a blank workspace with material, mat, and measurement choices", () => {
+describe('KindCut project files', () => {
+  it('serializes a blank workspace with material, mat, and measurement choices', () => {
     const project = buildProjectFile({
-      name: "Nieuw leeg ontwerp",
+      name: 'Nieuw leeg ontwerp',
       selectedMaterialId: 218,
-      selectedMatPreset: "joy-standard",
-      measurementUnit: "cm",
+      selectedMatPreset: 'joy-standard',
+      measurementUnit: 'cm',
       importedSvg: null,
     });
 
     expect(project).toMatchObject({
-      format: "kindcut-project",
+      format: 'kindcut-project',
       version: 1,
-      name: "Nieuw leeg ontwerp",
+      name: 'Nieuw leeg ontwerp',
       workspace: {
         selectedMaterialId: 218,
-        selectedMatPreset: "joy-standard",
-        measurementUnit: "cm",
+        selectedMatPreset: 'joy-standard',
+        measurementUnit: 'cm',
       },
       importedSvgs: [],
       selectedSvgId: null,
@@ -84,289 +84,392 @@ describe("KindCut project files", () => {
     expect(JSON.parse(serializeProjectFile(project))).toMatchObject(project);
   });
 
-  it("round-trips an imported image project with full transforms and no temporary SliceBug plan paths", () => {
+  it('round-trips an imported image project with full transforms and no temporary SliceBug plan paths', () => {
     const saved = serializeProjectFile(
       buildProjectFile({
-        name: "card.svg",
+        name: 'card.svg',
         selectedMaterialId: 20,
-        selectedMatPreset: "joy-standard-short",
-        measurementUnit: "in",
-        importedSvgs: [{
-          id: "svg-card",
-          kind: "image",
-          fileName: "card.svg",
-          fileSize: "512 B",
-          svg: '<svg width="10" height="20"><path d="M0 0L1 1" /></svg>',
-          transform: { x: -24, y: 936, scaleX: 1.2, scaleY: 0.75, rotation: 32 },
-        }],
-        selectedSvgId: "svg-card",
+        selectedMatPreset: 'joy-standard-short',
+        measurementUnit: 'in',
+        importedSvgs: [
+          {
+            id: 'svg-card',
+            kind: 'image',
+            fileName: 'card.svg',
+            fileSize: '512 B',
+            svg: '<svg width="10" height="20"><path d="M0 0L1 1" /></svg>',
+            transform: { x: -24, y: 936, scaleX: 1.2, scaleY: 0.75, rotation: 32 },
+          },
+        ],
+        selectedSvgId: 'svg-card',
       }),
     );
 
     const parsed = parseProjectFile(saved);
 
-    expect(parsed.importedSvgs).toEqual([{
-      id: "svg-card",
-      kind: "image",
-      shapeKind: undefined,
-      fileName: "card.svg",
-      fileSize: "512 B",
-      svg: '<svg width="10" height="20"><path d="M0 0L1 1" /></svg>',
-      transform: { x: -24, y: 936, scaleX: 1.2, scaleY: 0.75, rotation: 32, mirrorX: false, mirrorY: false },
-    }]);
+    expect(parsed.importedSvgs).toEqual([
+      {
+        id: 'svg-card',
+        kind: 'image',
+        shapeKind: undefined,
+        fileName: 'card.svg',
+        fileSize: '512 B',
+        svg: '<svg width="10" height="20"><path d="M0 0L1 1" /></svg>',
+        transform: {
+          x: -24,
+          y: 936,
+          scaleX: 1.2,
+          scaleY: 0.75,
+          rotation: 32,
+          mirrorX: false,
+          mirrorY: false,
+        },
+      },
+    ]);
     expect(parsed.importedSvg).toEqual(parsed.importedSvgs[0]);
-    expect(parsed.selectedSvgId).toBe("svg-card");
-    expect(JSON.stringify(parsed)).not.toContain("outputPlanPath");
+    expect(parsed.selectedSvgId).toBe('svg-card');
+    expect(JSON.stringify(parsed)).not.toContain('outputPlanPath');
   });
 
-  it("opens legacy single-scale transforms as uniform unrotated image transforms", () => {
+  it('opens legacy single-scale transforms as uniform unrotated image transforms', () => {
     const parsed = parseProjectFile(
       JSON.stringify({
-        format: "kindcut-project",
+        format: 'kindcut-project',
         version: 1,
-        name: "legacy transform",
-        savedAt: "2026-01-01T00:00:00.000Z",
+        name: 'legacy transform',
+        savedAt: '2026-01-01T00:00:00.000Z',
         workspace: {
           selectedMaterialId: 20,
-          selectedMatPreset: "joy-standard",
-          measurementUnit: "cm",
+          selectedMatPreset: 'joy-standard',
+          measurementUnit: 'cm',
         },
         importedSvgs: [
           {
-            id: "svg-1",
-            fileName: "legacy.svg",
-            fileSize: "1 KB",
-            svg: "<svg />",
+            id: 'svg-1',
+            fileName: 'legacy.svg',
+            fileSize: '1 KB',
+            svg: '<svg />',
             transform: { x: -40, y: 920, scale: 1.4 },
           },
         ],
       }),
     );
 
-    expect(parsed.importedSvgs[0]?.transform).toEqual({ x: -40, y: 920, scaleX: 1.4, scaleY: 1.4, rotation: 0, mirrorX: false, mirrorY: false });
-    expect(parsed.importedSvgs[0]?.kind).toBe("image");
+    expect(parsed.importedSvgs[0]?.transform).toEqual({
+      x: -40,
+      y: 920,
+      scaleX: 1.4,
+      scaleY: 1.4,
+      rotation: 0,
+      mirrorX: false,
+      mirrorY: false,
+    });
+    expect(parsed.importedSvgs[0]?.kind).toBe('image');
   });
 
-  it("round-trips a built-in shape with its friendly shape metadata", () => {
+  it('round-trips a built-in shape with its friendly shape metadata', () => {
     const saved = serializeProjectFile(
       buildProjectFile({
-        name: "vormen",
+        name: 'vormen',
         selectedMaterialId: 218,
-        selectedMatPreset: "joy-standard",
-        measurementUnit: "cm",
-        importedSvgs: [{
-          id: "shape-1",
-          kind: "shape",
-          shapeKind: "rounded-square",
-          fileName: "Afgerond vierkant",
-          fileSize: "KindCut-vorm",
-          svg: '<svg width="2in" height="2in"><path d="M 0 0 H 10" /></svg>',
-          transform: { x: 12, y: 24, scaleX: 1.5, scaleY: 1.5, rotation: 45 },
-        }],
-        selectedSvgId: "shape-1",
+        selectedMatPreset: 'joy-standard',
+        measurementUnit: 'cm',
+        importedSvgs: [
+          {
+            id: 'shape-1',
+            kind: 'shape',
+            shapeKind: 'rounded-square',
+            fileName: 'Afgerond vierkant',
+            fileSize: 'KindCut-vorm',
+            svg: '<svg width="2in" height="2in"><path d="M 0 0 H 10" /></svg>',
+            transform: { x: 12, y: 24, scaleX: 1.5, scaleY: 1.5, rotation: 45 },
+          },
+        ],
+        selectedSvgId: 'shape-1',
       }),
     );
 
     const parsed = parseProjectFile(saved);
 
     expect(parsed.importedSvgs[0]).toMatchObject({
-      id: "shape-1",
-      kind: "shape",
-      shapeKind: "rounded-square",
-      fileName: "Afgerond vierkant",
-      fileSize: "KindCut-vorm",
+      id: 'shape-1',
+      kind: 'shape',
+      shapeKind: 'rounded-square',
+      fileName: 'Afgerond vierkant',
+      fileSize: 'KindCut-vorm',
       transform: { x: 12, y: 24, scaleX: 1.5, scaleY: 1.5, rotation: 45 },
     });
-    expect(parsed.selectedSvgId).toBe("shape-1");
+    expect(parsed.selectedSvgId).toBe('shape-1');
   });
 
-  it("saves and loads one path workspace object", () => {
+  it('saves and loads one path workspace object', () => {
     const saved = serializeProjectFile(
       buildProjectFile({
-        name: "pad",
+        name: 'pad',
         selectedMaterialId: 218,
-        selectedMatPreset: "joy-standard",
-        measurementUnit: "cm",
-        workspaceObjects: [{
-          id: "object-1",
-          type: "path",
-          kind: "image",
-          sourceKind: "image",
-          fileName: "bloem.svg",
-          fileSize: "1 KB",
-          frame: { width: 100, height: 80 },
-          paths: [{ id: "path-1", d: "M0 0H10", fill: "none", stroke: "#8f4f2b", strokeWidth: "2" }],
-          transform: { x: 1, y: 2, scaleX: 1, scaleY: 1, rotation: 0 },
-        }],
-        selectedObjectId: "object-1",
+        selectedMatPreset: 'joy-standard',
+        measurementUnit: 'cm',
+        workspaceObjects: [
+          {
+            id: 'object-1',
+            type: 'path',
+            kind: 'image',
+            sourceKind: 'image',
+            fileName: 'bloem.svg',
+            fileSize: '1 KB',
+            frame: { width: 100, height: 80 },
+            paths: [
+              { id: 'path-1', d: 'M0 0H10', fill: 'none', stroke: '#8f4f2b', strokeWidth: '2' },
+            ],
+            transform: { x: 1, y: 2, scaleX: 1, scaleY: 1, rotation: 0 },
+          },
+        ],
+        selectedObjectId: 'object-1',
       }),
     );
 
     const parsed = parseProjectFile(saved);
 
-    expect(parsed.workspaceObjects).toEqual([{
-      id: "object-1",
-      type: "path",
-      kind: "image",
-      sourceKind: "image",
-      shapeKind: undefined,
-      fileName: "bloem.svg",
-      fileSize: "1 KB",
-      frame: { width: 100, height: 80 },
-      paths: [{ id: "path-1", d: "M0 0H10", fill: "none", stroke: "#8f4f2b", strokeWidth: "2", strokeLinecap: undefined, strokeLinejoin: undefined, fillRule: undefined, pathTransform: undefined, sourceLabel: undefined }],
-      transform: { x: 1, y: 2, scaleX: 1, scaleY: 1, rotation: 0, mirrorX: false, mirrorY: false },
-      textContent: undefined,
-    }]);
-    expect(parsed.selectedObjectId).toBe("object-1");
+    expect(parsed.workspaceObjects).toEqual([
+      {
+        id: 'object-1',
+        type: 'path',
+        kind: 'image',
+        sourceKind: 'image',
+        shapeKind: undefined,
+        fileName: 'bloem.svg',
+        fileSize: '1 KB',
+        frame: { width: 100, height: 80 },
+        paths: [
+          {
+            id: 'path-1',
+            d: 'M0 0H10',
+            fill: 'none',
+            stroke: '#8f4f2b',
+            strokeWidth: '2',
+            strokeLinecap: undefined,
+            strokeLinejoin: undefined,
+            fillRule: undefined,
+            pathTransform: undefined,
+            sourceLabel: undefined,
+          },
+        ],
+        transform: {
+          x: 1,
+          y: 2,
+          scaleX: 1,
+          scaleY: 1,
+          rotation: 0,
+          mirrorX: false,
+          mirrorY: false,
+        },
+        textContent: undefined,
+      },
+    ]);
+    expect(parsed.selectedObjectId).toBe('object-1');
   });
 
-  it("saves pen fill as settings and reopens it, cleaning up invalid values", () => {
+  it('saves pen fill as settings and reopens it, cleaning up invalid values', () => {
     const object = {
-      id: "object-1",
-      type: "path" as const,
-      kind: "shape" as const,
-      sourceKind: "shape" as const,
-      shapeKind: "circle" as const,
-      fileName: "Cirkel",
-      fileSize: "",
+      id: 'object-1',
+      type: 'path' as const,
+      kind: 'shape' as const,
+      sourceKind: 'shape' as const,
+      shapeKind: 'circle' as const,
+      fileName: 'Cirkel',
+      fileSize: '',
       frame: { width: 100, height: 100 },
-      paths: [{ id: "path-1", d: "M0 0H10", fill: "none", stroke: "#1f6feb", strokeWidth: "2" }],
+      paths: [{ id: 'path-1', d: 'M0 0H10', fill: 'none', stroke: '#1f6feb', strokeWidth: '2' }],
       transform: { x: 1, y: 2, scaleX: 1, scaleY: 1, rotation: 0 },
     };
     const saved = serializeProjectFile(
       buildProjectFile({
-        name: "fill",
+        name: 'fill',
         selectedMaterialId: 218,
-        selectedMatPreset: "joy-standard",
-        measurementUnit: "cm",
+        selectedMatPreset: 'joy-standard',
+        measurementUnit: 'cm',
         workspaceObjects: [
-          { ...object, penFill: { enabled: false, pattern: "honeycomb", density: 35, angle: 30, dotStyle: "circle" } },
-          { ...object, id: "object-2" },
+          {
+            ...object,
+            penFill: {
+              enabled: false,
+              pattern: 'honeycomb',
+              density: 35,
+              angle: 30,
+              dotStyle: 'circle',
+            },
+          },
+          { ...object, id: 'object-2' },
         ],
       }),
     );
     // Only the settings are stored — never generated stroke geometry.
-    const stored = (JSON.parse(saved) as { workspaceObjects: Array<{ penFill?: unknown; paths: unknown[] }> }).workspaceObjects[0];
-    expect(stored?.penFill).toEqual({ enabled: false, pattern: "honeycomb", density: 35, angle: 30, dotStyle: "circle" });
+    const stored = (
+      JSON.parse(saved) as { workspaceObjects: Array<{ penFill?: unknown; paths: unknown[] }> }
+    ).workspaceObjects[0];
+    expect(stored?.penFill).toEqual({
+      enabled: false,
+      pattern: 'honeycomb',
+      density: 35,
+      angle: 30,
+      dotStyle: 'circle',
+    });
     expect(stored?.paths).toHaveLength(1);
 
     const parsed = parseProjectFile(saved);
-    expect(parsed.workspaceObjects[0]?.penFill).toEqual({ enabled: false, pattern: "honeycomb", density: 35, angle: 30, dotStyle: "circle" });
+    expect(parsed.workspaceObjects[0]?.penFill).toEqual({
+      enabled: false,
+      pattern: 'honeycomb',
+      density: 35,
+      angle: 30,
+      dotStyle: 'circle',
+    });
     expect(parsed.workspaceObjects[1]?.penFill).toBeUndefined();
 
     const tampered = JSON.parse(saved) as { workspaceObjects: Array<Record<string, unknown>> };
-    tampered.workspaceObjects[0]!.penFill = { enabled: true, pattern: "spiral", density: 900, angle: 200 };
+    tampered.workspaceObjects[0]!.penFill = {
+      enabled: true,
+      pattern: 'spiral',
+      density: 900,
+      angle: 200,
+    };
     expect(parseProjectFile(JSON.stringify(tampered)).workspaceObjects[0]?.penFill).toEqual({
       enabled: true,
-      pattern: "lines",
+      pattern: 'lines',
       density: 100,
       angle: 20,
-      dotStyle: "circle",
+      dotStyle: 'circle',
     });
   });
 
-  it("saves fold lines, outlines and kept pieces as settings and restores them", () => {
+  it('saves fold lines, outlines and kept pieces as settings and restores them', () => {
     const object = {
-      id: "object-1",
-      type: "path" as const,
-      kind: "shape" as const,
-      sourceKind: "shape" as const,
-      shapeKind: "line" as const,
-      fileName: "Vouwlijn",
-      fileSize: "",
+      id: 'object-1',
+      type: 'path' as const,
+      kind: 'shape' as const,
+      sourceKind: 'shape' as const,
+      shapeKind: 'line' as const,
+      fileName: 'Vouwlijn',
+      fileSize: '',
       frame: { width: 100, height: 14 },
-      paths: [{ id: "path-1", d: "M 0 7 H 100", fill: "none", stroke: "#8f4f2b", strokeWidth: "1.5" }],
+      paths: [
+        { id: 'path-1', d: 'M 0 7 H 100', fill: 'none', stroke: '#8f4f2b', strokeWidth: '1.5' },
+      ],
       transform: { x: 1, y: 2, scaleX: 1, scaleY: 1, rotation: 0 },
     };
     const saved = serializeProjectFile(
       buildProjectFile({
-        name: "card",
+        name: 'card',
         selectedMaterialId: 19,
-        selectedMatPreset: "joy-standard",
-        measurementUnit: "cm",
+        selectedMatPreset: 'joy-standard',
+        measurementUnit: 'cm',
         workspaceObjects: [
           { ...object, dashed: { enabled: true, dashMm: 4, gapMm: 2 } },
-          { ...object, id: "object-2", shapeKind: "heart" as const, hollow: true, outline: { enabled: true, distanceMm: 2.5, penId: "pen-1", holes: true } },
-          { ...object, id: "object-3" },
+          {
+            ...object,
+            id: 'object-2',
+            shapeKind: 'heart' as const,
+            hollow: true,
+            outline: { enabled: true, distanceMm: 2.5, penId: 'pen-1', holes: true },
+          },
+          { ...object, id: 'object-3' },
         ],
       }),
     );
     // Settings only: the dashes and the outline are regenerated, never written to the file.
-    const stored = (JSON.parse(saved) as { workspaceObjects: Array<{ paths: Array<{ d: string }> }> }).workspaceObjects;
-    expect(stored.map((item) => item.paths[0]?.d)).toEqual(["M 0 7 H 100", "M 0 7 H 100", "M 0 7 H 100"]);
+    const stored = (
+      JSON.parse(saved) as { workspaceObjects: Array<{ paths: Array<{ d: string }> }> }
+    ).workspaceObjects;
+    expect(stored.map((item) => item.paths[0]?.d)).toEqual([
+      'M 0 7 H 100',
+      'M 0 7 H 100',
+      'M 0 7 H 100',
+    ]);
 
     const parsed = parseProjectFile(saved).workspaceObjects;
-    expect(parsed[0]?.shapeKind).toBe("line");
+    expect(parsed[0]?.shapeKind).toBe('line');
     expect(parsed[0]?.dashed).toEqual({ enabled: true, dashMm: 4, gapMm: 2 });
     expect(parsed[0]?.outline).toBeUndefined();
-    expect(parsed[1]?.shapeKind).toBe("heart");
-    expect(parsed[1]?.outline).toEqual({ enabled: true, distanceMm: 2.5, penId: "pen-1", holes: true });
+    expect(parsed[1]?.shapeKind).toBe('heart');
+    expect(parsed[1]?.outline).toEqual({
+      enabled: true,
+      distanceMm: 2.5,
+      penId: 'pen-1',
+      holes: true,
+    });
     expect(parsed[1]?.hollow).toBe(true);
     expect(parsed[2]?.dashed).toBeUndefined();
     expect(parsed[2]?.hollow).toBeUndefined();
 
     const tampered = JSON.parse(saved) as { workspaceObjects: Array<Record<string, unknown>> };
     tampered.workspaceObjects[0]!.dashed = { dashMm: 500, gapMm: -3 };
-    tampered.workspaceObjects[1]!.outline = { distanceMm: "wide", penId: 7 };
-    tampered.workspaceObjects[1]!.hollow = "yes";
+    tampered.workspaceObjects[1]!.outline = { distanceMm: 'wide', penId: 7 };
+    tampered.workspaceObjects[1]!.hollow = 'yes';
     const repaired = parseProjectFile(JSON.stringify(tampered)).workspaceObjects;
     expect(repaired[0]?.dashed).toEqual({ enabled: true, dashMm: 10, gapMm: 1 });
-    expect(repaired[1]?.outline).toEqual({ enabled: true, distanceMm: 3, penId: null, holes: false });
+    expect(repaired[1]?.outline).toEqual({
+      enabled: true,
+      distanceMm: 3,
+      penId: null,
+      holes: false,
+    });
     expect(repaired[1]?.hollow).toBeUndefined();
   });
 
   it("keeps a Spotify code's song link so it can be swapped after reopening", () => {
     const saved = serializeProjectFile(
       buildProjectFile({
-        name: "code",
+        name: 'code',
         selectedMaterialId: 218,
-        selectedMatPreset: "joy-standard",
-        measurementUnit: "cm",
+        selectedMatPreset: 'joy-standard',
+        measurementUnit: 'cm',
         workspaceObjects: [
           {
-            id: "object-1",
-            type: "group",
-            kind: "image",
-            sourceKind: "image",
-            fileName: "Halo - Beyoncé",
-            fileSize: "",
+            id: 'object-1',
+            type: 'group',
+            kind: 'image',
+            sourceKind: 'image',
+            fileName: 'Halo - Beyoncé',
+            fileSize: '',
             frame: { width: 360, height: 60 },
-            paths: [{ id: "path-1", d: "M0 0H10", fill: "none", stroke: "#8f4f2b", strokeWidth: "2" }],
-            spotify: { uri: "spotify:track:3CXZukNyVJUjLUYGA88F0a", name: "Halo - Beyoncé" },
+            paths: [
+              { id: 'path-1', d: 'M0 0H10', fill: 'none', stroke: '#8f4f2b', strokeWidth: '2' },
+            ],
+            spotify: { uri: 'spotify:track:3CXZukNyVJUjLUYGA88F0a', name: 'Halo - Beyoncé' },
           },
         ],
       }),
     );
     expect(parseProjectFile(saved).workspaceObjects[0]?.spotify).toEqual({
-      uri: "spotify:track:3CXZukNyVJUjLUYGA88F0a",
-      name: "Halo - Beyoncé",
+      uri: 'spotify:track:3CXZukNyVJUjLUYGA88F0a',
+      name: 'Halo - Beyoncé',
     });
 
     const tampered = JSON.parse(saved) as { workspaceObjects: Array<Record<string, unknown>> };
-    tampered.workspaceObjects[0]!.spotify = { uri: "https://example.com", name: "x" };
+    tampered.workspaceObjects[0]!.spotify = { uri: 'https://example.com', name: 'x' };
     expect(parseProjectFile(JSON.stringify(tampered)).workspaceObjects[0]?.spotify).toBeUndefined();
   });
 
-  it("saves a dot photo with its picture and settings, without paths", () => {
+  it('saves a dot photo with its picture and settings, without paths', () => {
     const saved = serializeProjectFile(
       buildProjectFile({
-        name: "photo",
+        name: 'photo',
         selectedMaterialId: 218,
-        selectedMatPreset: "joy-standard",
-        measurementUnit: "cm",
+        selectedMatPreset: 'joy-standard',
+        measurementUnit: 'cm',
         workspaceObjects: [
           {
-            id: "object-1",
-            type: "group",
-            kind: "image",
-            sourceKind: "image",
-            fileName: "Oma",
-            fileSize: "",
+            id: 'object-1',
+            type: 'group',
+            kind: 'image',
+            sourceKind: 'image',
+            fileName: 'Oma',
+            fileSize: '',
             frame: { width: 240, height: 180 },
             paths: [],
             dotPrint: {
-              image: "data:image/png;base64,iVBORw0KGgo=",
-              settings: { ...DEFAULT_DOT_PRINT, spacingMm: 0.8, dotStyle: "dash" },
+              image: 'data:image/png;base64,iVBORw0KGgo=',
+              settings: { ...DEFAULT_DOT_PRINT, spacingMm: 0.8, dotStyle: 'dash' },
             },
           },
         ],
@@ -375,167 +478,202 @@ describe("KindCut project files", () => {
     const object = parseProjectFile(saved).workspaceObjects[0];
     expect(object?.paths).toEqual([]);
     expect(object?.dotPrint).toEqual({
-      image: "data:image/png;base64,iVBORw0KGgo=",
-      settings: { ...DEFAULT_DOT_PRINT, spacingMm: 0.8, dotStyle: "dash" },
+      image: 'data:image/png;base64,iVBORw0KGgo=',
+      settings: { ...DEFAULT_DOT_PRINT, spacingMm: 0.8, dotStyle: 'dash' },
     });
   });
 
-  it("saves and loads a grouped workspace object", () => {
-    const parsed = parseProjectFile(serializeProjectFile(buildProjectFile({
-      name: "groep",
-      selectedMaterialId: 218,
-      selectedMatPreset: "joy-standard",
-      measurementUnit: "cm",
-      workspaceObjects: [{
-        id: "group-1",
-        type: "group",
-        kind: "image",
-        sourceKind: "image",
-        fileName: "Groep",
-        fileSize: "2 onderdelen",
-        frame: { width: 100, height: 100 },
-        paths: [
-          { id: "path-1", d: "M0 0H10", fill: "none", stroke: "#8f4f2b", strokeWidth: "2" },
-          { id: "path-2", d: "M0 10H10", fill: "none", stroke: "#8f4f2b", strokeWidth: "2" },
-        ],
-        transform: { x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 0 },
-      }],
-      selectedObjectId: "group-1",
-    })));
+  it('saves and loads a grouped workspace object', () => {
+    const parsed = parseProjectFile(
+      serializeProjectFile(
+        buildProjectFile({
+          name: 'groep',
+          selectedMaterialId: 218,
+          selectedMatPreset: 'joy-standard',
+          measurementUnit: 'cm',
+          workspaceObjects: [
+            {
+              id: 'group-1',
+              type: 'group',
+              kind: 'image',
+              sourceKind: 'image',
+              fileName: 'Groep',
+              fileSize: '2 onderdelen',
+              frame: { width: 100, height: 100 },
+              paths: [
+                { id: 'path-1', d: 'M0 0H10', fill: 'none', stroke: '#8f4f2b', strokeWidth: '2' },
+                { id: 'path-2', d: 'M0 10H10', fill: 'none', stroke: '#8f4f2b', strokeWidth: '2' },
+              ],
+              transform: { x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 0 },
+            },
+          ],
+          selectedObjectId: 'group-1',
+        }),
+      ),
+    );
 
-    expect(parsed.workspaceObjects[0]?.type).toBe("group");
+    expect(parsed.workspaceObjects[0]?.type).toBe('group');
     expect(parsed.workspaceObjects[0]?.paths).toHaveLength(2);
-    expect(parsed.selectedObjectId).toBe("group-1");
+    expect(parsed.selectedObjectId).toBe('group-1');
   });
 
-  it("migrates old imported SVG records into path workspace objects", () => {
-    const parsed = parseProjectFile(JSON.stringify({
-      format: "kindcut-project",
-      version: 1,
-      name: "legacy",
-      savedAt: "2026-01-01T00:00:00.000Z",
-      workspace: { selectedMaterialId: 20, selectedMatPreset: "joy-standard", measurementUnit: "cm" },
-      importedSvgs: [{
-        id: "svg-1",
-        fileName: "legacy.svg",
-        fileSize: "1 KB",
-        svg: '<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#fff"/><path d="M0 0H10"/></svg>',
-      }],
-      selectedSvgId: "svg-1",
-    }));
-
-    expect(parsed.workspaceObjects[0]).toMatchObject({
-      id: "svg-1",
-      type: "path",
-      fileName: "legacy.svg",
-      paths: [{ d: "M0 0H10" }],
-    });
-    expect(parsed.selectedObjectId).toBe("svg-1");
-  });
-
-  it("opens legacy single-SVG project files as a one-item workspace", () => {
+  it('migrates old imported SVG records into path workspace objects', () => {
     const parsed = parseProjectFile(
       JSON.stringify({
-        format: "kindcut-project",
+        format: 'kindcut-project',
         version: 1,
-        name: "legacy",
-        savedAt: "2026-01-01T00:00:00.000Z",
+        name: 'legacy',
+        savedAt: '2026-01-01T00:00:00.000Z',
         workspace: {
           selectedMaterialId: 20,
-          selectedMatPreset: "joy-standard",
-          measurementUnit: "cm",
+          selectedMatPreset: 'joy-standard',
+          measurementUnit: 'cm',
+        },
+        importedSvgs: [
+          {
+            id: 'svg-1',
+            fileName: 'legacy.svg',
+            fileSize: '1 KB',
+            svg: '<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#fff"/><path d="M0 0H10"/></svg>',
+          },
+        ],
+        selectedSvgId: 'svg-1',
+      }),
+    );
+
+    expect(parsed.workspaceObjects[0]).toMatchObject({
+      id: 'svg-1',
+      type: 'path',
+      fileName: 'legacy.svg',
+      paths: [{ d: 'M0 0H10' }],
+    });
+    expect(parsed.selectedObjectId).toBe('svg-1');
+  });
+
+  it('opens legacy single-SVG project files as a one-item workspace', () => {
+    const parsed = parseProjectFile(
+      JSON.stringify({
+        format: 'kindcut-project',
+        version: 1,
+        name: 'legacy',
+        savedAt: '2026-01-01T00:00:00.000Z',
+        workspace: {
+          selectedMaterialId: 20,
+          selectedMatPreset: 'joy-standard',
+          measurementUnit: 'cm',
         },
         importedSvg: {
-          fileName: "legacy.svg",
-          fileSize: "1 KB",
-          svg: "<svg />",
+          fileName: 'legacy.svg',
+          fileSize: '1 KB',
+          svg: '<svg />',
         },
       }),
     );
 
     expect(parsed.importedSvgs).toEqual([
       {
-        id: "svg-1",
-        kind: "image",
+        id: 'svg-1',
+        kind: 'image',
         shapeKind: undefined,
-        fileName: "legacy.svg",
-        fileSize: "1 KB",
-        svg: "<svg />",
+        fileName: 'legacy.svg',
+        fileSize: '1 KB',
+        svg: '<svg />',
         transform: undefined,
       },
     ]);
-    expect(parsed.selectedSvgId).toBe("svg-1");
+    expect(parsed.selectedSvgId).toBe('svg-1');
   });
 
-  it("defaults a blank project to one pen + one cut tool and a white paper colour", () => {
+  it('defaults a blank project to one pen + one cut tool and a white paper colour', () => {
     const project = buildProjectFile({
-      name: "blank",
+      name: 'blank',
       selectedMaterialId: 218,
-      selectedMatPreset: "joy-standard",
-      measurementUnit: "cm",
+      selectedMatPreset: 'joy-standard',
+      measurementUnit: 'cm',
     });
     expect(getPens(project.workspace.tools)).toHaveLength(1);
-    expect(project.workspace.tools.filter((t) => t.type === "cut")).toHaveLength(1);
+    expect(project.workspace.tools.filter((t) => t.type === 'cut')).toHaveLength(1);
     expect(getBehindColor(project.workspace.tools)).toBe(DEFAULT_BEHIND_COLOR);
     expect(project.workspace.paperColor).toBe(DEFAULT_PAPER_COLOR);
   });
 
-  it("migrates a legacy project with two cut tools down to a single cut tool + a pen, and defaults paper colour", () => {
-    const parsed = parseProjectFile(JSON.stringify({
-      format: "kindcut-project",
-      version: 1,
-      name: "legacy tools",
-      savedAt: "2026-01-01T00:00:00.000Z",
-      workspace: {
-        selectedMaterialId: 20,
-        selectedMatPreset: "joy-standard",
-        measurementUnit: "cm",
-        tools: [
-          { id: "tool-1", color: "#000000", type: "cut" },
-          { id: "tool-2", color: "#ff0000", type: "cut" },
-        ],
-      },
-    }));
-    const cuts = parsed.workspace.tools.filter((t) => t.type === "cut");
+  it('migrates a legacy project with two cut tools down to a single cut tool + a pen, and defaults paper colour', () => {
+    const parsed = parseProjectFile(
+      JSON.stringify({
+        format: 'kindcut-project',
+        version: 1,
+        name: 'legacy tools',
+        savedAt: '2026-01-01T00:00:00.000Z',
+        workspace: {
+          selectedMaterialId: 20,
+          selectedMatPreset: 'joy-standard',
+          measurementUnit: 'cm',
+          tools: [
+            { id: 'tool-1', color: '#000000', type: 'cut' },
+            { id: 'tool-2', color: '#ff0000', type: 'cut' },
+          ],
+        },
+      }),
+    );
+    const cuts = parsed.workspace.tools.filter((t) => t.type === 'cut');
     expect(cuts).toHaveLength(1);
-    expect(cuts[0]?.color).toBe("#000000"); // first cut colour wins
+    expect(cuts[0]?.color).toBe('#000000'); // first cut colour wins
     expect(getPens(parsed.workspace.tools).length).toBeGreaterThanOrEqual(1);
     expect(parsed.workspace.paperColor).toBe(DEFAULT_PAPER_COLOR);
   });
 
-  it("round-trips pens, behind colour, and paper colour through save/load", () => {
-    const saved = serializeProjectFile(buildProjectFile({
-      name: "colors",
-      selectedMaterialId: 218,
-      selectedMatPreset: "joy-standard",
-      measurementUnit: "cm",
-      tools: [
-        { id: "pen-1", color: "#222222", type: "pen" },
-        { id: "cut-1", color: "#00a000", type: "cut" },
-      ],
-      paperColor: "#fef0c0",
-    }));
+  it('round-trips pens, behind colour, and paper colour through save/load', () => {
+    const saved = serializeProjectFile(
+      buildProjectFile({
+        name: 'colors',
+        selectedMaterialId: 218,
+        selectedMatPreset: 'joy-standard',
+        measurementUnit: 'cm',
+        tools: [
+          { id: 'pen-1', color: '#222222', type: 'pen' },
+          { id: 'cut-1', color: '#00a000', type: 'cut' },
+        ],
+        paperColor: '#fef0c0',
+      }),
+    );
     const parsed = parseProjectFile(saved);
-    expect(getBehindColor(parsed.workspace.tools)).toBe("#00a000");
-    expect(getPens(parsed.workspace.tools).map((t) => t.color)).toEqual(["#222222"]);
-    expect(parsed.workspace.paperColor).toBe("#fef0c0");
+    expect(getBehindColor(parsed.workspace.tools)).toBe('#00a000');
+    expect(getPens(parsed.workspace.tools).map((t) => t.color)).toEqual(['#222222']);
+    expect(parsed.workspace.paperColor).toBe('#fef0c0');
   });
 
-  it("rejects unsupported or malformed project files", () => {
-    expect(() => parseProjectFile("not json")).toThrow("not a valid KindCut project");
-    expect(() => parseProjectFile(JSON.stringify({ format: "kindcut-project", version: 99 }))).toThrow(
-      "unsupported KindCut project version",
+  it('rejects unsupported or malformed project files', () => {
+    expect(() => parseProjectFile('not json')).toThrow('not a valid KindCut project');
+    expect(() =>
+      parseProjectFile(JSON.stringify({ format: 'kindcut-project', version: 99 })),
+    ).toThrow('unsupported KindCut project version');
+    expect(() => parseProjectFile(JSON.stringify({ format: 'other', version: 1 }))).toThrow(
+      'not a valid KindCut project',
     );
-    expect(() => parseProjectFile(JSON.stringify({ format: "other", version: 1 }))).toThrow(
-      "not a valid KindCut project",
-    );
-    expect(() => parseProjectFile(JSON.stringify({
-      format: "kindcut-project",
-      version: 1,
-      name: "bad object",
-      savedAt: "2026-01-01T00:00:00.000Z",
-      workspace: { selectedMaterialId: 20, selectedMatPreset: "joy-standard", measurementUnit: "cm" },
-      workspaceObjects: [{ id: "bad", type: "path", fileName: "bad", fileSize: "1 KB", frame: { width: 1, height: 1 }, paths: [] }],
-    }))).toThrow("not a valid KindCut project");
+    expect(() =>
+      parseProjectFile(
+        JSON.stringify({
+          format: 'kindcut-project',
+          version: 1,
+          name: 'bad object',
+          savedAt: '2026-01-01T00:00:00.000Z',
+          workspace: {
+            selectedMaterialId: 20,
+            selectedMatPreset: 'joy-standard',
+            measurementUnit: 'cm',
+          },
+          workspaceObjects: [
+            {
+              id: 'bad',
+              type: 'path',
+              fileName: 'bad',
+              fileSize: '1 KB',
+              frame: { width: 1, height: 1 },
+              paths: [],
+            },
+          ],
+        }),
+      ),
+    ).toThrow('not a valid KindCut project');
   });
 });

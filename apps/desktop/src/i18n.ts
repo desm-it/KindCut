@@ -1,511 +1,582 @@
-export const APP_NAME = "KindCut";
+export const APP_NAME = 'KindCut';
 
-export const LANGUAGES = ["nl", "en"] as const;
+export const LANGUAGES = ['nl', 'en'] as const;
 export type Language = (typeof LANGUAGES)[number];
 
-export const DEFAULT_LANGUAGE: Language = "nl";
-export const LANGUAGE_STORAGE_KEY = "kindcutLanguage";
+export const DEFAULT_LANGUAGE: Language = 'nl';
+export const LANGUAGE_STORAGE_KEY = 'kindcutLanguage';
 
 const translations = {
   nl: {
-    "app.name": APP_NAME,
-    "language.label": "Taal",
-    "language.nl": "Nederlands",
-    "language.en": "English",
-    "welcome.eyebrow": "Lokale knutselhulp",
-    "welcome.lede":
-      "Beschrijf een kaart of eenvoudig Cricut Joy-project, bekijk wat getekend en gesneden wordt, en bewaar het daarna op deze computer.",
-    "welcome.newProject": "Nieuw project",
-    "welcome.newProjectCopy": "Begin rustig met een leeg lokaal ontwerp.",
-    "welcome.openProject": "Open project",
-    "welcome.openProjectCopy": "Ga verder met een project op deze Mac.",
-    "welcome.exampleProject": "Voorbeeldproject",
-    "welcome.exampleProjectCopy": "Bekijk meteen een eenvoudige verjaardagskaart.",
-    "workspace.eyebrow": "Werkruimte",
-    "project.openPlaceholder": "Project openen komt in de volgende werkruimte-stap. Kies nu een afbeelding of voorbeeld om verder te testen.",
-    "project.savePlaceholder": "Project bewaren komt in de volgende werkruimte-stap. Je Cricut-plannen blijven voorlopig lokaal bij de voorbereiding.",
-    "project.openInDesktop": "Open de desktopapp om KindCut-projecten te openen.",
-    "project.saveInDesktop": "Open de desktopapp om KindCut-projecten te bewaren.",
-    "project.openEmpty": "Dit projectbestand is leeg.",
-    "project.openError": "KindCut kon dit project nog niet openen.",
-    "project.saveError": "KindCut kon dit project nog niet bewaren.",
-    "project.opened": "Project geopend: {path}",
-    "project.saved": "Project bewaard: {path}",
-    "project.savedToast": "Opgeslagen!",
-    "unsaved.title": "Wijzigingen opslaan?",
-    "unsaved.bodySaved": "Je hebt iets veranderd sinds je dit project voor het laatst hebt opgeslagen. Wil je het eerst opslaan voordat je verdergaat?",
-    "unsaved.bodyNever": "Dit project is nog nooit opgeslagen. Als je doorgaat zonder opslaan, ben je alles kwijt wat je hebt gemaakt.",
-    "unsaved.save": "Opslaan",
-    "unsaved.discard": "Niet opslaan",
-    "unsaved.cancel": "Annuleren",
-    "buttons.backWelcome": "Terug naar start",
-    "buttons.tryBirthdayCard": "Probeer de verjaardagskaart",
-    "buttons.preparingPreview": "Voorbeeld voorbereiden...",
-    "buttons.checking": "Controleren...",
-    "buttons.checkSetupAgain": "Opnieuw controleren",
-    "buttons.setupCricutHelper": "Cricut instellen",
-    "buttons.settingUp": "Instellen...",
-    "buttons.chooseSvg": "Kies afbeelding",
-    "buttons.preparing": "Voorbereiden...",
-    "buttons.prepareHandoff": "Bereid Cricut-overdracht voor",
-    "buttons.preparePreview": "Bereid voorbeeld voor",
-    "buttons.starting": "Starten...",
-    "buttons.startCut": "Start snijden",
-    "buttons.continue": "Verder",
-    "buttons.stop": "Stop",
-    "status.panelLabel": "Cricut-overdracht",
-    "status.loadingTitle": "Je snijhulp controleren",
-    "status.loadingMessage": "KindCut controleert of projecten straks voorbereid kunnen worden voor je Cricut.",
-    "status.initialTitle": "Je knutseltafel klaarzetten",
-    "status.initialMessage": "KindCut controleert eerst het hulpje dat nodig is voordat je begint.",
-    "status.readyTitle": "Klaar voor Cricut-projecten",
-    "status.readyMessage":
-      "Alles is klaar. Begin met een kaart en bewaar je werk lokaal.",
-    "status.warningTitle": "Snijden werkt nog niet",
-    "status.warningMessage":
-      "Ontwerpen en opslaan kan gewoon. KindCut kan het snijprogramma niet vinden: klik op \"Opnieuw controleren\", en installeer KindCut opnieuw als dat niet helpt.",
-    "status.bootstrapTitle": "Nog één keer instellen voor je kunt snijden",
-    "status.bootstrapMessage":
-      "Ontwerpen kan al. Om te snijden haalt KindCut eenmalig de gegevens van je Cricut op uit Cricut Design Space. Klik op \"Cricut instellen\".",
-    "status.bootstrapLoadingTitle": "Cricut-hulpje instellen",
-    "status.bootstrapLoadingMessage":
-      "KindCut haalt lokaal de benodigde Cricut Design Space-profielen op. Dit kan even duren.",
-    "workflow.label": "KindCut-werkwijze",
-    "workflow.describe": "Beschrijf het",
-    "workflow.preview": "Bekijk lagen",
-    "workflow.save": "Bewaar lokaal",
-    "workflow.send": "Verstuur als je klaar bent",
-    "starter.panelLabel": "Startproject",
-    "starter.sampleName": "Hondenverjaardagskaart",
-    "starter.description":
-      "Een kleine kaart met pendetails en een eenvoudige snijrand, op maat voor een beginnersvriendelijke oefenronde met Cricut Joy.",
-    "starter.machine": "Machine",
-    "starter.mat": "Mat",
-    "starter.material": "Materiaal",
-    "starter.choiceKicker": "Pas deze keuzes aan voordat je een voorbeeld maakt of een begeleide snijbeurt start.",
-    "projectCheck.panelLabel": "Projectcontrole",
-    "projectCheck.readyTitle": "Klaar om te bekijken",
-    "projectCheck.warningTitle": "Moet even bekeken worden",
-    "projectCheck.readyMessage": "Het voorbeeldrecept heeft de basiscontroles voor formaat en lagen.",
-    "projectCheck.warningMessage": "Een deel van het voorbeeldrecept heeft aandacht nodig.",
-    "import.panelLabel": "Jouw ontwerp",
-    "import.title": "Haal een afbeeldingsbestand binnen",
-    "import.description":
-      "Kies een afbeeldingsbestand van deze computer. KindCut toont een rustige preview en een duidelijke controle voordat iets voor een snijmachine wordt voorbereid.",
-    "import.empty": "Nog geen afbeelding gekozen. Begin met een bestand dat je al hebt; KindCut toont het dan hier.",
-    "import.chooseSvgFile": "Kies eerst een afbeelding, daarna kan KindCut het voorbereiden.",
-    "import.invalidSvg": "Kies een SVG-, PNG- of JPG-bestand zodat KindCut het kan tonen.",
-    "import.openInShellPlan": "Open dit scherm in de Electron-desktopapp om een Cricut-overdracht voor te bereiden.",
-    "import.openError": "KindCut kon dat bestand nog niet openen.",
-    "import.planError": "KindCut kon die afbeelding nog niet voorbereiden.",
-    "import.prepareNote": "Dit maakt alleen een lokaal plan. Snijden start later, nadat je op Start snijden drukt.",
-    "import.previewTitle": "Voorbeeld van {fileName}",
-    "import.chosenFile": "Gekozen bestand",
-    "import.file": "Bestand",
-    "import.artwork": "Tekening",
-    "import.readyTitle": "Dit ziet er makkelijk uit om mee te starten",
-    "import.warningTitle": "Een paar dingen moeten misschien bekeken worden",
-    "import.readyMessage": "KindCut kan deze afbeelding lezen en in de preview tonen.",
-    "details.advanced": "Geavanceerde details",
-    "details.svgCheck": "SVG-controle details",
-    "details.rawSvg": "Ruwe SVG",
-    "details.designPrompt": "Ontwerpprompt details",
-    "details.handoffCommand": "Overdrachtscommando details",
-    "details.cut": "Snijdetails",
-    "details.plan": "Plandetails",
-    "practice.panelLabel": "Oefenvoorbeeld",
-    "practice.title": "Bereid de voorbeeldkaart voor",
-    "practice.description":
-      "Dit maakt alleen een voorbeeldbestand voor de voorbeeldkaart met het materiaal en de mat die je koos. Er wordt niets naar een Cricut-machine gestuurd.",
-    "practice.empty": "Klik hierboven op \"Probeer de verjaardagskaart\" om hier een vriendelijke lagensamenvatting te zien.",
-    "later.panelLabel": "Voor later",
-    "later.title": "Receptnotities staan netjes apart",
-    "later.description":
-      "Beginnersschermen blijven eenvoudig, terwijl de app de prompt en overdrachtsnotities beschikbaar houdt voor probleemoplossing.",
-    "plan.readyTitle": "Oefenvoorbeeld is klaar",
-    "plan.warningTitle": "Het oefenvoorbeeld kon niet worden voorbereid",
-    "plan.warningMessage":
-      "Het voorbeeldproject staat nog hier. De Cricut-overdrachthulp heeft aandacht nodig voordat KindCut het kan bekijken.",
-    "validation.projectRecipeConsistent": "Het projectrecept klopt intern.",
-    "plan.importedPanelLabel": "Overdracht van geïmporteerde afbeelding",
-    "plan.readyToSendTitle": "Klaar om te versturen wanneer jij zover bent",
-    "plan.currentPlan": "Huidig plan:",
-    "plan.layers": "Lagen",
-    "plan.tools": "Gereedschap",
-    "plan.noTools": "Geen gereedschap vermeld",
-    "plan.startCutNote": "Druk hier alleen op als de Cricut dichtbij staat, aangesloten is, en je klaar bent om mee te kijken.",
-    "cut.panelLabel": "Begeleide Cricut-stap",
-    "cut.progressLabel": "Voortgang van het snijden",
-    "cut.preparePlan": "Plan maken",
-    "cut.loadTool": "Gereedschap laden",
-    "cut.loadMat": "Mat laden",
-    "cut.cutDraw": "Snijden/tekenen",
-    "cut.finish": "Afronden",
-    "cut.toolChange": "wissel gereedschap",
-    "cut.startCutting": "Start snijden",
-    "cut.load": "Laad",
-    "cut.startHint": "Klik op Start snijden om te beginnen.",
-    "cut.connecting": "Verbinden met de snijmachine…",
-    "cut.working": "Bezig…",
-    "cut.matLoaded": "Mat geladen",
-    "cut.loadMatHint": "Leg het materiaal op de mat en schuif de mat in de machine.",
-    "cut.unloadMatHint": "Druk op de knop om de mat uit te werpen.",
-    "cut.connectHelpTitle": "We vinden de snijmachine niet",
-    "cut.connectHelpIntro": "Controleer even of de machine klaar is:",
-    "cut.checkPower": "Staat de snijmachine aan?",
-    "cut.checkBluetooth": "Is bluetooth verbonden?",
-    "cut.connectHelpHint": "Zodra de machine verbonden is, gaat het snijden vanzelf verder.",
-    "cut.connectRetryHint": "Zet de machine aan, controleer bluetooth en druk dan opnieuw op Start snijden.",
-    "cut.unloadTitle": "Werp de mat uit",
-    "cut.unloadHint": "Druk op Uitwerpen om de mat los te maken van de machine.",
-    "cut.unloadBtn": "Uitwerpen",
-    "cut.doneTitle": "Gelukt!",
-    "cut.doneHint": "Je project is klaar. Haal het voorzichtig van de mat.",
-    "cut.stopWarnTitle": "Snijden stoppen?",
-    "cut.stopWarnBody": "De machine is nog volop bezig met je project. Als je nu stopt, kan dit stuk niet meer afgemaakt worden en gaat je materiaal waarschijnlijk verloren.",
-    "cut.stopWarnConfirm": "Ja, stop het snijden",
-    "cut.stopWarnKeep": "Nee, doorgaan met snijden",
-    "cut.stoppedTitle": "Snijden geannuleerd",
-    "cut.stoppedHint": "De snijmachine is gestopt. Druk op de Laden/Ontladen-knop om de mat eruit te halen.",
-    "cut.noMessages": "Nog geen SliceBug-berichten.",
-    "choice.aria": "Materiaal- en matkeuzes",
-    "choice.material": "Materiaal",
-    "choice.mat": "Mat",
-    "size.unknown": "De afmeting staat nog niet in dit bestand.",
-    "size.about": "Ongeveer {width} x {height} {unit}",
-    "size.artworkUnits": "tekeneenheden",
-    "svg.issue.notSvg": "Dit lijkt geen SVG-bestand. Kies een .svg uit je ontwerp-app.",
-    "svg.issue.generic": "KindCut kon deze SVG nog niet lezen. Exporteer hem opnieuw als gewone SVG.",
-    "svg.warning.effects": "Sommige visuele effecten komen misschien niet precies mee in een snijproject.",
-    "svg.warning.text": "Er staat bewerkbare tekst in. Voor het beste resultaat: zet de woorden om naar vormen.",
-    "svg.warning.noPaths": "KindCut ziet een tekening, maar heeft misschien vormlijnen nodig voordat snijlijnen gemaakt kunnen worden.",
-    "svg.warning.generic": "Dit bestand moet misschien even bekeken worden voordat het klaar is voor een snijproject.",
-    "tool.fine_point_blade": "Fijn mesje",
-    "tool.pen": "Pen",
-    "colors.sectionTitle": "Kaartkleuren",
-    "colors.paper": "Papierkleur",
-    "colors.behind": "Kleur erachter",
-    "pens.sectionTitle": "Pennen",
-    "pens.add": "Pen toevoegen",
-    "pens.remove": "Pen verwijderen",
-    "pens.fix": "Oplossen",
-    "warn.penDuplicate": "Twee pennen hebben dezelfde kleur.",
-    "object.tool": "Gereedschap",
-    "warn.penOnPaper": "Deze pen heeft dezelfde kleur als het papier — je ziet hem niet.",
-    "warn.penOnBehind": "Deze pen heeft dezelfde kleur als de kleur erachter.",
-    "material.218.name": "Licht karton",
-    "material.218.copy": "Beste eerste keuze voor eenvoudige kaarten en testsneden.",
-    "material.19.name": "Middelzwaar karton",
-    "material.19.copy": "Steviger kaartpapier voor alledaagse projecten.",
-    "material.211.name": "Zwaar karton",
-    "material.211.copy": "Dikker papier dat misschien een frisser mesje nodig heeft.",
-    "material.535.name": "Insteekkaart",
-    "material.535.copy": "Gebruik dit voor Cricut Joy-insteekkaarten.",
-    "material.20.name": "Vinyl",
-    "material.20.copy": "Gebruik dit voor een eenvoudig ontwerp met plakvinyl.",
-    "mat.joy-standard.name": "Joy standaardmat",
-    "mat.joy-standard.copy": "De gewone Joy-mat voor de meeste kleine projecten.",
-    "mat.joy-standard-short.name": "Joy korte mat",
-    "mat.joy-standard-short.copy": "Handig voor kleine restjes en mini-ontwerpen.",
-    "mat.joy-card.name": "Joy kaartmat",
-    "mat.joy-card.copy": "Beste keuze voor insteekkaarten en gevouwen kaartblanks.",
-    "cutAction.finished.title": "Snijden is klaar",
-    "cutAction.finished.message": "Haal de mat eruit wanneer de machine stil is.",
-    "cutAction.load-mat.title": "Laad de mat",
-    "cutAction.load-mat.message": "Leg het materiaal op de mat en laad die in de Cricut. Druk daarna op Verder.",
-    "cutAction.load-tools.title": "Laad het gereedschap",
-    "cutAction.load-tools.message": "Plaats de gevraagde pen of het mesje in de klem. Druk daarna op Verder.",
-    "cutAction.press-go.title": "Start wanneer de machine klaar is",
-    "cutAction.press-go.message": "Druk op Go op de Cricut, of ga verder wanneer de machine klaar is.",
-    "cutAction.replace-tool.title": "Wissel het gereedschap",
-    "cutAction.replace-tool.message": "Plaats het volgende gereedschap en druk daarna hier op Verder.",
-    "cutAction.running.title": "Nu aan het snijden",
-    "cutAction.running.message": "De Cricut is bezig. Houd handen weg en wacht op de volgende vraag.",
-    "cutAction.error.title": "Iets heeft aandacht nodig",
-    "cutAction.error.message": "Er ging iets mis. Stop hier en probeer het opnieuw.",
-    "cutAction.idle.title": "Wachten op SliceBug",
-    "cutAction.idle.message": "KindCut luistert naar de volgende snijstap.",
-    "cutAction.idle.ready.title": "Klaar wanneer jij dat bent",
-    "cutAction.idle.ready.message": "KindCut start pas nadat je op Start snijden drukt.",
-    "cutAction.idle.waiting.title": "Wachten op de snijmachine",
-    "cutAction.idle.waiting.message": "KindCut luistert naar de volgende stap van de snijmachine.",
-    "cutAction.running.starting.title": "SliceBug starten",
-    "cutAction.running.starting.message": "KindCut wacht op de eerste vraag van de snijmachine.",
-    "cutAction.running.continuing.title": "Doorgaan",
-    "cutAction.running.continuing.message": "KindCut heeft de volgende stap naar SliceBug gestuurd.",
-    "cutAction.running.refreshingHelper.title": "Hulpje opnieuw instellen",
-    "cutAction.running.refreshingHelper.message": "Het snijhulpje weigerde de start. KindCut stelt het hulpje nu opnieuw in.",
-    "cutAction.error.smokeBlocked.title": "Snijden geblokkeerd in testmodus",
-    "cutAction.error.smokeBlocked.message": "KindCut start geen echte snijactie terwijl testmodus actief is.",
-    "cutAction.error.startFailed.message": "SliceBug kon de snijsessie niet starten.",
-    "cutAction.error.processFailed.message": "SliceBug kon de snijsessie niet actief houden.",
-    "cutAction.error.cutStopped.message": "SliceBug stopte voordat het snijden klaar was.",
-    "cutAction.error.cancelled.title": "Snijden geannuleerd",
-    "cutAction.error.cancelled.message": "KindCut heeft SliceBug gesloten en het snijden geannuleerd.",
-    "cutAction.error.blockingProcesses.title": "Sluit Design Space",
-    "cutAction.error.blockingProcesses.message": "Design Space of het snijhulpje draait nog en kan de bluetoothverbinding vasthouden. Sluit Design Space en probeer opnieuw.",
-    "cutAction.error.noDevice.message": "KindCut kan de snijmachine niet vinden. Controleer of hij aan staat, via bluetooth met deze Windows-laptop is gekoppeld, en niet met een andere computer verbonden is.",
-    "cutAction.error.connectionLost.message": "Het snijhulpje is de verbinding kwijt. Sluit Design Space, controleer bluetooth op deze laptop en probeer het opnieuw.",
-    "cutAction.error.deviceMismatch.message": "De verbonden snijmachine past niet bij het opgeslagen Design Space-profiel. Verbind de juiste machine of stel het hulpje opnieuw in.",
-    "cutAction.error.multipleDevices.message": "Er lijken meerdere snijmachines verbonden. Laat alleen de machine verbonden die je wilt gebruiken en probeer opnieuw.",
-    "cutAction.error.helperProblem.message": "Het snijhulpje meldde een probleem. Controleer of Design Space gesloten is, bluetooth verbonden is en de machine wakker is. Probeer daarna opnieuw.",
-    "cutAction.error.cutterProblem.message": "De snijmachine meldde een probleem. Stop hier en probeer het opnieuw.",
-    "cutAction.error.helperRefreshed.title": "Hulpje opnieuw ingesteld",
-    "cutAction.error.helperRefreshed.message": "KindCut heeft het hulpje opnieuw ingesteld. Sluit Design Space, controleer bluetooth en start het snijden opnieuw.",
-    "cutAction.error.helperRefreshIncomplete.title": "Hulpje heeft nog aandacht nodig",
-    "cutAction.error.helperRefreshIncomplete.message": "KindCut probeerde het hulpje opnieuw in te stellen, maar dat lukte nog niet helemaal. Open de logs en stel het hulpje handmatig opnieuw in.",
-    "cutAction.error.helperRefreshFailed.title": "Hulpje heeft nog aandacht nodig",
-    "cutAction.error.helperRefreshFailed.message": "KindCut probeerde het hulpje te repareren, maar de poging mislukte. Open de logs en stel het hulpje handmatig opnieuw in.",
+    'app.name': APP_NAME,
+    'language.label': 'Taal',
+    'language.nl': 'Nederlands',
+    'language.en': 'English',
+    'welcome.eyebrow': 'Lokale knutselhulp',
+    'welcome.lede':
+      'Beschrijf een kaart of eenvoudig Cricut Joy-project, bekijk wat getekend en gesneden wordt, en bewaar het daarna op deze computer.',
+    'welcome.newProject': 'Nieuw project',
+    'welcome.newProjectCopy': 'Begin rustig met een leeg lokaal ontwerp.',
+    'welcome.openProject': 'Open project',
+    'welcome.openProjectCopy': 'Ga verder met een project op deze Mac.',
+    'welcome.exampleProject': 'Voorbeeldproject',
+    'welcome.exampleProjectCopy': 'Bekijk meteen een eenvoudige verjaardagskaart.',
+    'workspace.eyebrow': 'Werkruimte',
+    'project.openPlaceholder':
+      'Project openen komt in de volgende werkruimte-stap. Kies nu een afbeelding of voorbeeld om verder te testen.',
+    'project.savePlaceholder':
+      'Project bewaren komt in de volgende werkruimte-stap. Je Cricut-plannen blijven voorlopig lokaal bij de voorbereiding.',
+    'project.openInDesktop': 'Open de desktopapp om KindCut-projecten te openen.',
+    'project.saveInDesktop': 'Open de desktopapp om KindCut-projecten te bewaren.',
+    'project.openEmpty': 'Dit projectbestand is leeg.',
+    'project.openError': 'KindCut kon dit project nog niet openen.',
+    'project.saveError': 'KindCut kon dit project nog niet bewaren.',
+    'project.opened': 'Project geopend: {path}',
+    'project.saved': 'Project bewaard: {path}',
+    'project.savedToast': 'Opgeslagen!',
+    'unsaved.title': 'Wijzigingen opslaan?',
+    'unsaved.bodySaved':
+      'Je hebt iets veranderd sinds je dit project voor het laatst hebt opgeslagen. Wil je het eerst opslaan voordat je verdergaat?',
+    'unsaved.bodyNever':
+      'Dit project is nog nooit opgeslagen. Als je doorgaat zonder opslaan, ben je alles kwijt wat je hebt gemaakt.',
+    'unsaved.save': 'Opslaan',
+    'unsaved.discard': 'Niet opslaan',
+    'unsaved.cancel': 'Annuleren',
+    'buttons.backWelcome': 'Terug naar start',
+    'buttons.tryBirthdayCard': 'Probeer de verjaardagskaart',
+    'buttons.preparingPreview': 'Voorbeeld voorbereiden...',
+    'buttons.checking': 'Controleren...',
+    'buttons.checkSetupAgain': 'Opnieuw controleren',
+    'buttons.setupCricutHelper': 'Cricut instellen',
+    'buttons.settingUp': 'Instellen...',
+    'buttons.chooseSvg': 'Kies afbeelding',
+    'buttons.preparing': 'Voorbereiden...',
+    'buttons.prepareHandoff': 'Bereid Cricut-overdracht voor',
+    'buttons.preparePreview': 'Bereid voorbeeld voor',
+    'buttons.starting': 'Starten...',
+    'buttons.startCut': 'Start snijden',
+    'buttons.continue': 'Verder',
+    'buttons.stop': 'Stop',
+    'status.panelLabel': 'Cricut-overdracht',
+    'status.loadingTitle': 'Je snijhulp controleren',
+    'status.loadingMessage':
+      'KindCut controleert of projecten straks voorbereid kunnen worden voor je Cricut.',
+    'status.initialTitle': 'Je knutseltafel klaarzetten',
+    'status.initialMessage': 'KindCut controleert eerst het hulpje dat nodig is voordat je begint.',
+    'status.readyTitle': 'Klaar voor Cricut-projecten',
+    'status.readyMessage': 'Alles is klaar. Begin met een kaart en bewaar je werk lokaal.',
+    'status.warningTitle': 'Snijden werkt nog niet',
+    'status.warningMessage':
+      'Ontwerpen en opslaan kan gewoon. KindCut kan het snijprogramma niet vinden: klik op "Opnieuw controleren", en installeer KindCut opnieuw als dat niet helpt.',
+    'status.bootstrapTitle': 'Nog één keer instellen voor je kunt snijden',
+    'status.bootstrapMessage':
+      'Ontwerpen kan al. Om te snijden haalt KindCut eenmalig de gegevens van je Cricut op uit Cricut Design Space. Klik op "Cricut instellen".',
+    'status.bootstrapLoadingTitle': 'Cricut-hulpje instellen',
+    'status.bootstrapLoadingMessage':
+      'KindCut haalt lokaal de benodigde Cricut Design Space-profielen op. Dit kan even duren.',
+    'workflow.label': 'KindCut-werkwijze',
+    'workflow.describe': 'Beschrijf het',
+    'workflow.preview': 'Bekijk lagen',
+    'workflow.save': 'Bewaar lokaal',
+    'workflow.send': 'Verstuur als je klaar bent',
+    'starter.panelLabel': 'Startproject',
+    'starter.sampleName': 'Hondenverjaardagskaart',
+    'starter.description':
+      'Een kleine kaart met pendetails en een eenvoudige snijrand, op maat voor een beginnersvriendelijke oefenronde met Cricut Joy.',
+    'starter.machine': 'Machine',
+    'starter.mat': 'Mat',
+    'starter.material': 'Materiaal',
+    'starter.choiceKicker':
+      'Pas deze keuzes aan voordat je een voorbeeld maakt of een begeleide snijbeurt start.',
+    'projectCheck.panelLabel': 'Projectcontrole',
+    'projectCheck.readyTitle': 'Klaar om te bekijken',
+    'projectCheck.warningTitle': 'Moet even bekeken worden',
+    'projectCheck.readyMessage':
+      'Het voorbeeldrecept heeft de basiscontroles voor formaat en lagen.',
+    'projectCheck.warningMessage': 'Een deel van het voorbeeldrecept heeft aandacht nodig.',
+    'import.panelLabel': 'Jouw ontwerp',
+    'import.title': 'Haal een afbeeldingsbestand binnen',
+    'import.description':
+      'Kies een afbeeldingsbestand van deze computer. KindCut toont een rustige preview en een duidelijke controle voordat iets voor een snijmachine wordt voorbereid.',
+    'import.empty':
+      'Nog geen afbeelding gekozen. Begin met een bestand dat je al hebt; KindCut toont het dan hier.',
+    'import.chooseSvgFile': 'Kies eerst een afbeelding, daarna kan KindCut het voorbereiden.',
+    'import.invalidSvg': 'Kies een SVG-, PNG- of JPG-bestand zodat KindCut het kan tonen.',
+    'import.openInShellPlan':
+      'Open dit scherm in de Electron-desktopapp om een Cricut-overdracht voor te bereiden.',
+    'import.openError': 'KindCut kon dat bestand nog niet openen.',
+    'import.planError': 'KindCut kon die afbeelding nog niet voorbereiden.',
+    'import.prepareNote':
+      'Dit maakt alleen een lokaal plan. Snijden start later, nadat je op Start snijden drukt.',
+    'import.previewTitle': 'Voorbeeld van {fileName}',
+    'import.chosenFile': 'Gekozen bestand',
+    'import.file': 'Bestand',
+    'import.artwork': 'Tekening',
+    'import.readyTitle': 'Dit ziet er makkelijk uit om mee te starten',
+    'import.warningTitle': 'Een paar dingen moeten misschien bekeken worden',
+    'import.readyMessage': 'KindCut kan deze afbeelding lezen en in de preview tonen.',
+    'details.advanced': 'Geavanceerde details',
+    'details.svgCheck': 'SVG-controle details',
+    'details.rawSvg': 'Ruwe SVG',
+    'details.designPrompt': 'Ontwerpprompt details',
+    'details.handoffCommand': 'Overdrachtscommando details',
+    'details.cut': 'Snijdetails',
+    'details.plan': 'Plandetails',
+    'practice.panelLabel': 'Oefenvoorbeeld',
+    'practice.title': 'Bereid de voorbeeldkaart voor',
+    'practice.description':
+      'Dit maakt alleen een voorbeeldbestand voor de voorbeeldkaart met het materiaal en de mat die je koos. Er wordt niets naar een Cricut-machine gestuurd.',
+    'practice.empty':
+      'Klik hierboven op "Probeer de verjaardagskaart" om hier een vriendelijke lagensamenvatting te zien.',
+    'later.panelLabel': 'Voor later',
+    'later.title': 'Receptnotities staan netjes apart',
+    'later.description':
+      'Beginnersschermen blijven eenvoudig, terwijl de app de prompt en overdrachtsnotities beschikbaar houdt voor probleemoplossing.',
+    'plan.readyTitle': 'Oefenvoorbeeld is klaar',
+    'plan.warningTitle': 'Het oefenvoorbeeld kon niet worden voorbereid',
+    'plan.warningMessage':
+      'Het voorbeeldproject staat nog hier. De Cricut-overdrachthulp heeft aandacht nodig voordat KindCut het kan bekijken.',
+    'validation.projectRecipeConsistent': 'Het projectrecept klopt intern.',
+    'plan.importedPanelLabel': 'Overdracht van geïmporteerde afbeelding',
+    'plan.readyToSendTitle': 'Klaar om te versturen wanneer jij zover bent',
+    'plan.currentPlan': 'Huidig plan:',
+    'plan.layers': 'Lagen',
+    'plan.tools': 'Gereedschap',
+    'plan.noTools': 'Geen gereedschap vermeld',
+    'plan.startCutNote':
+      'Druk hier alleen op als de Cricut dichtbij staat, aangesloten is, en je klaar bent om mee te kijken.',
+    'cut.panelLabel': 'Begeleide Cricut-stap',
+    'cut.progressLabel': 'Voortgang van het snijden',
+    'cut.preparePlan': 'Plan maken',
+    'cut.loadTool': 'Gereedschap laden',
+    'cut.loadMat': 'Mat laden',
+    'cut.cutDraw': 'Snijden/tekenen',
+    'cut.finish': 'Afronden',
+    'cut.toolChange': 'wissel gereedschap',
+    'cut.startCutting': 'Start snijden',
+    'cut.load': 'Laad',
+    'cut.startHint': 'Klik op Start snijden om te beginnen.',
+    'cut.connecting': 'Verbinden met de snijmachine…',
+    'cut.working': 'Bezig…',
+    'cut.matLoaded': 'Mat geladen',
+    'cut.loadMatHint': 'Leg het materiaal op de mat en schuif de mat in de machine.',
+    'cut.unloadMatHint': 'Druk op de knop om de mat uit te werpen.',
+    'cut.connectHelpTitle': 'We vinden de snijmachine niet',
+    'cut.connectHelpIntro': 'Controleer even of de machine klaar is:',
+    'cut.checkPower': 'Staat de snijmachine aan?',
+    'cut.checkBluetooth': 'Is bluetooth verbonden?',
+    'cut.connectHelpHint': 'Zodra de machine verbonden is, gaat het snijden vanzelf verder.',
+    'cut.connectRetryHint':
+      'Zet de machine aan, controleer bluetooth en druk dan opnieuw op Start snijden.',
+    'cut.unloadTitle': 'Werp de mat uit',
+    'cut.unloadHint': 'Druk op Uitwerpen om de mat los te maken van de machine.',
+    'cut.unloadBtn': 'Uitwerpen',
+    'cut.doneTitle': 'Gelukt!',
+    'cut.doneHint': 'Je project is klaar. Haal het voorzichtig van de mat.',
+    'cut.stopWarnTitle': 'Snijden stoppen?',
+    'cut.stopWarnBody':
+      'De machine is nog volop bezig met je project. Als je nu stopt, kan dit stuk niet meer afgemaakt worden en gaat je materiaal waarschijnlijk verloren.',
+    'cut.stopWarnConfirm': 'Ja, stop het snijden',
+    'cut.stopWarnKeep': 'Nee, doorgaan met snijden',
+    'cut.stoppedTitle': 'Snijden geannuleerd',
+    'cut.stoppedHint':
+      'De snijmachine is gestopt. Druk op de Laden/Ontladen-knop om de mat eruit te halen.',
+    'cut.noMessages': 'Nog geen SliceBug-berichten.',
+    'choice.aria': 'Materiaal- en matkeuzes',
+    'choice.material': 'Materiaal',
+    'choice.mat': 'Mat',
+    'size.unknown': 'De afmeting staat nog niet in dit bestand.',
+    'size.about': 'Ongeveer {width} x {height} {unit}',
+    'size.artworkUnits': 'tekeneenheden',
+    'svg.issue.notSvg': 'Dit lijkt geen SVG-bestand. Kies een .svg uit je ontwerp-app.',
+    'svg.issue.generic':
+      'KindCut kon deze SVG nog niet lezen. Exporteer hem opnieuw als gewone SVG.',
+    'svg.warning.effects':
+      'Sommige visuele effecten komen misschien niet precies mee in een snijproject.',
+    'svg.warning.text':
+      'Er staat bewerkbare tekst in. Voor het beste resultaat: zet de woorden om naar vormen.',
+    'svg.warning.noPaths':
+      'KindCut ziet een tekening, maar heeft misschien vormlijnen nodig voordat snijlijnen gemaakt kunnen worden.',
+    'svg.warning.generic':
+      'Dit bestand moet misschien even bekeken worden voordat het klaar is voor een snijproject.',
+    'tool.fine_point_blade': 'Fijn mesje',
+    'tool.pen': 'Pen',
+    'colors.sectionTitle': 'Kaartkleuren',
+    'colors.paper': 'Papierkleur',
+    'colors.behind': 'Kleur erachter',
+    'pens.sectionTitle': 'Pennen',
+    'pens.add': 'Pen toevoegen',
+    'pens.remove': 'Pen verwijderen',
+    'pens.fix': 'Oplossen',
+    'warn.penDuplicate': 'Twee pennen hebben dezelfde kleur.',
+    'object.tool': 'Gereedschap',
+    'warn.penOnPaper': 'Deze pen heeft dezelfde kleur als het papier — je ziet hem niet.',
+    'warn.penOnBehind': 'Deze pen heeft dezelfde kleur als de kleur erachter.',
+    'material.218.name': 'Licht karton',
+    'material.218.copy': 'Beste eerste keuze voor eenvoudige kaarten en testsneden.',
+    'material.19.name': 'Middelzwaar karton',
+    'material.19.copy': 'Steviger kaartpapier voor alledaagse projecten.',
+    'material.211.name': 'Zwaar karton',
+    'material.211.copy': 'Dikker papier dat misschien een frisser mesje nodig heeft.',
+    'material.535.name': 'Insteekkaart',
+    'material.535.copy': 'Gebruik dit voor Cricut Joy-insteekkaarten.',
+    'material.20.name': 'Vinyl',
+    'material.20.copy': 'Gebruik dit voor een eenvoudig ontwerp met plakvinyl.',
+    'mat.joy-standard.name': 'Joy standaardmat',
+    'mat.joy-standard.copy': 'De gewone Joy-mat voor de meeste kleine projecten.',
+    'mat.joy-standard-short.name': 'Joy korte mat',
+    'mat.joy-standard-short.copy': 'Handig voor kleine restjes en mini-ontwerpen.',
+    'mat.joy-card.name': 'Joy kaartmat',
+    'mat.joy-card.copy': 'Beste keuze voor insteekkaarten en gevouwen kaartblanks.',
+    'cutAction.finished.title': 'Snijden is klaar',
+    'cutAction.finished.message': 'Haal de mat eruit wanneer de machine stil is.',
+    'cutAction.load-mat.title': 'Laad de mat',
+    'cutAction.load-mat.message':
+      'Leg het materiaal op de mat en laad die in de Cricut. Druk daarna op Verder.',
+    'cutAction.load-tools.title': 'Laad het gereedschap',
+    'cutAction.load-tools.message':
+      'Plaats de gevraagde pen of het mesje in de klem. Druk daarna op Verder.',
+    'cutAction.press-go.title': 'Start wanneer de machine klaar is',
+    'cutAction.press-go.message':
+      'Druk op Go op de Cricut, of ga verder wanneer de machine klaar is.',
+    'cutAction.replace-tool.title': 'Wissel het gereedschap',
+    'cutAction.replace-tool.message':
+      'Plaats het volgende gereedschap en druk daarna hier op Verder.',
+    'cutAction.running.title': 'Nu aan het snijden',
+    'cutAction.running.message':
+      'De Cricut is bezig. Houd handen weg en wacht op de volgende vraag.',
+    'cutAction.error.title': 'Iets heeft aandacht nodig',
+    'cutAction.error.message': 'Er ging iets mis. Stop hier en probeer het opnieuw.',
+    'cutAction.idle.title': 'Wachten op SliceBug',
+    'cutAction.idle.message': 'KindCut luistert naar de volgende snijstap.',
+    'cutAction.idle.ready.title': 'Klaar wanneer jij dat bent',
+    'cutAction.idle.ready.message': 'KindCut start pas nadat je op Start snijden drukt.',
+    'cutAction.idle.waiting.title': 'Wachten op de snijmachine',
+    'cutAction.idle.waiting.message': 'KindCut luistert naar de volgende stap van de snijmachine.',
+    'cutAction.running.starting.title': 'SliceBug starten',
+    'cutAction.running.starting.message': 'KindCut wacht op de eerste vraag van de snijmachine.',
+    'cutAction.running.continuing.title': 'Doorgaan',
+    'cutAction.running.continuing.message':
+      'KindCut heeft de volgende stap naar SliceBug gestuurd.',
+    'cutAction.running.refreshingHelper.title': 'Hulpje opnieuw instellen',
+    'cutAction.running.refreshingHelper.message':
+      'Het snijhulpje weigerde de start. KindCut stelt het hulpje nu opnieuw in.',
+    'cutAction.error.smokeBlocked.title': 'Snijden geblokkeerd in testmodus',
+    'cutAction.error.smokeBlocked.message':
+      'KindCut start geen echte snijactie terwijl testmodus actief is.',
+    'cutAction.error.startFailed.message': 'SliceBug kon de snijsessie niet starten.',
+    'cutAction.error.processFailed.message': 'SliceBug kon de snijsessie niet actief houden.',
+    'cutAction.error.cutStopped.message': 'SliceBug stopte voordat het snijden klaar was.',
+    'cutAction.error.cancelled.title': 'Snijden geannuleerd',
+    'cutAction.error.cancelled.message':
+      'KindCut heeft SliceBug gesloten en het snijden geannuleerd.',
+    'cutAction.error.blockingProcesses.title': 'Sluit Design Space',
+    'cutAction.error.blockingProcesses.message':
+      'Design Space of het snijhulpje draait nog en kan de bluetoothverbinding vasthouden. Sluit Design Space en probeer opnieuw.',
+    'cutAction.error.noDevice.message':
+      'KindCut kan de snijmachine niet vinden. Controleer of hij aan staat, via bluetooth met deze Windows-laptop is gekoppeld, en niet met een andere computer verbonden is.',
+    'cutAction.error.connectionLost.message':
+      'Het snijhulpje is de verbinding kwijt. Sluit Design Space, controleer bluetooth op deze laptop en probeer het opnieuw.',
+    'cutAction.error.deviceMismatch.message':
+      'De verbonden snijmachine past niet bij het opgeslagen Design Space-profiel. Verbind de juiste machine of stel het hulpje opnieuw in.',
+    'cutAction.error.multipleDevices.message':
+      'Er lijken meerdere snijmachines verbonden. Laat alleen de machine verbonden die je wilt gebruiken en probeer opnieuw.',
+    'cutAction.error.helperProblem.message':
+      'Het snijhulpje meldde een probleem. Controleer of Design Space gesloten is, bluetooth verbonden is en de machine wakker is. Probeer daarna opnieuw.',
+    'cutAction.error.cutterProblem.message':
+      'De snijmachine meldde een probleem. Stop hier en probeer het opnieuw.',
+    'cutAction.error.helperRefreshed.title': 'Hulpje opnieuw ingesteld',
+    'cutAction.error.helperRefreshed.message':
+      'KindCut heeft het hulpje opnieuw ingesteld. Sluit Design Space, controleer bluetooth en start het snijden opnieuw.',
+    'cutAction.error.helperRefreshIncomplete.title': 'Hulpje heeft nog aandacht nodig',
+    'cutAction.error.helperRefreshIncomplete.message':
+      'KindCut probeerde het hulpje opnieuw in te stellen, maar dat lukte nog niet helemaal. Open de logs en stel het hulpje handmatig opnieuw in.',
+    'cutAction.error.helperRefreshFailed.title': 'Hulpje heeft nog aandacht nodig',
+    'cutAction.error.helperRefreshFailed.message':
+      'KindCut probeerde het hulpje te repareren, maar de poging mislukte. Open de logs en stel het hulpje handmatig opnieuw in.',
   },
   en: {
-    "app.name": APP_NAME,
-    "language.label": "Language",
-    "language.nl": "Nederlands",
-    "language.en": "English",
-    "welcome.eyebrow": "Local craft helper",
-    "welcome.lede":
-      "Describe a card or simple Cricut Joy project, preview what will draw and cut, then save it on this computer for later.",
-    "welcome.newProject": "New project",
-    "welcome.newProjectCopy": "Start gently with a blank local design.",
-    "welcome.openProject": "Open project",
-    "welcome.openProjectCopy": "Continue with a project on this computer.",
-    "welcome.exampleProject": "Example project",
-    "welcome.exampleProjectCopy": "Jump into a simple birthday card preview.",
-    "workspace.eyebrow": "Workspace",
-    "project.openPlaceholder": "Opening saved projects belongs in the next workspace step. For now, choose an image or example to keep testing.",
-    "project.savePlaceholder": "Saving projects belongs in the next workspace step. Cricut plans stay local during preparation for now.",
-    "project.openInDesktop": "Open the desktop app to open KindCut projects.",
-    "project.saveInDesktop": "Open the desktop app to save KindCut projects.",
-    "project.openEmpty": "This project file is empty.",
-    "project.openError": "KindCut could not open this project yet.",
-    "project.saveError": "KindCut could not save this project yet.",
-    "project.opened": "Project opened: {path}",
-    "project.saved": "Project saved: {path}",
-    "project.savedToast": "Saved!",
-    "unsaved.title": "Save your changes?",
-    "unsaved.bodySaved": "You've changed something since you last saved this project. Would you like to save it before continuing?",
-    "unsaved.bodyNever": "This project has never been saved. If you continue without saving, you'll lose everything you've made.",
-    "unsaved.save": "Save",
-    "unsaved.discard": "Don't save",
-    "unsaved.cancel": "Cancel",
-    "buttons.backWelcome": "Back to welcome",
-    "buttons.tryBirthdayCard": "Try the birthday card",
-    "buttons.preparingPreview": "Preparing preview...",
-    "buttons.checking": "Checking...",
-    "buttons.checkSetupAgain": "Check again",
-    "buttons.setupCricutHelper": "Set up Cricut",
-    "buttons.settingUp": "Setting up...",
-    "buttons.chooseSvg": "Choose image",
-    "buttons.preparing": "Preparing...",
-    "buttons.prepareHandoff": "Prepare Cricut handoff",
-    "buttons.preparePreview": "Prepare preview",
-    "buttons.starting": "Starting...",
-    "buttons.startCut": "Start cut",
-    "buttons.continue": "Continue",
-    "buttons.stop": "Stop",
-    "status.panelLabel": "Cricut handoff",
-    "status.loadingTitle": "Checking your cutter helper",
-    "status.loadingMessage": "KindCut is making sure it can prepare projects for your Cricut later.",
-    "status.initialTitle": "Getting your craft table ready",
-    "status.initialMessage": "KindCut will check the helper it needs before you start.",
-    "status.readyTitle": "Ready for Cricut projects",
-    "status.readyMessage":
-      "Everything KindCut needs is available. You can start with a simple card and save your work locally.",
-    "status.warningTitle": "Cutting doesn't work yet",
-    "status.warningMessage":
-      "You can still design and save. KindCut can't find its cutting program: click \"Check again\", and reinstall KindCut if that doesn't help.",
-    "status.bootstrapTitle": "One-time setup before you can cut",
-    "status.bootstrapMessage":
-      "You can already design. To cut, KindCut fetches your Cricut's details from Cricut Design Space once. Click \"Set up Cricut\".",
-    "status.bootstrapLoadingTitle": "Setting up the Cricut helper",
-    "status.bootstrapLoadingMessage":
-      "KindCut is importing the local Cricut Design Space profiles it needs. This may take a moment.",
-    "workflow.label": "KindCut workflow",
-    "workflow.describe": "Describe it",
-    "workflow.preview": "Preview layers",
-    "workflow.save": "Save locally",
-    "workflow.send": "Send when ready",
-    "starter.panelLabel": "Starter project",
-    "starter.sampleName": "Dog birthday card",
-    "starter.description":
-      "A small card recipe with pen details and one simple cut border, sized for a beginner-friendly Cricut Joy practice run.",
-    "starter.machine": "Machine",
-    "starter.mat": "Mat",
-    "starter.material": "Material",
-    "starter.choiceKicker": "Adjust these choices before preparing a preview or starting a watched cut.",
-    "projectCheck.panelLabel": "Project check",
-    "projectCheck.readyTitle": "Looks ready to preview",
-    "projectCheck.warningTitle": "Needs a quick look",
-    "projectCheck.readyMessage": "The sample recipe has the basic size and layer checks it needs.",
-    "projectCheck.warningMessage": "One part of the sample recipe needs attention.",
-    "import.panelLabel": "Your design",
-    "import.title": "Bring in an image file",
-    "import.description":
-      "Pick an image file from this computer. KindCut will show a gentle preview and a plain-English check before anything is prepared for a cutter.",
-    "import.empty": "No image chosen yet. Start with a file you already have, then KindCut will show it here.",
-    "import.chooseSvgFile": "Choose an image first, then KindCut can prepare it.",
-    "import.invalidSvg": "Choose an SVG, PNG, or JPG file so KindCut can preview it.",
-    "import.openInShellPlan": "Open this screen in the Electron desktop shell to prepare a Cricut handoff.",
-    "import.openError": "KindCut could not open that file yet.",
-    "import.planError": "KindCut could not prepare that image yet.",
-    "import.prepareNote": "This makes a local plan only. Cutting starts later, after you press Start cut.",
-    "import.previewTitle": "Preview of {fileName}",
-    "import.chosenFile": "Chosen file",
-    "import.file": "File",
-    "import.artwork": "Artwork",
-    "import.readyTitle": "This looks easy to start with",
-    "import.warningTitle": "A few things may need a look",
-    "import.readyMessage": "KindCut can read this image and show it in the preview.",
-    "details.advanced": "Advanced details",
-    "details.svgCheck": "SVG check details",
-    "details.rawSvg": "Raw SVG",
-    "details.designPrompt": "Design prompt details",
-    "details.handoffCommand": "Handoff command details",
-    "details.cut": "Cut details",
-    "details.plan": "Plan details",
-    "practice.panelLabel": "Practice preview",
-    "practice.title": "Prepare the sample card",
-    "practice.description":
-      "This only prepares a preview file for the sample card with the material and mat you chose. It will not send anything to a Cricut machine.",
-    "practice.empty": "Click \"Try the birthday card\" above to see a friendly layer summary here.",
-    "later.panelLabel": "For later",
-    "later.title": "Recipe notes are tucked away",
-    "later.description":
-      "Beginner screens stay simple, while the app still keeps the prompt and handoff notes available when someone needs to troubleshoot.",
-    "plan.readyTitle": "Practice preview is ready",
-    "plan.warningTitle": "The practice preview could not be prepared",
-    "plan.warningMessage":
-      "The sample project is still here. The Cricut handoff helper needs attention before KindCut can preview it.",
-    "validation.projectRecipeConsistent": "Project recipe is internally consistent.",
-    "plan.importedPanelLabel": "Imported image handoff",
-    "plan.readyToSendTitle": "Ready to send when you are",
-    "plan.currentPlan": "Current plan:",
-    "plan.layers": "Layers",
-    "plan.tools": "Tools",
-    "plan.noTools": "No tools listed",
-    "plan.startCutNote": "Only press this when the Cricut is nearby, plugged in, and you are ready to watch it.",
-    "cut.panelLabel": "Watched Cricut step",
-    "cut.progressLabel": "Cutting progress guide",
-    "cut.preparePlan": "Prepare plan",
-    "cut.loadTool": "Load tool",
-    "cut.loadMat": "Load mat",
-    "cut.cutDraw": "Cut/draw",
-    "cut.finish": "Finish",
-    "cut.toolChange": "swap tool",
-    "cut.startCutting": "Start cutting",
-    "cut.load": "Load",
-    "cut.startHint": "Click Start cutting to begin.",
-    "cut.connecting": "Connecting to cutter…",
-    "cut.working": "Working…",
-    "cut.matLoaded": "Mat loaded",
-    "cut.loadMatHint": "Place the material on the mat and slide the mat into the machine.",
-    "cut.unloadMatHint": "Press the machine button to eject the mat.",
-    "cut.connectHelpTitle": "Can't find your cutter",
-    "cut.connectHelpIntro": "Let's check that the machine is ready:",
-    "cut.checkPower": "Is the cutter switched on?",
-    "cut.checkBluetooth": "Is Bluetooth connected?",
-    "cut.connectHelpHint": "As soon as it connects, cutting continues on its own.",
-    "cut.connectRetryHint": "Switch the machine on, check Bluetooth, then press Start cutting again.",
-    "cut.unloadTitle": "Unload the mat",
-    "cut.unloadHint": "Press Unload to release the mat from the machine.",
-    "cut.unloadBtn": "Unload",
-    "cut.doneTitle": "All done!",
-    "cut.doneHint": "Your project is ready. Gently peel it off the mat.",
-    "cut.stopWarnTitle": "Stop the cut?",
-    "cut.stopWarnBody": "The machine is in the middle of your project. If you stop now, this piece can't be finished and the material will likely be wasted.",
-    "cut.stopWarnConfirm": "Yes, stop the cut",
-    "cut.stopWarnKeep": "No, keep cutting",
-    "cut.stoppedTitle": "Cut cancelled",
-    "cut.stoppedHint": "The cutter has stopped. Press the Load/Unload button to release the mat.",
-    "cut.noMessages": "No SliceBug messages yet.",
-    "choice.aria": "Material and mat choices",
-    "choice.material": "Material",
-    "choice.mat": "Mat",
-    "size.unknown": "Size is not listed in this file yet.",
-    "size.about": "About {width} x {height} {unit}",
-    "size.artworkUnits": "artwork units",
-    "svg.issue.notSvg": "This does not look like an SVG file. Choose an .svg exported from your design app.",
-    "svg.issue.generic": "KindCut could not read this SVG yet. Try exporting it again as a plain SVG.",
-    "svg.warning.effects": "Some visual effects may not come through exactly when this becomes a cutter project.",
-    "svg.warning.text": "It includes editable text. For best results, turn the words into shapes before cutting.",
-    "svg.warning.noPaths": "KindCut sees artwork, but it may need shape outlines before cut lines can be prepared.",
-    "svg.warning.generic": "This file may need a quick look before it is ready for a cutter project.",
-    "tool.fine_point_blade": "Fine-point blade",
-    "tool.pen": "Pen",
-    "colors.sectionTitle": "Card colors",
-    "colors.paper": "Paper color",
-    "colors.behind": "Behind color",
-    "pens.sectionTitle": "Pens",
-    "pens.add": "Add pen",
-    "pens.remove": "Remove pen",
-    "pens.fix": "Fix",
-    "warn.penDuplicate": "Two pens have the same color.",
-    "object.tool": "Tool",
-    "warn.penOnPaper": "This pen is the same color as the paper — it won't show.",
-    "warn.penOnBehind": "This pen is the same color as the behind color.",
-    "material.218.name": "Light Cardstock",
-    "material.218.copy": "Best first choice for simple cards and test cuts.",
-    "material.19.name": "Medium Cardstock",
-    "material.19.copy": "A sturdier card paper for everyday projects.",
-    "material.211.name": "Heavy Cardstock",
-    "material.211.copy": "Thicker paper that may need a fresher blade.",
-    "material.535.name": "Insert Card",
-    "material.535.copy": "Use this for Cricut Joy insert card blanks.",
-    "material.20.name": "Vinyl",
-    "material.20.copy": "Use this for a simple adhesive vinyl design.",
-    "mat.joy-standard.name": "Joy standard mat",
-    "mat.joy-standard.copy": "The everyday Joy mat for most small projects.",
-    "mat.joy-standard-short.name": "Joy short mat",
-    "mat.joy-standard-short.copy": "Good for small scraps and tiny designs.",
-    "mat.joy-card.name": "Joy card mat",
-    "mat.joy-card.copy": "Best for insert cards and folded card blanks.",
-    "cutAction.finished.title": "Cut is finished",
-    "cutAction.finished.message": "Unload the mat when the machine is quiet.",
-    "cutAction.load-mat.title": "Load the mat",
-    "cutAction.load-mat.message": "Place the material on the mat and load it into the Cricut, then press Continue.",
-    "cutAction.load-tools.title": "Load the tool",
-    "cutAction.load-tools.message": "Put the requested pen or blade in the clamp, then press Continue.",
-    "cutAction.press-go.title": "Start when the machine is ready",
-    "cutAction.press-go.message": "Press Go on the Cricut, or continue when the machine is ready.",
-    "cutAction.replace-tool.title": "Change the tool",
-    "cutAction.replace-tool.message": "Put in the next tool, then press Continue here.",
-    "cutAction.running.title": "Cutting now",
-    "cutAction.running.message": "The Cricut is working. Keep hands clear and wait for the next prompt.",
-    "cutAction.error.title": "Something needs attention",
-    "cutAction.error.message": "Something went wrong. Stop here and try again.",
-    "cutAction.idle.title": "Waiting for SliceBug",
-    "cutAction.idle.message": "KindCut is listening for the next cutter step.",
-    "cutAction.idle.ready.title": "Ready when you are",
-    "cutAction.idle.ready.message": "KindCut will only start after you press Start cut.",
-    "cutAction.idle.waiting.title": "Waiting for the cutter",
-    "cutAction.idle.waiting.message": "KindCut is listening for the next cutter step.",
-    "cutAction.running.starting.title": "Starting SliceBug",
-    "cutAction.running.starting.message": "KindCut is waiting for the first cutter prompt.",
-    "cutAction.running.continuing.title": "Continuing",
-    "cutAction.running.continuing.message": "KindCut sent the continue step to SliceBug.",
-    "cutAction.running.refreshingHelper.title": "Refreshing helper setup",
-    "cutAction.running.refreshingHelper.message": "The cutter helper rejected the cut startup. KindCut is rerunning helper setup now.",
-    "cutAction.error.smokeBlocked.title": "Cut blocked in test mode",
-    "cutAction.error.smokeBlocked.message": "KindCut will not start a hardware cut while smoke mode is active.",
-    "cutAction.error.startFailed.message": "SliceBug could not start the cut session.",
-    "cutAction.error.processFailed.message": "SliceBug could not keep the cut session running.",
-    "cutAction.error.cutStopped.message": "SliceBug stopped before the cut finished.",
-    "cutAction.error.cancelled.title": "Cut cancelled",
-    "cutAction.error.cancelled.message": "KindCut closed SliceBug and cancelled the cut.",
-    "cutAction.error.blockingProcesses.title": "Close Design Space",
-    "cutAction.error.blockingProcesses.message": "Design Space or its cutter helper is still running and may be holding the Bluetooth connection. Close Design Space and try again.",
-    "cutAction.error.noDevice.message": "KindCut could not find the cutter. Make sure it is powered on, paired over Bluetooth with this Windows laptop, and not connected to another computer.",
-    "cutAction.error.connectionLost.message": "The cutter helper lost its connection. Close Design Space, confirm Bluetooth is connected to this laptop, then try again.",
-    "cutAction.error.deviceMismatch.message": "The connected cutter does not match the saved Design Space profile. Connect the configured cutter, or run helper setup again.",
-    "cutAction.error.multipleDevices.message": "More than one cutter appears to be connected. Leave only the cutter you want to use connected, then try again.",
-    "cutAction.error.helperProblem.message": "The cutter helper reported a problem. Check that Design Space is closed, Bluetooth is connected, and the cutter is awake, then try again.",
-    "cutAction.error.cutterProblem.message": "The cutter reported a problem. Stop here and try again.",
-    "cutAction.error.helperRefreshed.title": "Helper setup refreshed",
-    "cutAction.error.helperRefreshed.message": "KindCut refreshed the helper setup. Make sure Design Space is closed and Bluetooth is connected, then start the cut again.",
-    "cutAction.error.helperRefreshIncomplete.title": "Helper setup still needs attention",
-    "cutAction.error.helperRefreshIncomplete.message": "KindCut tried to refresh the helper setup, but it did not complete. Open the logs and try helper setup manually.",
-    "cutAction.error.helperRefreshFailed.title": "Helper setup still needs attention",
-    "cutAction.error.helperRefreshFailed.message": "KindCut tried to refresh the helper setup, but the repair attempt failed. Open the logs folder and try helper setup manually.",
+    'app.name': APP_NAME,
+    'language.label': 'Language',
+    'language.nl': 'Nederlands',
+    'language.en': 'English',
+    'welcome.eyebrow': 'Local craft helper',
+    'welcome.lede':
+      'Describe a card or simple Cricut Joy project, preview what will draw and cut, then save it on this computer for later.',
+    'welcome.newProject': 'New project',
+    'welcome.newProjectCopy': 'Start gently with a blank local design.',
+    'welcome.openProject': 'Open project',
+    'welcome.openProjectCopy': 'Continue with a project on this computer.',
+    'welcome.exampleProject': 'Example project',
+    'welcome.exampleProjectCopy': 'Jump into a simple birthday card preview.',
+    'workspace.eyebrow': 'Workspace',
+    'project.openPlaceholder':
+      'Opening saved projects belongs in the next workspace step. For now, choose an image or example to keep testing.',
+    'project.savePlaceholder':
+      'Saving projects belongs in the next workspace step. Cricut plans stay local during preparation for now.',
+    'project.openInDesktop': 'Open the desktop app to open KindCut projects.',
+    'project.saveInDesktop': 'Open the desktop app to save KindCut projects.',
+    'project.openEmpty': 'This project file is empty.',
+    'project.openError': 'KindCut could not open this project yet.',
+    'project.saveError': 'KindCut could not save this project yet.',
+    'project.opened': 'Project opened: {path}',
+    'project.saved': 'Project saved: {path}',
+    'project.savedToast': 'Saved!',
+    'unsaved.title': 'Save your changes?',
+    'unsaved.bodySaved':
+      "You've changed something since you last saved this project. Would you like to save it before continuing?",
+    'unsaved.bodyNever':
+      "This project has never been saved. If you continue without saving, you'll lose everything you've made.",
+    'unsaved.save': 'Save',
+    'unsaved.discard': "Don't save",
+    'unsaved.cancel': 'Cancel',
+    'buttons.backWelcome': 'Back to welcome',
+    'buttons.tryBirthdayCard': 'Try the birthday card',
+    'buttons.preparingPreview': 'Preparing preview...',
+    'buttons.checking': 'Checking...',
+    'buttons.checkSetupAgain': 'Check again',
+    'buttons.setupCricutHelper': 'Set up Cricut',
+    'buttons.settingUp': 'Setting up...',
+    'buttons.chooseSvg': 'Choose image',
+    'buttons.preparing': 'Preparing...',
+    'buttons.prepareHandoff': 'Prepare Cricut handoff',
+    'buttons.preparePreview': 'Prepare preview',
+    'buttons.starting': 'Starting...',
+    'buttons.startCut': 'Start cut',
+    'buttons.continue': 'Continue',
+    'buttons.stop': 'Stop',
+    'status.panelLabel': 'Cricut handoff',
+    'status.loadingTitle': 'Checking your cutter helper',
+    'status.loadingMessage':
+      'KindCut is making sure it can prepare projects for your Cricut later.',
+    'status.initialTitle': 'Getting your craft table ready',
+    'status.initialMessage': 'KindCut will check the helper it needs before you start.',
+    'status.readyTitle': 'Ready for Cricut projects',
+    'status.readyMessage':
+      'Everything KindCut needs is available. You can start with a simple card and save your work locally.',
+    'status.warningTitle': "Cutting doesn't work yet",
+    'status.warningMessage':
+      'You can still design and save. KindCut can\'t find its cutting program: click "Check again", and reinstall KindCut if that doesn\'t help.',
+    'status.bootstrapTitle': 'One-time setup before you can cut',
+    'status.bootstrapMessage':
+      'You can already design. To cut, KindCut fetches your Cricut\'s details from Cricut Design Space once. Click "Set up Cricut".',
+    'status.bootstrapLoadingTitle': 'Setting up the Cricut helper',
+    'status.bootstrapLoadingMessage':
+      'KindCut is importing the local Cricut Design Space profiles it needs. This may take a moment.',
+    'workflow.label': 'KindCut workflow',
+    'workflow.describe': 'Describe it',
+    'workflow.preview': 'Preview layers',
+    'workflow.save': 'Save locally',
+    'workflow.send': 'Send when ready',
+    'starter.panelLabel': 'Starter project',
+    'starter.sampleName': 'Dog birthday card',
+    'starter.description':
+      'A small card recipe with pen details and one simple cut border, sized for a beginner-friendly Cricut Joy practice run.',
+    'starter.machine': 'Machine',
+    'starter.mat': 'Mat',
+    'starter.material': 'Material',
+    'starter.choiceKicker':
+      'Adjust these choices before preparing a preview or starting a watched cut.',
+    'projectCheck.panelLabel': 'Project check',
+    'projectCheck.readyTitle': 'Looks ready to preview',
+    'projectCheck.warningTitle': 'Needs a quick look',
+    'projectCheck.readyMessage': 'The sample recipe has the basic size and layer checks it needs.',
+    'projectCheck.warningMessage': 'One part of the sample recipe needs attention.',
+    'import.panelLabel': 'Your design',
+    'import.title': 'Bring in an image file',
+    'import.description':
+      'Pick an image file from this computer. KindCut will show a gentle preview and a plain-English check before anything is prepared for a cutter.',
+    'import.empty':
+      'No image chosen yet. Start with a file you already have, then KindCut will show it here.',
+    'import.chooseSvgFile': 'Choose an image first, then KindCut can prepare it.',
+    'import.invalidSvg': 'Choose an SVG, PNG, or JPG file so KindCut can preview it.',
+    'import.openInShellPlan':
+      'Open this screen in the Electron desktop shell to prepare a Cricut handoff.',
+    'import.openError': 'KindCut could not open that file yet.',
+    'import.planError': 'KindCut could not prepare that image yet.',
+    'import.prepareNote':
+      'This makes a local plan only. Cutting starts later, after you press Start cut.',
+    'import.previewTitle': 'Preview of {fileName}',
+    'import.chosenFile': 'Chosen file',
+    'import.file': 'File',
+    'import.artwork': 'Artwork',
+    'import.readyTitle': 'This looks easy to start with',
+    'import.warningTitle': 'A few things may need a look',
+    'import.readyMessage': 'KindCut can read this image and show it in the preview.',
+    'details.advanced': 'Advanced details',
+    'details.svgCheck': 'SVG check details',
+    'details.rawSvg': 'Raw SVG',
+    'details.designPrompt': 'Design prompt details',
+    'details.handoffCommand': 'Handoff command details',
+    'details.cut': 'Cut details',
+    'details.plan': 'Plan details',
+    'practice.panelLabel': 'Practice preview',
+    'practice.title': 'Prepare the sample card',
+    'practice.description':
+      'This only prepares a preview file for the sample card with the material and mat you chose. It will not send anything to a Cricut machine.',
+    'practice.empty': 'Click "Try the birthday card" above to see a friendly layer summary here.',
+    'later.panelLabel': 'For later',
+    'later.title': 'Recipe notes are tucked away',
+    'later.description':
+      'Beginner screens stay simple, while the app still keeps the prompt and handoff notes available when someone needs to troubleshoot.',
+    'plan.readyTitle': 'Practice preview is ready',
+    'plan.warningTitle': 'The practice preview could not be prepared',
+    'plan.warningMessage':
+      'The sample project is still here. The Cricut handoff helper needs attention before KindCut can preview it.',
+    'validation.projectRecipeConsistent': 'Project recipe is internally consistent.',
+    'plan.importedPanelLabel': 'Imported image handoff',
+    'plan.readyToSendTitle': 'Ready to send when you are',
+    'plan.currentPlan': 'Current plan:',
+    'plan.layers': 'Layers',
+    'plan.tools': 'Tools',
+    'plan.noTools': 'No tools listed',
+    'plan.startCutNote':
+      'Only press this when the Cricut is nearby, plugged in, and you are ready to watch it.',
+    'cut.panelLabel': 'Watched Cricut step',
+    'cut.progressLabel': 'Cutting progress guide',
+    'cut.preparePlan': 'Prepare plan',
+    'cut.loadTool': 'Load tool',
+    'cut.loadMat': 'Load mat',
+    'cut.cutDraw': 'Cut/draw',
+    'cut.finish': 'Finish',
+    'cut.toolChange': 'swap tool',
+    'cut.startCutting': 'Start cutting',
+    'cut.load': 'Load',
+    'cut.startHint': 'Click Start cutting to begin.',
+    'cut.connecting': 'Connecting to cutter…',
+    'cut.working': 'Working…',
+    'cut.matLoaded': 'Mat loaded',
+    'cut.loadMatHint': 'Place the material on the mat and slide the mat into the machine.',
+    'cut.unloadMatHint': 'Press the machine button to eject the mat.',
+    'cut.connectHelpTitle': "Can't find your cutter",
+    'cut.connectHelpIntro': "Let's check that the machine is ready:",
+    'cut.checkPower': 'Is the cutter switched on?',
+    'cut.checkBluetooth': 'Is Bluetooth connected?',
+    'cut.connectHelpHint': 'As soon as it connects, cutting continues on its own.',
+    'cut.connectRetryHint':
+      'Switch the machine on, check Bluetooth, then press Start cutting again.',
+    'cut.unloadTitle': 'Unload the mat',
+    'cut.unloadHint': 'Press Unload to release the mat from the machine.',
+    'cut.unloadBtn': 'Unload',
+    'cut.doneTitle': 'All done!',
+    'cut.doneHint': 'Your project is ready. Gently peel it off the mat.',
+    'cut.stopWarnTitle': 'Stop the cut?',
+    'cut.stopWarnBody':
+      "The machine is in the middle of your project. If you stop now, this piece can't be finished and the material will likely be wasted.",
+    'cut.stopWarnConfirm': 'Yes, stop the cut',
+    'cut.stopWarnKeep': 'No, keep cutting',
+    'cut.stoppedTitle': 'Cut cancelled',
+    'cut.stoppedHint': 'The cutter has stopped. Press the Load/Unload button to release the mat.',
+    'cut.noMessages': 'No SliceBug messages yet.',
+    'choice.aria': 'Material and mat choices',
+    'choice.material': 'Material',
+    'choice.mat': 'Mat',
+    'size.unknown': 'Size is not listed in this file yet.',
+    'size.about': 'About {width} x {height} {unit}',
+    'size.artworkUnits': 'artwork units',
+    'svg.issue.notSvg':
+      'This does not look like an SVG file. Choose an .svg exported from your design app.',
+    'svg.issue.generic':
+      'KindCut could not read this SVG yet. Try exporting it again as a plain SVG.',
+    'svg.warning.effects':
+      'Some visual effects may not come through exactly when this becomes a cutter project.',
+    'svg.warning.text':
+      'It includes editable text. For best results, turn the words into shapes before cutting.',
+    'svg.warning.noPaths':
+      'KindCut sees artwork, but it may need shape outlines before cut lines can be prepared.',
+    'svg.warning.generic':
+      'This file may need a quick look before it is ready for a cutter project.',
+    'tool.fine_point_blade': 'Fine-point blade',
+    'tool.pen': 'Pen',
+    'colors.sectionTitle': 'Card colors',
+    'colors.paper': 'Paper color',
+    'colors.behind': 'Behind color',
+    'pens.sectionTitle': 'Pens',
+    'pens.add': 'Add pen',
+    'pens.remove': 'Remove pen',
+    'pens.fix': 'Fix',
+    'warn.penDuplicate': 'Two pens have the same color.',
+    'object.tool': 'Tool',
+    'warn.penOnPaper': "This pen is the same color as the paper — it won't show.",
+    'warn.penOnBehind': 'This pen is the same color as the behind color.',
+    'material.218.name': 'Light Cardstock',
+    'material.218.copy': 'Best first choice for simple cards and test cuts.',
+    'material.19.name': 'Medium Cardstock',
+    'material.19.copy': 'A sturdier card paper for everyday projects.',
+    'material.211.name': 'Heavy Cardstock',
+    'material.211.copy': 'Thicker paper that may need a fresher blade.',
+    'material.535.name': 'Insert Card',
+    'material.535.copy': 'Use this for Cricut Joy insert card blanks.',
+    'material.20.name': 'Vinyl',
+    'material.20.copy': 'Use this for a simple adhesive vinyl design.',
+    'mat.joy-standard.name': 'Joy standard mat',
+    'mat.joy-standard.copy': 'The everyday Joy mat for most small projects.',
+    'mat.joy-standard-short.name': 'Joy short mat',
+    'mat.joy-standard-short.copy': 'Good for small scraps and tiny designs.',
+    'mat.joy-card.name': 'Joy card mat',
+    'mat.joy-card.copy': 'Best for insert cards and folded card blanks.',
+    'cutAction.finished.title': 'Cut is finished',
+    'cutAction.finished.message': 'Unload the mat when the machine is quiet.',
+    'cutAction.load-mat.title': 'Load the mat',
+    'cutAction.load-mat.message':
+      'Place the material on the mat and load it into the Cricut, then press Continue.',
+    'cutAction.load-tools.title': 'Load the tool',
+    'cutAction.load-tools.message':
+      'Put the requested pen or blade in the clamp, then press Continue.',
+    'cutAction.press-go.title': 'Start when the machine is ready',
+    'cutAction.press-go.message': 'Press Go on the Cricut, or continue when the machine is ready.',
+    'cutAction.replace-tool.title': 'Change the tool',
+    'cutAction.replace-tool.message': 'Put in the next tool, then press Continue here.',
+    'cutAction.running.title': 'Cutting now',
+    'cutAction.running.message':
+      'The Cricut is working. Keep hands clear and wait for the next prompt.',
+    'cutAction.error.title': 'Something needs attention',
+    'cutAction.error.message': 'Something went wrong. Stop here and try again.',
+    'cutAction.idle.title': 'Waiting for SliceBug',
+    'cutAction.idle.message': 'KindCut is listening for the next cutter step.',
+    'cutAction.idle.ready.title': 'Ready when you are',
+    'cutAction.idle.ready.message': 'KindCut will only start after you press Start cut.',
+    'cutAction.idle.waiting.title': 'Waiting for the cutter',
+    'cutAction.idle.waiting.message': 'KindCut is listening for the next cutter step.',
+    'cutAction.running.starting.title': 'Starting SliceBug',
+    'cutAction.running.starting.message': 'KindCut is waiting for the first cutter prompt.',
+    'cutAction.running.continuing.title': 'Continuing',
+    'cutAction.running.continuing.message': 'KindCut sent the continue step to SliceBug.',
+    'cutAction.running.refreshingHelper.title': 'Refreshing helper setup',
+    'cutAction.running.refreshingHelper.message':
+      'The cutter helper rejected the cut startup. KindCut is rerunning helper setup now.',
+    'cutAction.error.smokeBlocked.title': 'Cut blocked in test mode',
+    'cutAction.error.smokeBlocked.message':
+      'KindCut will not start a hardware cut while smoke mode is active.',
+    'cutAction.error.startFailed.message': 'SliceBug could not start the cut session.',
+    'cutAction.error.processFailed.message': 'SliceBug could not keep the cut session running.',
+    'cutAction.error.cutStopped.message': 'SliceBug stopped before the cut finished.',
+    'cutAction.error.cancelled.title': 'Cut cancelled',
+    'cutAction.error.cancelled.message': 'KindCut closed SliceBug and cancelled the cut.',
+    'cutAction.error.blockingProcesses.title': 'Close Design Space',
+    'cutAction.error.blockingProcesses.message':
+      'Design Space or its cutter helper is still running and may be holding the Bluetooth connection. Close Design Space and try again.',
+    'cutAction.error.noDevice.message':
+      'KindCut could not find the cutter. Make sure it is powered on, paired over Bluetooth with this Windows laptop, and not connected to another computer.',
+    'cutAction.error.connectionLost.message':
+      'The cutter helper lost its connection. Close Design Space, confirm Bluetooth is connected to this laptop, then try again.',
+    'cutAction.error.deviceMismatch.message':
+      'The connected cutter does not match the saved Design Space profile. Connect the configured cutter, or run helper setup again.',
+    'cutAction.error.multipleDevices.message':
+      'More than one cutter appears to be connected. Leave only the cutter you want to use connected, then try again.',
+    'cutAction.error.helperProblem.message':
+      'The cutter helper reported a problem. Check that Design Space is closed, Bluetooth is connected, and the cutter is awake, then try again.',
+    'cutAction.error.cutterProblem.message':
+      'The cutter reported a problem. Stop here and try again.',
+    'cutAction.error.helperRefreshed.title': 'Helper setup refreshed',
+    'cutAction.error.helperRefreshed.message':
+      'KindCut refreshed the helper setup. Make sure Design Space is closed and Bluetooth is connected, then start the cut again.',
+    'cutAction.error.helperRefreshIncomplete.title': 'Helper setup still needs attention',
+    'cutAction.error.helperRefreshIncomplete.message':
+      'KindCut tried to refresh the helper setup, but it did not complete. Open the logs and try helper setup manually.',
+    'cutAction.error.helperRefreshFailed.title': 'Helper setup still needs attention',
+    'cutAction.error.helperRefreshFailed.message':
+      'KindCut tried to refresh the helper setup, but the repair attempt failed. Open the logs folder and try helper setup manually.',
   },
 } as const;
 
@@ -530,92 +601,146 @@ export function getTranslatedCutActionCopy(
   const { t } = createTranslator(language);
 
   switch (action.code) {
-    case "idle.ready":
-      return { title: t("cutAction.idle.ready.title"), message: t("cutAction.idle.ready.message") };
-    case "idle.waiting":
-      return { title: t("cutAction.idle.waiting.title"), message: t("cutAction.idle.waiting.message") };
-    case "running.starting":
-      return { title: t("cutAction.running.starting.title"), message: t("cutAction.running.starting.message") };
-    case "running.continuing":
-      return { title: t("cutAction.running.continuing.title"), message: t("cutAction.running.continuing.message") };
-    case "running.refreshingHelper":
+    case 'idle.ready':
+      return { title: t('cutAction.idle.ready.title'), message: t('cutAction.idle.ready.message') };
+    case 'idle.waiting':
       return {
-        title: t("cutAction.running.refreshingHelper.title"),
-        message: t("cutAction.running.refreshingHelper.message"),
+        title: t('cutAction.idle.waiting.title'),
+        message: t('cutAction.idle.waiting.message'),
       };
-    case "running.working":
-      return { title: t("cutAction.running.title"), message: t("cutAction.running.message") };
-    case "finished.done":
-      return { title: t("cutAction.finished.title"), message: t("cutAction.finished.message") };
-    case "cut.loadMat":
-      return { title: t("cutAction.load-mat.title"), message: t("cutAction.load-mat.message") };
-    case "cut.loadTools":
-    case "cut.pressGo":
-      return { title: t("cutAction.load-tools.title"), message: t("cutAction.load-tools.message") };
-    case "cut.replaceTool":
-      return { title: t("cutAction.replace-tool.title"), message: t("cutAction.replace-tool.message") };
-    case "cut.unload":
-      return { title: t("cut.unloadTitle"), message: t("cut.unloadHint") };
-    case "cut.readyNext":
-      return { title: t("cutAction.press-go.title"), message: t("cutAction.press-go.message") };
-    case "error.smokeBlocked":
-      return { title: t("cutAction.error.smokeBlocked.title"), message: t("cutAction.error.smokeBlocked.message") };
-    case "error.cancelled":
-      return { title: t("cutAction.error.cancelled.title"), message: t("cutAction.error.cancelled.message") };
-    case "error.blockingProcesses":
+    case 'running.starting':
       return {
-        title: t("cutAction.error.blockingProcesses.title"),
-        message: t("cutAction.error.blockingProcesses.message"),
+        title: t('cutAction.running.starting.title'),
+        message: t('cutAction.running.starting.message'),
       };
-    case "error.helperRefreshed":
-      return { title: t("cutAction.error.helperRefreshed.title"), message: t("cutAction.error.helperRefreshed.message") };
-    case "error.helperRefreshIncomplete":
+    case 'running.continuing':
       return {
-        title: t("cutAction.error.helperRefreshIncomplete.title"),
-        message: t("cutAction.error.helperRefreshIncomplete.message"),
+        title: t('cutAction.running.continuing.title'),
+        message: t('cutAction.running.continuing.message'),
       };
-    case "error.helperRefreshFailed":
+    case 'running.refreshingHelper':
       return {
-        title: t("cutAction.error.helperRefreshFailed.title"),
-        message: t("cutAction.error.helperRefreshFailed.message"),
+        title: t('cutAction.running.refreshingHelper.title'),
+        message: t('cutAction.running.refreshingHelper.message'),
       };
-    case "error.startFailed":
-      return { title: t("cutAction.error.title"), message: t("cutAction.error.startFailed.message") };
-    case "error.processFailed":
-      return { title: t("cutAction.error.title"), message: t("cutAction.error.processFailed.message") };
-    case "error.cutStopped":
-      return { title: t("cutAction.error.title"), message: t("cutAction.error.cutStopped.message") };
-    case "error.noDevice":
-      return { title: t("cutAction.error.title"), message: t("cutAction.error.noDevice.message") };
-    case "error.connectionLost":
-      return { title: t("cutAction.error.title"), message: t("cutAction.error.connectionLost.message") };
-    case "error.deviceMismatch":
-      return { title: t("cutAction.error.title"), message: t("cutAction.error.deviceMismatch.message") };
-    case "error.multipleDevices":
-      return { title: t("cutAction.error.title"), message: t("cutAction.error.multipleDevices.message") };
-    case "error.helperProblem":
-      return { title: t("cutAction.error.title"), message: t("cutAction.error.helperProblem.message") };
-    case "error.cutterProblem":
-      return { title: t("cutAction.error.title"), message: t("cutAction.error.cutterProblem.message") };
+    case 'running.working':
+      return { title: t('cutAction.running.title'), message: t('cutAction.running.message') };
+    case 'finished.done':
+      return { title: t('cutAction.finished.title'), message: t('cutAction.finished.message') };
+    case 'cut.loadMat':
+      return { title: t('cutAction.load-mat.title'), message: t('cutAction.load-mat.message') };
+    case 'cut.loadTools':
+    case 'cut.pressGo':
+      return { title: t('cutAction.load-tools.title'), message: t('cutAction.load-tools.message') };
+    case 'cut.replaceTool':
+      return {
+        title: t('cutAction.replace-tool.title'),
+        message: t('cutAction.replace-tool.message'),
+      };
+    case 'cut.unload':
+      return { title: t('cut.unloadTitle'), message: t('cut.unloadHint') };
+    case 'cut.readyNext':
+      return { title: t('cutAction.press-go.title'), message: t('cutAction.press-go.message') };
+    case 'error.smokeBlocked':
+      return {
+        title: t('cutAction.error.smokeBlocked.title'),
+        message: t('cutAction.error.smokeBlocked.message'),
+      };
+    case 'error.cancelled':
+      return {
+        title: t('cutAction.error.cancelled.title'),
+        message: t('cutAction.error.cancelled.message'),
+      };
+    case 'error.blockingProcesses':
+      return {
+        title: t('cutAction.error.blockingProcesses.title'),
+        message: t('cutAction.error.blockingProcesses.message'),
+      };
+    case 'error.helperRefreshed':
+      return {
+        title: t('cutAction.error.helperRefreshed.title'),
+        message: t('cutAction.error.helperRefreshed.message'),
+      };
+    case 'error.helperRefreshIncomplete':
+      return {
+        title: t('cutAction.error.helperRefreshIncomplete.title'),
+        message: t('cutAction.error.helperRefreshIncomplete.message'),
+      };
+    case 'error.helperRefreshFailed':
+      return {
+        title: t('cutAction.error.helperRefreshFailed.title'),
+        message: t('cutAction.error.helperRefreshFailed.message'),
+      };
+    case 'error.startFailed':
+      return {
+        title: t('cutAction.error.title'),
+        message: t('cutAction.error.startFailed.message'),
+      };
+    case 'error.processFailed':
+      return {
+        title: t('cutAction.error.title'),
+        message: t('cutAction.error.processFailed.message'),
+      };
+    case 'error.cutStopped':
+      return {
+        title: t('cutAction.error.title'),
+        message: t('cutAction.error.cutStopped.message'),
+      };
+    case 'error.noDevice':
+      return { title: t('cutAction.error.title'), message: t('cutAction.error.noDevice.message') };
+    case 'error.connectionLost':
+      return {
+        title: t('cutAction.error.title'),
+        message: t('cutAction.error.connectionLost.message'),
+      };
+    case 'error.deviceMismatch':
+      return {
+        title: t('cutAction.error.title'),
+        message: t('cutAction.error.deviceMismatch.message'),
+      };
+    case 'error.multipleDevices':
+      return {
+        title: t('cutAction.error.title'),
+        message: t('cutAction.error.multipleDevices.message'),
+      };
+    case 'error.helperProblem':
+      return {
+        title: t('cutAction.error.title'),
+        message: t('cutAction.error.helperProblem.message'),
+      };
+    case 'error.cutterProblem':
+      return {
+        title: t('cutAction.error.title'),
+        message: t('cutAction.error.cutterProblem.message'),
+      };
   }
 
   switch (action.kind) {
-    case "finished":
-      return { title: t("cutAction.finished.title"), message: t("cutAction.finished.message") };
-    case "load-mat":
-      return { title: t("cutAction.load-mat.title"), message: t("cutAction.load-mat.message") };
-    case "load-tools":
-      return { title: t("cutAction.load-tools.title"), message: t("cutAction.load-tools.message") };
-    case "press-go":
-      return { title: t("cutAction.press-go.title"), message: t("cutAction.press-go.message") };
-    case "replace-tool":
-      return { title: t("cutAction.replace-tool.title"), message: t("cutAction.replace-tool.message") };
-    case "running":
-      return { title: action.title || t("cutAction.running.title"), message: action.message || t("cutAction.running.message") };
-    case "error":
-      return { title: action.title || t("cutAction.error.title"), message: action.message || t("cutAction.error.message") };
+    case 'finished':
+      return { title: t('cutAction.finished.title'), message: t('cutAction.finished.message') };
+    case 'load-mat':
+      return { title: t('cutAction.load-mat.title'), message: t('cutAction.load-mat.message') };
+    case 'load-tools':
+      return { title: t('cutAction.load-tools.title'), message: t('cutAction.load-tools.message') };
+    case 'press-go':
+      return { title: t('cutAction.press-go.title'), message: t('cutAction.press-go.message') };
+    case 'replace-tool':
+      return {
+        title: t('cutAction.replace-tool.title'),
+        message: t('cutAction.replace-tool.message'),
+      };
+    case 'running':
+      return {
+        title: action.title || t('cutAction.running.title'),
+        message: action.message || t('cutAction.running.message'),
+      };
+    case 'error':
+      return {
+        title: action.title || t('cutAction.error.title'),
+        message: action.message || t('cutAction.error.message'),
+      };
     default:
-      return { title: t("cutAction.idle.title"), message: t("cutAction.idle.message") };
+      return { title: t('cutAction.idle.title'), message: t('cutAction.idle.message') };
   }
 }
 
@@ -630,7 +755,9 @@ export function createTranslator(language: Language = DEFAULT_LANGUAGE): Transla
   };
 }
 
-export function loadLanguagePreference(storage: Pick<Storage, "getItem"> | undefined = globalThis.localStorage): Language {
+export function loadLanguagePreference(
+  storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage,
+): Language {
   try {
     const savedLanguage = storage?.getItem(LANGUAGE_STORAGE_KEY) ?? null;
     return isLanguage(savedLanguage) ? savedLanguage : DEFAULT_LANGUAGE;
@@ -640,7 +767,7 @@ export function loadLanguagePreference(storage: Pick<Storage, "getItem"> | undef
 }
 
 export function saveLanguagePreference(
-  storage: Pick<Storage, "setItem"> | undefined = globalThis.localStorage,
+  storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage,
   language: Language,
 ): void {
   try {
@@ -654,15 +781,15 @@ export function getMaterialName(materialId: number, language: Language): string 
   const { t } = createTranslator(language);
   switch (materialId) {
     case 218:
-      return t("material.218.name");
+      return t('material.218.name');
     case 19:
-      return t("material.19.name");
+      return t('material.19.name');
     case 211:
-      return t("material.211.name");
+      return t('material.211.name');
     case 535:
-      return t("material.535.name");
+      return t('material.535.name');
     case 20:
-      return t("material.20.name");
+      return t('material.20.name');
     default:
       return null;
   }
@@ -672,15 +799,15 @@ export function getMaterialBeginnerCopy(materialId: number, language: Language):
   const { t } = createTranslator(language);
   switch (materialId) {
     case 218:
-      return t("material.218.copy");
+      return t('material.218.copy');
     case 19:
-      return t("material.19.copy");
+      return t('material.19.copy');
     case 211:
-      return t("material.211.copy");
+      return t('material.211.copy');
     case 535:
-      return t("material.535.copy");
+      return t('material.535.copy');
     case 20:
-      return t("material.20.copy");
+      return t('material.20.copy');
     default:
       return null;
   }
@@ -689,12 +816,12 @@ export function getMaterialBeginnerCopy(materialId: number, language: Language):
 export function getMatName(matId: string, language: Language): string | null {
   const { t } = createTranslator(language);
   switch (matId) {
-    case "joy-standard":
-      return t("mat.joy-standard.name");
-    case "joy-standard-short":
-      return t("mat.joy-standard-short.name");
-    case "joy-card":
-      return t("mat.joy-card.name");
+    case 'joy-standard':
+      return t('mat.joy-standard.name');
+    case 'joy-standard-short':
+      return t('mat.joy-standard-short.name');
+    case 'joy-card':
+      return t('mat.joy-card.name');
     default:
       return null;
   }
@@ -703,12 +830,12 @@ export function getMatName(matId: string, language: Language): string | null {
 export function getMatBeginnerCopy(matId: string, language: Language): string | null {
   const { t } = createTranslator(language);
   switch (matId) {
-    case "joy-standard":
-      return t("mat.joy-standard.copy");
-    case "joy-standard-short":
-      return t("mat.joy-standard-short.copy");
-    case "joy-card":
-      return t("mat.joy-card.copy");
+    case 'joy-standard':
+      return t('mat.joy-standard.copy');
+    case 'joy-standard-short':
+      return t('mat.joy-standard-short.copy');
+    case 'joy-card':
+      return t('mat.joy-card.copy');
     default:
       return null;
   }
@@ -717,7 +844,7 @@ export function getMatBeginnerCopy(matId: string, language: Language): string | 
 export function translateValidationMessage(message: string, language: Language): string {
   const { t } = createTranslator(language);
   if (/Project recipe is internally consistent/i.test(message)) {
-    return t("validation.projectRecipeConsistent");
+    return t('validation.projectRecipeConsistent');
   }
   return message;
 }

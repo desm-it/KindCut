@@ -1,7 +1,7 @@
-const fs = require("node:fs");
-const path = require("node:path");
+const fs = require('node:fs');
+const path = require('node:path');
 
-const releaseDir = path.resolve(__dirname, "..", "release");
+const releaseDir = path.resolve(__dirname, '..', 'release');
 
 function readReleaseFiles() {
   if (!fs.existsSync(releaseDir)) {
@@ -15,7 +15,7 @@ function extractReferencedAssets(ymlText) {
   for (const line of ymlText.split(/\r?\n/)) {
     const match = line.match(/^\s*(?:-\s*)?(?:url|path):\s*(.+?)\s*$/);
     if (!match) continue;
-    const value = match[1].replace(/^['"]|['"]$/g, "");
+    const value = match[1].replace(/^['"]|['"]$/g, '');
     if (/^https?:\/\//i.test(value)) continue;
     assets.push(path.basename(value));
   }
@@ -23,7 +23,9 @@ function extractReferencedAssets(ymlText) {
 }
 
 const releaseFiles = readReleaseFiles();
-const metadataFiles = ["latest.yml", "latest-mac.yml"].filter((fileName) => releaseFiles.has(fileName));
+const metadataFiles = ['latest.yml', 'latest-mac.yml'].filter((fileName) =>
+  releaseFiles.has(fileName),
+);
 
 if (metadataFiles.length === 0) {
   throw new Error(`No latest.yml or latest-mac.yml found in ${releaseDir}`);
@@ -33,7 +35,7 @@ const missing = [];
 
 for (const metadataFile of metadataFiles) {
   const metadataPath = path.join(releaseDir, metadataFile);
-  const referencedAssets = extractReferencedAssets(fs.readFileSync(metadataPath, "utf8"));
+  const referencedAssets = extractReferencedAssets(fs.readFileSync(metadataPath, 'utf8'));
 
   for (const asset of referencedAssets) {
     if (!releaseFiles.has(asset)) {
@@ -43,7 +45,7 @@ for (const metadataFile of metadataFiles) {
 }
 
 if (missing.length > 0) {
-  throw new Error(`Release metadata references missing assets:\n${missing.join("\n")}`);
+  throw new Error(`Release metadata references missing assets:\n${missing.join('\n')}`);
 }
 
 console.log(`Verified release metadata assets in ${releaseDir}`);

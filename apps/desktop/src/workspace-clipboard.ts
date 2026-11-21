@@ -1,11 +1,11 @@
-import type { WorkspaceItemTransform } from "./workspace-utils";
-import type { WorkspaceShapeKind } from "./workspace-shapes";
-import type { WorkspaceObject, WorkspacePathData, WorkspaceTextContent } from "./workspace-objects";
+import type { WorkspaceItemTransform } from './workspace-utils';
+import type { WorkspaceShapeKind } from './workspace-shapes';
+import type { WorkspaceObject, WorkspacePathData, WorkspaceTextContent } from './workspace-objects';
 
 export type WorkspaceClipboardSvgItem = {
-  type: "path" | "group";
-  kind?: "image" | "shape" | "text";
-  sourceKind?: "image" | "shape" | "text";
+  type: 'path' | 'group';
+  kind?: 'image' | 'shape' | 'text';
+  sourceKind?: 'image' | 'shape' | 'text';
   shapeKind?: WorkspaceShapeKind;
   fileName: string;
   fileSize: string;
@@ -13,12 +13,12 @@ export type WorkspaceClipboardSvgItem = {
   paths: WorkspacePathData[];
   transform: WorkspaceItemTransform;
   textContent?: WorkspaceTextContent;
-  penFill?: WorkspaceObject["penFill"];
-  spotify?: WorkspaceObject["spotify"];
-  dotPrint?: WorkspaceObject["dotPrint"];
+  penFill?: WorkspaceObject['penFill'];
+  spotify?: WorkspaceObject['spotify'];
+  dotPrint?: WorkspaceObject['dotPrint'];
   cornerRadius?: number;
-  dashed?: WorkspaceObject["dashed"];
-  outline?: WorkspaceObject["outline"];
+  dashed?: WorkspaceObject['dashed'];
+  outline?: WorkspaceObject['outline'];
   hollow?: boolean;
 };
 
@@ -66,14 +66,17 @@ export function createPastedWorkspaceSvgInputs(input: {
   const offset = input.offset ?? 24;
   return input.items.map((item, itemIndex) => ({
     ...item,
-    kind: item.kind ?? "image",
-    sourceKind: item.sourceKind ?? item.kind ?? "image",
+    kind: item.kind ?? 'image',
+    sourceKind: item.sourceKind ?? item.kind ?? 'image',
     shapeKind: item.shapeKind,
     id: `object-${input.timestamp}-paste-${input.startIndex + itemIndex}`,
     index: input.startIndex + itemIndex,
     frame: { ...item.frame },
     textContent: item.textContent ? { ...item.textContent } : undefined,
-    paths: item.paths.map((path, pathIndex) => ({ ...path, id: `${path.id}-copy-${input.timestamp}-${pathIndex}` })),
+    paths: item.paths.map((path, pathIndex) => ({
+      ...path,
+      id: `${path.id}-copy-${input.timestamp}-${pathIndex}`,
+    })),
     transform: {
       ...item.transform,
       x: item.transform.x + offset,

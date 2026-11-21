@@ -1,0 +1,269 @@
+{
+  "accepted": [
+    {
+      "op": "job",
+      "action": "start",
+      "timeout": 30,
+      "jobTimeout": 60,
+      "motionApproved": true,
+      "bladeRemovedConfirmed": true,
+      "programDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pressureRequests": [180],
+      "plan": {},
+      "settings": {
+        "tool": "pen"
+      },
+      "pressureResponsesHex": []
+    },
+    {
+      "op": "job",
+      "action": "next",
+      "operationId": 1,
+      "jobTimeout": 60,
+      "programDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "pressureRequests": [180],
+      "plan": {},
+      "settings": {
+        "tool": "pen"
+      },
+      "pressureResponsesHex": []
+    },
+    {
+      "op": "job",
+      "action": "start",
+      "timeout": 30,
+      "jobTimeout": 60,
+      "motionApproved": true,
+      "bladeRemovedConfirmed": true,
+      "programDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pressureRequests": [180],
+      "plan": {},
+      "settings": {
+        "tool": "fine_point_blade"
+      },
+      "pressureResponsesHex": [],
+      "bladeJob": "fixture-general-v1"
+    },
+    {
+      "op": "job",
+      "action": "status"
+    },
+    {
+      "op": "job",
+      "action": "go",
+      "operationId": 1,
+      "toolConfirmed": true
+    },
+    {
+      "op": "job",
+      "action": "go",
+      "operationId": 1,
+      "toolConfirmed": true,
+      "bladeInstalledConfirmed": true
+    },
+    {
+      "op": "job",
+      "action": "cancel",
+      "operationId": 1
+    },
+    {
+      "op": "job",
+      "action": "pause",
+      "operationId": 1
+    },
+    {
+      "op": "job",
+      "action": "resume",
+      "operationId": 1,
+      "resumeApproved": true
+    },
+    {
+      "op": "job",
+      "action": "end",
+      "operationId": 1,
+      "endApproved": true
+    }
+  ],
+  "rejected": [
+    {
+      "op": "job",
+      "action": "start",
+      "timeout": 30,
+      "jobTimeout": 60,
+      "motionApproved": true,
+      "bladeRemovedConfirmed": true,
+      "programDigest": "bad",
+      "pressureRequests": [1],
+      "plan": {},
+      "settings": {
+        "tool": "pen"
+      }
+    },
+    {
+      "op": "job",
+      "action": "start",
+      "timeout": 30,
+      "jobTimeout": 60,
+      "motionApproved": true,
+      "bladeRemovedConfirmed": true,
+      "programDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pressureRequests": [1],
+      "plan": {},
+      "settings": {
+        "tool": "pen"
+      },
+      "extra": true
+    },
+    {
+      "op": "job",
+      "action": "start",
+      "timeout": 30,
+      "jobTimeout": 60,
+      "motionApproved": true,
+      "bladeRemovedConfirmed": true,
+      "programDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pressureRequests": [180],
+      "plan": {},
+      "settings": {
+        "tool": "fine_point_blade"
+      },
+      "pressureResponsesHex": []
+    },
+    {
+      "op": "job",
+      "action": "start",
+      "timeout": 30,
+      "jobTimeout": 60,
+      "motionApproved": true,
+      "bladeRemovedConfirmed": true,
+      "programDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pressureRequests": [180],
+      "plan": {},
+      "settings": {
+        "tool": "pen"
+      },
+      "pressureResponsesHex": [],
+      "bladeJob": "g",
+      "bladeTrial": "t"
+    },
+    {
+      "op": "job",
+      "action": "start",
+      "timeout": 30,
+      "jobTimeout": 60,
+      "motionApproved": true,
+      "bladeRemovedConfirmed": true,
+      "programDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pressureRequests": [180],
+      "plan": {},
+      "settings": {
+        "tool": "fine_point_blade"
+      },
+      "pressureResponsesHex": [],
+      "bladeJob": 1
+    },
+    {
+      "op": "job",
+      "action": "next",
+      "operationId": -1,
+      "jobTimeout": 60,
+      "programDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "pressureRequests": [180],
+      "plan": {},
+      "settings": {
+        "tool": "pen"
+      },
+      "pressureResponsesHex": []
+    },
+    {
+      "op": "job",
+      "action": "next",
+      "operationId": true,
+      "jobTimeout": 60,
+      "programDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "pressureRequests": [180],
+      "plan": {},
+      "settings": {
+        "tool": "pen"
+      },
+      "pressureResponsesHex": []
+    },
+    {
+      "op": "job",
+      "action": "go",
+      "operationId": 1,
+      "toolConfirmed": 1
+    },
+    {
+      "op": "job",
+      "action": "end",
+      "operationId": 1,
+      "endApproved": false
+    },
+    {
+      "op": "job",
+      "action": "status",
+      "extra": true
+    },
+    {
+      "op": "job",
+      "action": "start",
+      "timeout": 30,
+      "jobTimeout": 60,
+      "motionApproved": true,
+      "bladeRemovedConfirmed": true,
+      "programDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pressureRequests": [180],
+      "plan": {},
+      "settings": {
+        "tool": "pen"
+      },
+      "pressureResponsesHex": "not-an-array"
+    },
+    {
+      "op": "job",
+      "action": "start",
+      "timeout": 30,
+      "jobTimeout": 60,
+      "motionApproved": true,
+      "bladeRemovedConfirmed": true,
+      "programDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pressureRequests": [180],
+      "plan": {},
+      "settings": {
+        "tool": "pen"
+      },
+      "pressureResponsesHex": [42]
+    },
+    {
+      "op": "job",
+      "action": "start",
+      "timeout": 30,
+      "jobTimeout": 60,
+      "motionApproved": true,
+      "bladeRemovedConfirmed": true,
+      "programDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pressureRequests": ["180"],
+      "plan": {},
+      "settings": {
+        "tool": "pen"
+      },
+      "pressureResponsesHex": []
+    },
+    {
+      "op": "job",
+      "action": "start",
+      "timeout": 30,
+      "jobTimeout": 60,
+      "motionApproved": true,
+      "bladeRemovedConfirmed": true,
+      "programDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pressureRequests": [0],
+      "plan": {},
+      "settings": {
+        "tool": "pen"
+      },
+      "pressureResponsesHex": []
+    }
+  ]
+}

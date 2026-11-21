@@ -6,9 +6,9 @@
 // turned to a classic printing screen angle so the colours don't line up in
 // bands, and error diffusion (Floyd–Steinberg) decides which grid cells get a dot.
 
-import type { Point } from "./svg-path-geometry";
+import type { Point } from './svg-path-geometry';
 
-export const DOT_STYLES = ["tap", "dash", "circle"] as const;
+export const DOT_STYLES = ['tap', 'dash', 'circle'] as const;
 /**
  * How the pen makes one dot:
  * - tap: pen down and straight up again (a zero-length stroke)
@@ -24,25 +24,42 @@ export const CIRCLE_DOT_RADIUS_MM = 0.15;
 export function dotInkAreaMm2(style: DotStyle, tipMm: number): number {
   const disc = (diameter: number) => (Math.PI * diameter * diameter) / 4;
   switch (style) {
-    case "tap":
+    case 'tap':
       return disc(tipMm);
-    case "dash":
+    case 'dash':
       return disc(tipMm) + DASH_LENGTH_MM * tipMm;
-    case "circle":
+    case 'circle':
       return disc(tipMm + 2 * CIRCLE_DOT_RADIUS_MM);
   }
 }
 
 /** The pen moves for one dot centred on (x, y); `unitsPerMm` scales the fixed dash and circle sizes. */
-export function dotStroke(x: number, y: number, style: DotStyle, unitsPerMm: number): { points: Point[]; closed: boolean } {
+export function dotStroke(
+  x: number,
+  y: number,
+  style: DotStyle,
+  unitsPerMm: number,
+): { points: Point[]; closed: boolean } {
   switch (style) {
-    case "tap":
-      return { points: [{ x, y }, { x, y }], closed: false };
-    case "dash": {
+    case 'tap':
+      return {
+        points: [
+          { x, y },
+          { x, y },
+        ],
+        closed: false,
+      };
+    case 'dash': {
       const half = (DASH_LENGTH_MM * unitsPerMm) / 2;
-      return { points: [{ x: x - half, y }, { x: x + half, y }], closed: false };
+      return {
+        points: [
+          { x: x - half, y },
+          { x: x + half, y },
+        ],
+        closed: false,
+      };
     }
-    case "circle": {
+    case 'circle': {
       const r = CIRCLE_DOT_RADIUS_MM * unitsPerMm;
       const steps = 8;
       const points = Array.from({ length: steps }, (_, step) => {
@@ -58,16 +75,19 @@ export function dotStroke(x: number, y: number, style: DotStyle, unitsPerMm: num
 export function dotPathData(x: number, y: number, style: DotStyle, unitsPerMm: number): string {
   const f = (value: number) => String(Math.round(value * 1000) / 1000);
   const { points, closed } = dotStroke(x, y, style, unitsPerMm);
-  return points.map((point, index) => `${index === 0 ? "M" : "L"}${f(point.x)} ${f(point.y)}`).join("") + (closed ? "Z" : "");
+  return (
+    points.map((point, index) => `${index === 0 ? 'M' : 'L'}${f(point.x)} ${f(point.y)}`).join('') +
+    (closed ? 'Z' : '')
+  );
 }
 
-export function normalizeDotStyle(value: unknown, fallback: DotStyle = "tap"): DotStyle {
+export function normalizeDotStyle(value: unknown, fallback: DotStyle = 'tap'): DotStyle {
   return DOT_STYLES.includes(value as DotStyle) ? (value as DotStyle) : fallback;
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
-export const INK_CHANNELS = ["y", "c", "m", "k"] as const;
+export const INK_CHANNELS = ['y', 'c', 'm', 'k'] as const;
 /** Inks in drawing order: light to dark, so dark pens don't drag through fresh light ink as much. */
 export type InkChannel = (typeof INK_CHANNELS)[number];
 
@@ -75,10 +95,10 @@ export type InkChannel = (typeof INK_CHANNELS)[number];
 const SCREEN_ANGLES: Record<InkChannel, number> = { y: 0, c: 15, m: 75, k: 45 };
 
 export const DEFAULT_INK_PEN_COLORS: Record<InkChannel, string> = {
-  c: "#00aeef",
-  m: "#ec008c",
-  y: "#ffd400",
-  k: "#000000",
+  c: '#00aeef',
+  m: '#ec008c',
+  y: '#ffd400',
+  k: '#000000',
 };
 
 export type DotPrintSettings = {
@@ -90,7 +110,7 @@ export type DotPrintSettings = {
   tipWidthMm: number;
   /** Width of the black pen tip (mm); black markers are often thicker. */
   blackTipWidthMm: number;
-  colorMode: "cmyk" | "black";
+  colorMode: 'cmyk' | 'black';
   dotStyle: DotStyle;
   /** -100…100 */
   brightness: number;
@@ -120,8 +140,8 @@ export const DEFAULT_DOT_PRINT: DotPrintSettings = {
   blackSpacingMm: 1,
   tipWidthMm: 1,
   blackTipWidthMm: 1,
-  colorMode: "cmyk",
-  dotStyle: "tap",
+  colorMode: 'cmyk',
+  dotStyle: 'tap',
   brightness: 0,
   contrast: 0,
   pens: { ...DEFAULT_INK_PEN_COLORS },
@@ -130,28 +150,47 @@ export const DEFAULT_DOT_PRINT: DotPrintSettings = {
   disabledInks: [],
 };
 
-function clampNumber(value: unknown, limits: { min: number; max: number }, fallback: number): number {
+function clampNumber(
+  value: unknown,
+  limits: { min: number; max: number },
+  fallback: number,
+): number {
   const number = Number(value);
   return Number.isFinite(number) ? Math.min(limits.max, Math.max(limits.min, number)) : fallback;
 }
 
 /** Accepts anything (e.g. from a project file) and returns valid settings, or null. */
 export function normalizeDotPrintSettings(value: unknown): DotPrintSettings | null {
-  if (!value || typeof value !== "object") return null;
+  if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
-  const pens = (record.pens && typeof record.pens === "object" ? record.pens : {}) as Record<string, unknown>;
+  const pens = (record.pens && typeof record.pens === 'object' ? record.pens : {}) as Record<
+    string,
+    unknown
+  >;
   const hex = (input: unknown, fallback: string) =>
-    typeof input === "string" && /^#[0-9a-f]{6}$/i.test(input) ? input.toLowerCase() : fallback;
-  const spacingMm = clampNumber(record.spacingMm, DOT_PRINT_LIMITS.spacingMm, DEFAULT_DOT_PRINT.spacingMm);
-  const inkBleed = clampNumber(record.inkBleed, DOT_PRINT_LIMITS.inkBleed, DEFAULT_DOT_PRINT.inkBleed);
-  const tipWidthMm = clampNumber(record.tipWidthMm, DOT_PRINT_LIMITS.tipWidthMm, DEFAULT_DOT_PRINT.tipWidthMm);
+    typeof input === 'string' && /^#[0-9a-f]{6}$/i.test(input) ? input.toLowerCase() : fallback;
+  const spacingMm = clampNumber(
+    record.spacingMm,
+    DOT_PRINT_LIMITS.spacingMm,
+    DEFAULT_DOT_PRINT.spacingMm,
+  );
+  const inkBleed = clampNumber(
+    record.inkBleed,
+    DOT_PRINT_LIMITS.inkBleed,
+    DEFAULT_DOT_PRINT.inkBleed,
+  );
+  const tipWidthMm = clampNumber(
+    record.tipWidthMm,
+    DOT_PRINT_LIMITS.tipWidthMm,
+    DEFAULT_DOT_PRINT.tipWidthMm,
+  );
   return {
     spacingMm,
     // Older prints had one resolution and bleed for all inks: black keeps those.
     blackSpacingMm: clampNumber(record.blackSpacingMm, DOT_PRINT_LIMITS.spacingMm, spacingMm),
     tipWidthMm,
     blackTipWidthMm: clampNumber(record.blackTipWidthMm, DOT_PRINT_LIMITS.tipWidthMm, tipWidthMm),
-    colorMode: record.colorMode === "black" ? "black" : "cmyk",
+    colorMode: record.colorMode === 'black' ? 'black' : 'cmyk',
     dotStyle: normalizeDotStyle(record.dotStyle),
     brightness: clampNumber(record.brightness, DOT_PRINT_LIMITS.brightness, 0),
     contrast: clampNumber(record.contrast, DOT_PRINT_LIMITS.contrast, 0),
@@ -167,32 +206,45 @@ export function normalizeDotPrintSettings(value: unknown): DotPrintSettings | nu
       DOT_PRINT_LIMITS.inkBleed,
       Number.isFinite(Number(record.inkBleed)) ? inkBleed : DEFAULT_DOT_PRINT.blackInkBleed,
     ),
-    disabledInks: INK_CHANNELS.filter((ink) => Array.isArray(record.disabledInks) && record.disabledInks.includes(ink)),
+    disabledInks: INK_CHANNELS.filter(
+      (ink) => Array.isArray(record.disabledInks) && record.disabledInks.includes(ink),
+    ),
   };
 }
 
 /** Grid spacing for one ink: black has its own, the colours share one. */
-export function dotPrintInkSpacing(settings: Pick<DotPrintSettings, "spacingMm" | "blackSpacingMm">, ink: InkChannel): number {
-  return ink === "k" ? settings.blackSpacingMm ?? settings.spacingMm : settings.spacingMm;
+export function dotPrintInkSpacing(
+  settings: Pick<DotPrintSettings, 'spacingMm' | 'blackSpacingMm'>,
+  ink: InkChannel,
+): number {
+  return ink === 'k' ? (settings.blackSpacingMm ?? settings.spacingMm) : settings.spacingMm;
 }
 
 /** Pen tip width for one ink: black has its own, the colours share one. */
-export function dotPrintInkTip(settings: Pick<DotPrintSettings, "tipWidthMm" | "blackTipWidthMm">, ink: InkChannel): number {
-  return ink === "k" ? settings.blackTipWidthMm ?? settings.tipWidthMm : settings.tipWidthMm;
+export function dotPrintInkTip(
+  settings: Pick<DotPrintSettings, 'tipWidthMm' | 'blackTipWidthMm'>,
+  ink: InkChannel,
+): number {
+  return ink === 'k' ? (settings.blackTipWidthMm ?? settings.tipWidthMm) : settings.tipWidthMm;
 }
 
 /** Preview ink bleed for one ink: black has its own, the colours share one. */
-export function dotPrintInkBleed(settings: Pick<DotPrintSettings, "inkBleed" | "blackInkBleed">, ink: InkChannel): number {
-  return ink === "k" ? settings.blackInkBleed ?? settings.inkBleed : settings.inkBleed;
+export function dotPrintInkBleed(
+  settings: Pick<DotPrintSettings, 'inkBleed' | 'blackInkBleed'>,
+  ink: InkChannel,
+): number {
+  return ink === 'k' ? (settings.blackInkBleed ?? settings.inkBleed) : settings.inkBleed;
 }
 
 /** Inks the colour mode offers (each can still be switched off). */
-export function dotPrintModeInks(settings: Pick<DotPrintSettings, "colorMode">): InkChannel[] {
-  return settings.colorMode === "black" ? ["k"] : [...INK_CHANNELS];
+export function dotPrintModeInks(settings: Pick<DotPrintSettings, 'colorMode'>): InkChannel[] {
+  return settings.colorMode === 'black' ? ['k'] : [...INK_CHANNELS];
 }
 
 /** Inks a print actually uses, in drawing order. */
-export function dotPrintInks(settings: Pick<DotPrintSettings, "colorMode" | "disabledInks">): InkChannel[] {
+export function dotPrintInks(
+  settings: Pick<DotPrintSettings, 'colorMode' | 'disabledInks'>,
+): InkChannel[] {
   return dotPrintModeInks(settings).filter((ink) => !(settings.disabledInks ?? []).includes(ink));
 }
 
@@ -240,9 +292,13 @@ function adjust(value: number, brightness: number, contrast: number): number {
  * Ink amounts (0…1) for one colour. With black, black prints the grey the three
  * colours share; without it, cyan, magenta and yellow build the darks together.
  */
-export function separateInks(rgb: [number, number, number], colorMode: "cmyk" | "black", useBlack = true): Record<InkChannel, number> {
+export function separateInks(
+  rgb: [number, number, number],
+  colorMode: 'cmyk' | 'black',
+  useBlack = true,
+): Record<InkChannel, number> {
   const [r, g, b] = rgb;
-  if (colorMode === "black") {
+  if (colorMode === 'black') {
     return { c: 0, m: 0, y: 0, k: 1 - (0.299 * r + 0.587 * g + 0.114 * b) };
   }
   const c = 1 - r;
@@ -259,12 +315,17 @@ export function separateInks(rgb: [number, number, number], colorMode: "cmyk" | 
  * positions are in mm from the picture's top-left, ordered row by row in
  * alternating direction to keep pen travel short. Inks come in drawing order.
  */
-export function generateDotPrint(image: RasterImage, sizeMm: { width: number; height: number }, input: DotPrintSettings): DotPrintChannel[] {
+export function generateDotPrint(
+  image: RasterImage,
+  sizeMm: { width: number; height: number },
+  input: DotPrintSettings,
+): DotPrintChannel[] {
   const settings = normalizeDotPrintSettings(input) ?? DEFAULT_DOT_PRINT;
   if (image.width < 1 || image.height < 1 || !(sizeMm.width > 0) || !(sizeMm.height > 0)) return [];
   const enabledInks = dotPrintInks(settings);
   // Black on its own follows the picture's brightness, like the black-only mode.
-  const separationMode = enabledInks.length === 1 && enabledInks[0] === "k" ? "black" : settings.colorMode;
+  const separationMode =
+    enabledInks.length === 1 && enabledInks[0] === 'k' ? 'black' : settings.colorMode;
   const channels: DotPrintChannel[] = [];
   for (const ink of enabledInks) {
     const spacing = dotPrintInkSpacing(settings, ink);
@@ -274,7 +335,12 @@ export function generateDotPrint(image: RasterImage, sizeMm: { width: number; he
     const cos = Math.cos(radians);
     const sin = Math.sin(radians);
     // Grid indices whose rotated points can fall inside the picture.
-    const corners = [[0, 0], [sizeMm.width, 0], [0, sizeMm.height], [sizeMm.width, sizeMm.height]].map(([x, y]) => ({
+    const corners = [
+      [0, 0],
+      [sizeMm.width, 0],
+      [0, sizeMm.height],
+      [sizeMm.width, sizeMm.height],
+    ].map(([x, y]) => ({
       i: ((x ?? 0) * cos + (y ?? 0) * sin) / spacing,
       j: (-(x ?? 0) * sin + (y ?? 0) * cos) / spacing,
     }));
@@ -296,9 +362,13 @@ export function generateDotPrint(image: RasterImage, sizeMm: { width: number; he
         if (x < 0 || y < 0 || x > sizeMm.width || y > sizeMm.height) continue;
         const [r, g, b] = sample(image, x / sizeMm.width, y / sizeMm.height);
         const inks = separateInks(
-          [adjust(r, settings.brightness, settings.contrast), adjust(g, settings.brightness, settings.contrast), adjust(b, settings.brightness, settings.contrast)],
+          [
+            adjust(r, settings.brightness, settings.contrast),
+            adjust(g, settings.brightness, settings.contrast),
+            adjust(b, settings.brightness, settings.contrast),
+          ],
           separationMode,
-          enabledInks.includes("k"),
+          enabledInks.includes('k'),
         );
         target[row * columns + column] = Math.min(1, inks[ink] / coveragePerDot);
       }
@@ -342,11 +412,17 @@ export function generateDotPrint(image: RasterImage, sizeMm: { width: number; he
 
 /** The darkest tone an ink can reach: how much of its grid cell one dot inks (0…1). */
 export function dotPrintMaxCoverage(
-  settings: Pick<DotPrintSettings, "dotStyle" | "tipWidthMm" | "blackTipWidthMm" | "spacingMm" | "blackSpacingMm">,
-  ink: InkChannel = "c",
+  settings: Pick<
+    DotPrintSettings,
+    'dotStyle' | 'tipWidthMm' | 'blackTipWidthMm' | 'spacingMm' | 'blackSpacingMm'
+  >,
+  ink: InkChannel = 'c',
 ): number {
   const spacing = dotPrintInkSpacing(settings, ink);
-  return Math.min(1, dotInkAreaMm2(settings.dotStyle, dotPrintInkTip(settings, ink)) / (spacing * spacing));
+  return Math.min(
+    1,
+    dotInkAreaMm2(settings.dotStyle, dotPrintInkTip(settings, ink)) / (spacing * spacing),
+  );
 }
 
 /**

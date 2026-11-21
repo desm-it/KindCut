@@ -1,16 +1,145 @@
-import {describe,it,expect} from 'vitest';
-import {NativeJoyService} from './native-joy-service';
-const ready={state:'ready',machine:'cricut_joy',firmwareSelector:8.164000001,materialRecord:0,fallbackUsed:false,status:{status_byte_1:1,status_byte_2:2,extra_u16_raw:0,extra_u16_native:0,value_be32:3}};
-function harness(){const requests:Record<string,unknown>[]=[];let created=0;const service=new NativeJoyService({platform:'darwin',enabled:true,runtimePath:'/inert',store:{exists:async()=>false,save:async()=>{},load:async()=>{throw new Error('unused');}},clientFactory:()=>{created++;return {isRunning:true,close:async()=>{},request:async r=>{requests.push(r);if(r.op==='connect')return ready;if(r.op==='calibration')return {firmwareSelector:8.164000001,source:'device_pressure_table_read',physicalCalibrationVerified:false,pressureResponsesHex:Array.from({length:16},(_,i)=>`a0${(i+1).toString(16).padStart(4,'0')}0000000000010001`)};return {settings:r.settings};}};}});return {service,requests,created:()=>created};}
-describe('calibration approval and inert compiler isolation',()=>{
- it('spawns no runtime for denied read, captures exact saved rows after fresh approval',async()=>{const h=harness();await expect(h.service.captureCalibration(false,0)).rejects.toThrow();expect(h.created()).toBe(0);await h.service.connect({address:'00:11:22:33:44:55',hardwareApproved:true,cryptoResetApproved:true});const c=await h.service.captureCalibration(true,h.service.loadingApprovalContext());expect(c.pressureResponsesHex).toHaveLength(16);expect(c.deviceFingerprint).toMatch(/^[a-f0-9]{64}$/);expect(JSON.stringify(c)).not.toContain('00:11:22:33:44:55');expect(c.physicalCalibrationVerified).toBe(false);await h.service.disconnect();});
- it('rejects stale approvals and any second runtime while native owns a session',async()=>{const h=harness();await h.service.connect({address:'00:11:22:33:44:55',hardwareApproved:true,cryptoResetApproved:true});const ctx=h.service.loadingApprovalContext();await h.service.disconnect();await h.service.connect({address:'00:11:22:33:44:55',hardwareApproved:true,cryptoResetApproved:true});await expect(h.service.captureCalibration(true,ctx)).rejects.toThrow();await expect(h.service.runOfflineConfiguration({op:'configuration',action:'validate',settings:{}})).rejects.toThrow();expect(h.created()).toBe(2);await h.service.disconnect();});
- it('loading metadata cannot steal an inert compiler reservation',async()=>{
-  let release!:(v:unknown)=>void;const commands:string[]=[];
-  const s=new NativeJoyService({platform:'darwin',enabled:true,runtimePath:'/inert',store:{exists:async()=>false,save:async()=>{},load:async()=>{throw Error('unused');}},clientFactory:()=>({isRunning:true,close:async()=>{},request:async r=>{commands.push(String(r.op));if(r.op!=='configuration')throw Error('Unexpected metadata sent to compiler');return new Promise(resolve=>{release=resolve;});}})});
-  const pending=s.runOfflineConfiguration({op:'configuration',action:'validate',settings:{}});expect(s.ownsHardware).toBe(true);
-  expect((await s.loadingStatus()).phase).toBe('idle');expect(commands).toEqual(['configuration']);expect(s.ownsHardware).toBe(true);
-  release({settings:{}});await pending;expect(s.ownsHardware).toBe(false);
- });
- it('offline calls cannot request any hardware action',async()=>{const h=harness();await expect(h.service.runOfflineConfiguration({op:'connect'})).rejects.toThrow();expect(h.created()).toBe(0);await h.service.runOfflineConfiguration({op:'configuration',action:'validate',settings:{}});expect(h.requests.map(x=>x.op)).toEqual(['configuration']);expect(h.service.ownsHardware).toBe(false);});
+import { describe, it, expect } from 'vitest';
+import { NativeJoyService } from './native-joy-service';
+const ready = {
+  state: 'ready',
+  machine: 'cricut_joy',
+  firmwareSelector: 8.164000001,
+  materialRecord: 0,
+  fallbackUsed: false,
+  status: {
+    status_byte_1: 1,
+    status_byte_2: 2,
+    extra_u16_raw: 0,
+    extra_u16_native: 0,
+    value_be32: 3,
+  },
+};
+function harness() {
+  const requests: Record<string, unknown>[] = [];
+  let created = 0;
+  const service = new NativeJoyService({
+    platform: 'darwin',
+    enabled: true,
+    runtimePath: '/inert',
+    store: {
+      exists: async () => false,
+      save: async () => {},
+      load: async () => {
+        throw new Error('unused');
+      },
+    },
+    clientFactory: () => {
+      created++;
+      return {
+        isRunning: true,
+        close: async () => {},
+        request: async (r) => {
+          requests.push(r);
+          if (r.op === 'connect') return ready;
+          if (r.op === 'calibration')
+            return {
+              firmwareSelector: 8.164000001,
+              source: 'device_pressure_table_read',
+              physicalCalibrationVerified: false,
+              pressureResponsesHex: Array.from(
+                { length: 16 },
+                (_, i) => `a0${(i + 1).toString(16).padStart(4, '0')}0000000000010001`,
+              ),
+            };
+          return { settings: r.settings };
+        },
+      };
+    },
+  });
+  return { service, requests, created: () => created };
+}
+describe('calibration approval and inert compiler isolation', () => {
+  it('spawns no runtime for denied read, captures exact saved rows after fresh approval', async () => {
+    const h = harness();
+    await expect(h.service.captureCalibration(false, 0)).rejects.toThrow();
+    expect(h.created()).toBe(0);
+    await h.service.connect({
+      address: '00:11:22:33:44:55',
+      hardwareApproved: true,
+      cryptoResetApproved: true,
+    });
+    const c = await h.service.captureCalibration(true, h.service.loadingApprovalContext());
+    expect(c.pressureResponsesHex).toHaveLength(16);
+    expect(c.deviceFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(c)).not.toContain('00:11:22:33:44:55');
+    expect(c.physicalCalibrationVerified).toBe(false);
+    await h.service.disconnect();
+  });
+  it('rejects stale approvals and any second runtime while native owns a session', async () => {
+    const h = harness();
+    await h.service.connect({
+      address: '00:11:22:33:44:55',
+      hardwareApproved: true,
+      cryptoResetApproved: true,
+    });
+    const ctx = h.service.loadingApprovalContext();
+    await h.service.disconnect();
+    await h.service.connect({
+      address: '00:11:22:33:44:55',
+      hardwareApproved: true,
+      cryptoResetApproved: true,
+    });
+    await expect(h.service.captureCalibration(true, ctx)).rejects.toThrow();
+    await expect(
+      h.service.runOfflineConfiguration({ op: 'configuration', action: 'validate', settings: {} }),
+    ).rejects.toThrow();
+    expect(h.created()).toBe(2);
+    await h.service.disconnect();
+  });
+  it('loading metadata cannot steal an inert compiler reservation', async () => {
+    let release!: (v: unknown) => void;
+    const commands: string[] = [];
+    const s = new NativeJoyService({
+      platform: 'darwin',
+      enabled: true,
+      runtimePath: '/inert',
+      store: {
+        exists: async () => false,
+        save: async () => {},
+        load: async () => {
+          throw Error('unused');
+        },
+      },
+      clientFactory: () => ({
+        isRunning: true,
+        close: async () => {},
+        request: async (r) => {
+          commands.push(String(r.op));
+          if (r.op !== 'configuration') throw Error('Unexpected metadata sent to compiler');
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        },
+      }),
+    });
+    const pending = s.runOfflineConfiguration({
+      op: 'configuration',
+      action: 'validate',
+      settings: {},
+    });
+    expect(s.ownsHardware).toBe(true);
+    expect((await s.loadingStatus()).phase).toBe('idle');
+    expect(commands).toEqual(['configuration']);
+    expect(s.ownsHardware).toBe(true);
+    release({ settings: {} });
+    await pending;
+    expect(s.ownsHardware).toBe(false);
+  });
+  it('offline calls cannot request any hardware action', async () => {
+    const h = harness();
+    await expect(h.service.runOfflineConfiguration({ op: 'connect' })).rejects.toThrow();
+    expect(h.created()).toBe(0);
+    await h.service.runOfflineConfiguration({
+      op: 'configuration',
+      action: 'validate',
+      settings: {},
+    });
+    expect(h.requests.map((x) => x.op)).toEqual(['configuration']);
+    expect(h.service.ownsHardware).toBe(false);
+  });
 });

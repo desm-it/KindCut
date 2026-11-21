@@ -1,7 +1,7 @@
 export type LibraryImage = { name: string; path: string; isAi: boolean; svg: string };
 
 export type SpotifyCode = { name: string; path: string; svg: string; uri: string | null };
-export type { SpotifyCodeErrorCode, SpotifySearchResult } from "./shell/spotify-code";
+export type { SpotifyCodeErrorCode, SpotifySearchResult } from './shell/spotify-code';
 
 export type SlicebugPlanResult = {
   ok: boolean;
@@ -21,7 +21,7 @@ export type SlicebugPlanResult = {
 
 export type CutSessionSnapshot = {
   id: string;
-  status: "idle" | "running" | "waiting" | "finished" | "error" | "stopped" | "blocked";
+  status: 'idle' | 'running' | 'waiting' | 'finished' | 'error' | 'stopped' | 'blocked';
   action: {
     kind: string;
     code?: string;
@@ -29,7 +29,7 @@ export type CutSessionSnapshot = {
     message: string;
     requiresContinue: boolean;
     canStop: boolean;
-    tone: "neutral" | "waiting" | "running" | "success" | "error";
+    tone: 'neutral' | 'waiting' | 'running' | 'success' | 'error';
   };
   transcript: string;
   command: string;

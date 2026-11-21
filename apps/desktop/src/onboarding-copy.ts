@@ -1,4 +1,4 @@
-import { APP_NAME, type Language, createTranslator } from "./i18n";
+import { APP_NAME, type Language, createTranslator } from './i18n';
 
 export { APP_NAME };
 
@@ -28,7 +28,7 @@ export type PlanResultLike = {
 };
 
 export type FriendlyStatusCopy = {
-  tone: "checking" | "ready" | "warning";
+  tone: 'checking' | 'ready' | 'warning';
   title: string;
   message: string;
   details: string[];
@@ -37,24 +37,24 @@ export type FriendlyStatusCopy = {
 export function getFriendlySlicebugStatusCopy(
   status: SlicebugStatusLike | null,
   loading: boolean,
-  language: Language = "nl",
+  language: Language = 'nl',
 ): FriendlyStatusCopy {
   const { t } = createTranslator(language);
 
   if (loading) {
     return {
-      tone: "checking",
-      title: t("status.loadingTitle"),
-      message: t("status.loadingMessage"),
+      tone: 'checking',
+      title: t('status.loadingTitle'),
+      message: t('status.loadingMessage'),
       details: [],
     };
   }
 
   if (!status) {
     return {
-      tone: "checking",
-      title: t("status.initialTitle"),
-      message: t("status.initialMessage"),
+      tone: 'checking',
+      title: t('status.initialTitle'),
+      message: t('status.initialMessage'),
       details: [],
     };
   }
@@ -67,22 +67,25 @@ export function getFriendlySlicebugStatusCopy(
 
   if (status.ok) {
     return {
-      tone: "ready",
-      title: t("status.readyTitle"),
-      message: t("status.readyMessage"),
+      tone: 'ready',
+      title: t('status.readyTitle'),
+      message: t('status.readyMessage'),
       details,
     };
   }
 
   return {
-    tone: "warning",
-    title: t("status.warningTitle"),
-    message: t("status.warningMessage"),
+    tone: 'warning',
+    title: t('status.warningTitle'),
+    message: t('status.warningMessage'),
     details,
   };
 }
 
-export function getFriendlyPlanResultCopy(result: PlanResultLike, language: Language = "nl"): FriendlyStatusCopy {
+export function getFriendlyPlanResultCopy(
+  result: PlanResultLike,
+  language: Language = 'nl',
+): FriendlyStatusCopy {
   const { t } = createTranslator(language);
   const details = [
     `SliceBug message: ${result.message}`,
@@ -95,14 +98,14 @@ export function getFriendlyPlanResultCopy(result: PlanResultLike, language: Lang
 
   if (result.ok && result.plan) {
     return {
-      tone: "ready",
-      title: t("plan.readyTitle"),
+      tone: 'ready',
+      title: t('plan.readyTitle'),
       message:
-        language === "nl"
-          ? `KindCut heeft ${result.plan.pathCount} ${result.plan.pathCount === 1 ? "laag" : "lagen"} voorbereid voor een kaart van ${formatSize(
+        language === 'nl'
+          ? `KindCut heeft ${result.plan.pathCount} ${result.plan.pathCount === 1 ? 'laag' : 'lagen'} voorbereid voor een kaart van ${formatSize(
               result.plan.material,
             )} op een mat van ${formatSize(result.plan.mat)}.`
-          : `KindCut prepared ${result.plan.pathCount} layer${result.plan.pathCount === 1 ? "" : "s"} for a ${formatSize(
+          : `KindCut prepared ${result.plan.pathCount} layer${result.plan.pathCount === 1 ? '' : 's'} for a ${formatSize(
               result.plan.material,
             )} card on a ${formatSize(result.plan.mat)} mat.`,
       details,
@@ -110,21 +113,21 @@ export function getFriendlyPlanResultCopy(result: PlanResultLike, language: Lang
   }
 
   return {
-    tone: "warning",
-    title: t("plan.warningTitle"),
-    message: t("plan.warningMessage"),
+    tone: 'warning',
+    title: t('plan.warningTitle'),
+    message: t('plan.warningMessage'),
     details,
   };
 }
 
-export function formatToolName(tool: string, language: Language = "nl"): string {
+export function formatToolName(tool: string, language: Language = 'nl'): string {
   const { t } = createTranslator(language);
   const knownTools: Record<string, string> = {
-    fine_point_blade: t("tool.fine_point_blade"),
-    pen: t("tool.pen"),
+    fine_point_blade: t('tool.fine_point_blade'),
+    pen: t('tool.pen'),
   };
 
-  return knownTools[tool] ?? titleCase(tool.replaceAll("_", " "));
+  return knownTools[tool] ?? titleCase(tool.replaceAll('_', ' '));
 }
 
 export function formatSize(size: { width: number; height: number }): string {

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import type React from "react";
-import type { WorkspaceObject } from "../../workspace-objects";
+import { useEffect, useRef, useState } from 'react';
+import type React from 'react';
+import type { WorkspaceObject } from '../../workspace-objects';
 
 export function TextEditOverlay({
   item,
@@ -31,13 +31,15 @@ export function TextEditOverlay({
         onCommit(value);
       }
     }
-    document.addEventListener("pointerdown", handleGlobalDown, { capture: true });
-    return () => document.removeEventListener("pointerdown", handleGlobalDown, { capture: true });
+    document.addEventListener('pointerdown', handleGlobalDown, { capture: true });
+    return () => document.removeEventListener('pointerdown', handleGlobalDown, { capture: true });
   }, [value, onCommit]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     e.stopPropagation();
-    if (e.key === "Escape") { onCancel(); }
+    if (e.key === 'Escape') {
+      onCancel();
+    }
   }
 
   return (
@@ -59,14 +61,14 @@ export function TextEditOverlay({
         fontWeight: tc.fontWeight,
         fontStyle: tc.fontStyle,
         textDecoration: tc.textDecoration,
-        textAlign: tc.textAlign ?? "left",
-        letterSpacing: (tc.letterSpacing * displayScale) + "px",
+        textAlign: tc.textAlign ?? 'left',
+        letterSpacing: tc.letterSpacing * displayScale + 'px',
         lineHeight: tc.lineHeight,
         color: tc.color,
-        width: "100%",
-        height: "100%",
-        overflow: "hidden",
-        whiteSpace: "pre",
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        whiteSpace: 'pre',
       }}
     />
   );

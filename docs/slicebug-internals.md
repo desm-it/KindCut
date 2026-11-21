@@ -19,15 +19,16 @@ usage: slicebug [-h] [--version] [--profile PROFILE]
                 {bootstrap,list-materials,list-tools,plan,cut} ...
 ```
 
-| Subcommand | Needs keys | Needs profile | Touches hardware | What it does |
-|---|---|---|---|---|
-| `bootstrap` | no | no | no | Imports keys/plugins/profiles from an installed Cricut Design Space; downloads usvg. |
-| `list-materials` | yes | yes | no | Prints supported materials and their numeric IDs. |
-| `list-tools` | yes | yes | no | Lists tools usable with a material. |
-| `plan` | yes | yes | no | Converts an SVG → a cut-plan JSON (geometry, material, tools). Offline. |
-| `cut` | yes | yes | **yes** | Connects to the machine and executes a plan. |
+| Subcommand       | Needs keys | Needs profile | Touches hardware | What it does                                                                         |
+| ---------------- | ---------- | ------------- | ---------------- | ------------------------------------------------------------------------------------ |
+| `bootstrap`      | no         | no            | no               | Imports keys/plugins/profiles from an installed Cricut Design Space; downloads usvg. |
+| `list-materials` | yes        | yes           | no               | Prints supported materials and their numeric IDs.                                    |
+| `list-tools`     | yes        | yes           | no               | Lists tools usable with a material.                                                  |
+| `plan`           | yes        | yes           | no               | Converts an SVG → a cut-plan JSON (geometry, material, tools). Offline.              |
+| `cut`            | yes        | yes           | **yes**          | Connects to the machine and executes a plan.                                         |
 
 Notes that bit us:
+
 - There is **no `version` subcommand** — it's the flag `slicebug --version` (prints e.g. `0.3`).
 - `--software-buttons` (on `cut`) makes SliceBug simulate the physical Load/Unload and Go
   buttons, for buttonless machines like the **Cricut Joy**. In this mode it **blocks on
@@ -104,10 +105,12 @@ runs, in order:
 4. **`download_usvg`** — fetches a pinned resvg/usvg release from GitHub and extracts it.
 
 Defaults (macOS):
+
 - Design Space app: `/Applications/Cricut Design Space.app/Contents/Resources`
 - CDS user data: `~/.cricut-design-space`
 
 **Implications / footguns**
+
 - bootstrap rotates `keys.json` to whatever the **currently installed** Design Space uses. The
   keys and the device plugin are imported from the same Design Space, so they stay mutually
   consistent — but if Design Space has changed protocol since SliceBug `0.3` was written, the
@@ -128,14 +131,14 @@ High-level sequence:
 
 1. Launch the `CricutDevice` plugin subprocess (`DevicePlugin.__enter__`).
 2. **Auth:** `dev.send(riMATCUT, authData=settings8)` → `dev.recv(riStartSuccess)`.
-   - Getting `riStartSuccess` back means **the keys are valid**. (Key problems fail *here*.)
+   - Getting `riStartSuccess` back means **the keys are valid**. (Key problems fail _here_.)
 3. **Device connect:** `device_connected_resp = dev.recv()` — the plugin reports the machine
    connection. **If no machine is reachable, the plugin crashes here** (see §5).
 4. Material selection → prints `Clamp <head>: <tool>` lines.
 5. `riWaitOnMatLoad`:
    - software-buttons: `input("Insert mat, then press Enter to load it…")` → on Enter, sends
      `riMATCUTSimulateLoadButtonPressed` (the Load/Unload **toggle**). It first drains any queued
-     mat-load event so it doesn't accidentally *eject* an already-loaded mat.
+     mat-load event so it doesn't accidentally _eject_ an already-loaded mat.
 6. `riWaitOnGo`: software-buttons → `input("Press Enter to send software Go…")` → sends
    `riMATCUTSimulateCricutButtonPressed`.
 7. Sends tool array + path data; machine cuts. The loop consumes status messages:
@@ -158,6 +161,7 @@ halts the Cricut. This is what `SlicebugCutSession.stop()` does.
 ## 5. Failure modes we've actually seen
 
 ### "Machine off / not connected" → plugin **crash**, not a hang
+
 When the Cricut isn't reachable (powered off, asleep, not Bluetooth-connected, or Design Space
 is holding the link), the `CricutDevice` plugin **crashes at step 3** instead of waiting:
 
@@ -168,7 +172,7 @@ EOFError: Plugin stdout closed while reading message: expected 4 bytes, got 0
 ```
 
 SliceBug then exits non-zero → KindCut surfaces a generic error. **This is the most common
-real-world failure.** Because the auth step *succeeds* first, a key/bootstrap problem and a
+real-world failure.** Because the auth step _succeeds_ first, a key/bootstrap problem and a
 "no machine" problem look different: keys fail at `riStartSuccess`, hardware fails at the next
 `recv()`.
 
@@ -177,6 +181,7 @@ KindCut detects this signature (`isCutterConnectionFailure()` in `CutPreviewModa
 and shows the friendly "is your cutter on / Bluetooth connected?" guide instead of a raw error.
 
 ### Diagnosing safely without moving the machine
+
 In `--software-buttons` mode SliceBug **blocks on Enter before sending any Load/Go**, so you can
 exercise the connect path without the machine moving by feeding EOF on stdin:
 
@@ -189,11 +194,12 @@ printf '%s' '<svg xmlns="http://www.w3.org/2000/svg" width="288" height="240" vi
 "$SB" cut --software-buttons "$D/s.json" </dev/null   # EOF → exits at the first prompt
 ```
 
-With stdin = `/dev/null`, `input()` raises `EOFError` and SliceBug exits cleanly *before* any
+With stdin = `/dev/null`, `input()` raises `EOFError` and SliceBug exits cleanly _before_ any
 button is sent — but you still see the real connect error/stack trace. (`timeout` isn't on
 macOS by default; use `perl -e 'alarm 20; exec @ARGV' …` to cap it.)
 
 ### Other checks worth running
+
 - `slicebug --version` (works) vs `slicebug version` (invalid subcommand).
 - `slicebug list-materials` exercises **keys + profile** without hardware — if this works, the
   config is healthy and any `cut` failure is hardware/connection.
@@ -240,4 +246,5 @@ macOS by default; use `perl -e 'alarm 20; exec @ARGV' …` to cap it.)
 - `bridge.log` is encrypted; don't bother reading it. `HTTP status 400` is crashpad noise.
 - UI state mapping is regex-on-stdout — fragile across SliceBug versions.
 </content>
+
 </invoke>

@@ -9,6 +9,7 @@ import json
 import re
 import threading
 import time
+from joy_rpc_contract import validate_deadline
 
 from typing import Any
 from joy_job_program import compile_job_program
@@ -142,9 +143,8 @@ class JoyJobTask:
             raise PermissionError('Fresh motion approval and blade removal required; matching pen permitted for pen-only trial')
         timeout=request.get('timeout',30)
         job_timeout=request.get('jobTimeout',60)
-        for value,cap in ((timeout,60),(job_timeout,600)):
-            if type(value)not in(int,float)or not math.isfinite(value)or not 0<value<=cap:
-                raise ValueError('Job deadline outside local admission range')
+        validate_deadline(timeout,60)
+        validate_deadline(job_timeout,600)
         digest=request.get('programDigest')
         if type(digest)is not str or re.fullmatch('[0-9a-f]{64}',digest)is None:
             raise ValueError('Exact canonical program digest required')

@@ -12,9 +12,9 @@ import {
   formatPolylinePath,
   multiplyMatrices,
   parseSvgTransform,
-} from "@cricut-companion/craft-core";
-import type { WorkspaceObject } from "./workspace-objects";
-import { WORKSPACE_PX_PER_MM, itemScale } from "./pen-fill-render";
+} from '@cricut-companion/craft-core';
+import type { WorkspaceObject } from './workspace-objects';
+import { WORKSPACE_PX_PER_MM, itemScale } from './pen-fill-render';
 
 const FLATTEN_TOLERANCE_PX = 0.1;
 
@@ -38,16 +38,31 @@ function dashPath(d: string, matrix: Matrix, dash: DashSettings, sx: number, sy:
       dash.gapMm * WORKSPACE_PX_PER_MM,
     ),
   );
-  return formatPolylinePath(pieces.map((points) => ({ points: points.map((point) => ({ x: point.x / sx, y: point.y / sy })) })));
+  return formatPolylinePath(
+    pieces.map((points) => ({
+      points: points.map((point) => ({ x: point.x / sx, y: point.y / sy })),
+    })),
+  );
 }
 
 /**
  * Dashes for one of the object's paths, as path data in the object's frame
  * space with the path's own transform already applied.
  */
-export function dashedFramePath(item: WorkspaceObject, d: string, pathTransform: string | undefined, dash: DashSettings): string {
+export function dashedFramePath(
+  item: WorkspaceObject,
+  d: string,
+  pathTransform: string | undefined,
+  dash: DashSettings,
+): string {
   const { sx, sy } = itemScale(item);
-  return dashPath(d, multiplyMatrices([sx, 0, 0, sy, 0, 0], parseSvgTransform(pathTransform)), dash, sx, sy);
+  return dashPath(
+    d,
+    multiplyMatrices([sx, 0, 0, sy, 0, 0], parseSvgTransform(pathTransform)),
+    dash,
+    sx,
+    sy,
+  );
 }
 
 /** Dashes for geometry that is already at its real size on the mat (shapes on the canvas). */

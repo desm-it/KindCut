@@ -1,25 +1,33 @@
-import{ensureConnectedJoyCalibration}from'./native-joy-onboarding';
-import {NativeJoyInlineIntent,isNativeIntent,type NativeIntent} from './native-joy-inline-intent';
-import { spawn } from "node:child_process";
-import fs from "node:fs/promises";
-import path from "node:path";
+import { ensureConnectedJoyCalibration } from './native-joy-onboarding';
+import {
+  NativeJoyInlineIntent,
+  isNativeIntent,
+  type NativeIntent,
+} from './native-joy-inline-intent';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const potrace = require("potrace") as {
+const potrace = require('potrace') as {
   trace: (
     input: Buffer,
     options: {
-      threshold?: number; turdSize?: number; optCurve?: boolean;
-      optTolerance?: number; color?: string; background?: string;
+      threshold?: number;
+      turdSize?: number;
+      optCurve?: boolean;
+      optTolerance?: number;
+      color?: string;
+      background?: string;
     },
     cb: (err: Error | null, svg: string) => void,
   ) => void;
 };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const Jimp = require("jimp") as {
+const Jimp = require('jimp') as {
   read: (buffer: Buffer) => Promise<JimpImage>;
   MIME_PNG: string;
 };
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, safeStorage } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, safeStorage } from 'electron';
 import type {
   IpcMainEvent,
   IpcMainInvokeEvent,
@@ -28,14 +36,14 @@ import type {
   MessageBoxReturnValue,
   OpenDialogOptions,
   SaveDialogOptions,
-} from "electron";
-import { autoUpdater } from "electron-updater";
+} from 'electron';
+import { autoUpdater } from 'electron-updater';
 import {
   configureDiagnosticsLog,
   getDiagnosticsLogFilePath,
   getDiagnosticsLogsDir,
   logDiagnostics,
-} from "./diagnostics-log";
+} from './diagnostics-log';
 import {
   type SpotifyCodeRequest,
   type SpotifyLookupOptions,
@@ -47,7 +55,7 @@ import {
   runSpotifyLookup,
   searchSpotifySongs,
   spotifyCodeDisplayName,
-} from "./spotify-code";
+} from './spotify-code';
 import {
   SlicebugCutSession,
   bootstrapSlicebug,
@@ -57,25 +65,29 @@ import {
   getSlicebugSetupStatus,
   getSlicebugStatus,
   setSlicebugLoggingEnabled,
-} from "./slicebug-service";
-import type { CutSessionSnapshot, SvgPlanInput } from "./slicebug-service";
-import { createMainWindowOptions, resolveRendererEntry } from "./window-config";
-import { isVersionAtLeast, shouldSuppressSkippedUpdate } from "./update-version";
-import type { SkippedUpdateState } from "./update-version";
-import { NativeJoyService,type NativeJoyLoadingState } from "./native-joy-service.js";
-import {NativeJoyJobService} from './native-joy-job-service';
-import {NativeJoyJobJournal} from './native-joy-job-journal';
-import {registerNativeJoyJobIpc} from './native-joy-job-ipc';
-import {NativeJoyLoadingJournal} from "./native-joy-loading-journal";
-import {applyAppDataIsolation} from "./app-data-isolation";
-import {JoyConfigurationStore,readConfigurationFile,exportConfigurationLibrary} from './joy-configuration-store';
-import {JoyConfigurationService} from './joy-configuration-service';
-import {registerNativeJoyConfigurationIpc} from './native-joy-configuration-ipc';
-import { acquireCutterEntry } from "./cutter-entry.js";
-import { JoyProvisioningStore } from "./joy-provisioning-store";
-import { registerNativeJoyIpc } from "./native-joy-ipc";
-import { isTrustedJoyUrl } from "./native-joy-origin";
-import { discoverJoyDevices } from "./joy-discovery";
+} from './slicebug-service';
+import type { CutSessionSnapshot, SvgPlanInput } from './slicebug-service';
+import { createMainWindowOptions, resolveRendererEntry } from './window-config';
+import { isVersionAtLeast, shouldSuppressSkippedUpdate } from './update-version';
+import type { SkippedUpdateState } from './update-version';
+import { NativeJoyService, type NativeJoyLoadingState } from './native-joy-service.js';
+import { NativeJoyJobService } from './native-joy-job-service';
+import { NativeJoyJobJournal } from './native-joy-job-journal';
+import { registerNativeJoyJobIpc } from './native-joy-job-ipc';
+import { NativeJoyLoadingJournal } from './native-joy-loading-journal';
+import { applyAppDataIsolation } from './app-data-isolation';
+import {
+  JoyConfigurationStore,
+  readConfigurationFile,
+  exportConfigurationLibrary,
+} from './joy-configuration-store';
+import { JoyConfigurationService } from './joy-configuration-service';
+import { registerNativeJoyConfigurationIpc } from './native-joy-configuration-ipc';
+import { acquireCutterEntry } from './cutter-entry.js';
+import { JoyProvisioningStore } from './joy-provisioning-store';
+import { registerNativeJoyIpc } from './native-joy-ipc';
+import { isTrustedJoyUrl } from './native-joy-origin';
+import { discoverJoyDevices } from './joy-discovery';
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 // Dev builds find SliceBug relative to the working directory, but on macOS the dev
@@ -84,54 +96,143 @@ const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 if (!app.isPackaged) {
   process.chdir(app.getAppPath());
 }
-applyAppDataIsolation(app,process.env.KINDCUT_USER_DATA_DIR);
+applyAppDataIsolation(app, process.env.KINDCUT_USER_DATA_DIR);
 
 let activeCutSession: SlicebugCutSession | null = null;
 let legacyCutterStarting = false;
 let nativeJoyService: NativeJoyService | null = null;
-let nativeJoyLoadingJournal:NativeJoyLoadingJournal|null=null;
-function getNativeJoyLoadingJournal(){return nativeJoyLoadingJournal??=new NativeJoyLoadingJournal(path.join(app.getPath('userData'),'native-joy','diagnostics'));}
+let nativeJoyLoadingJournal: NativeJoyLoadingJournal | null = null;
+function getNativeJoyLoadingJournal() {
+  return (nativeJoyLoadingJournal ??= new NativeJoyLoadingJournal(
+    path.join(app.getPath('userData'), 'native-joy', 'diagnostics'),
+  ));
+}
 function getNativeJoyService(): NativeJoyService {
   if (!nativeJoyService) {
     const runtimePath = app.isPackaged
-      ? path.join(process.resourcesPath, "joy", "kindcut-joy-runtime")
-      : path.resolve(app.getAppPath(), "../../packages/joy-runtime/dist/kindcut-joy-runtime/kindcut-joy-runtime");
-    nativeJoyService = new NativeJoyService({ platform: process.platform,
-      enabled: process.platform === "darwin", runtimePath,
-      store: new JoyProvisioningStore(path.join(app.getPath("userData"), "native-joy", "provisioning.bin"), safeStorage),
+      ? path.join(process.resourcesPath, 'joy', 'kindcut-joy-runtime')
+      : path.resolve(
+          app.getAppPath(),
+          '../../packages/joy-runtime/dist/kindcut-joy-runtime/kindcut-joy-runtime',
+        );
+    nativeJoyService = new NativeJoyService({
+      platform: process.platform,
+      enabled: process.platform === 'darwin',
+      runtimePath,
+      store: new JoyProvisioningStore(
+        path.join(app.getPath('userData'), 'native-joy', 'provisioning.bin'),
+        safeStorage,
+      ),
     });
   }
   return nativeJoyService;
 }
-let joyConfigurationService:JoyConfigurationService|null=null;
-function getJoyConfigurationService(){
- if(!joyConfigurationService)joyConfigurationService=new JoyConfigurationService({
-  store:new JoyConfigurationStore(path.join(app.getPath('userData'),'native-joy','configuration-library.json')),
-  offline:request=>getNativeJoyService().runOfflineConfiguration(request),
-  capture:async()=>{throw new Error('Use the session-bound calibration approval flow.');},
- });
- return joyConfigurationService;
+let joyConfigurationService: JoyConfigurationService | null = null;
+function getJoyConfigurationService() {
+  if (!joyConfigurationService)
+    joyConfigurationService = new JoyConfigurationService({
+      store: new JoyConfigurationStore(
+        path.join(app.getPath('userData'), 'native-joy', 'configuration-library.json'),
+      ),
+      offline: (request) => getNativeJoyService().runOfflineConfiguration(request),
+      capture: async () => {
+        throw new Error('Use the session-bound calibration approval flow.');
+      },
+    });
+  return joyConfigurationService;
 }
-const nativeInlineIntents=new NativeJoyInlineIntent();
-function trustedNativeSender(event:unknown):boolean{const e=event as IpcMainInvokeEvent;return Boolean(e?.sender&&!e.sender.isDestroyed()&&BrowserWindow.fromWebContents(e.sender)!==null&&e.senderFrame===e.sender.mainFrame&&e.senderFrame&&isTrustedJoyUrl(e.senderFrame.url,resolveRendererEntry({appRoot:path.resolve(__dirname,'..'),viteDevServerUrl:process.env.VITE_DEV_SERVER_URL})));}
-function nativeIntentBinding(action:NativeIntent):string{return JSON.stringify([getNativeJoyService().inlineActionIdentity,action.startsWith('job-')?getNativeJobService().inlineActionIdentity:null]);}
-const nativeIntentChannels:Record<string,NativeIntent>={'native-joy:connect':'connect','native-joy:connect-for-make':'connect','native-joy:disconnect':'disconnect','native-joy:job-start':'job-start','native-joy:job-go':'job-go','native-joy:job-resume':'job-resume','native-joy:job-end':'job-end'};
-function registerNativeUserHandler(name:string,handler:(event:unknown,input?:unknown)=>Promise<unknown>){ipcMain.handle(name,async(event,input)=>{const action=nativeIntentChannels[name];if(!action)return handler(event,input);if(!trustedNativeSender(event)||!event.senderFrame)throw Error('Trusted Make window required.');return nativeInlineIntents.run(event.senderFrame,action,nativeIntentBinding(action),()=>handler(event,input));});}
-async function approveNativeMakeAction(action:NativeIntent):Promise<boolean>{if(!(await checkForBlockingCutterProcesses()).ok)throw Error('Close the other cutter application before continuing.');return nativeInlineIntents.approve(action);}
-let nativeJobService:NativeJoyJobService|null=null;
-let nativeJobJournal:NativeJoyJobJournal|null=null;
-const legacyOwnsCutter=()=>legacyCutterStarting||Boolean(activeCutSession&&!['finished','stopped','blocked'].includes(activeCutSession.getSnapshot().status));
-function getNativeJobJournal(){return nativeJobJournal??=new NativeJoyJobJournal(path.join(app.getPath('userData'),'native-joy','job-diagnostics'));}
-function getNativeJobService(){
- return nativeJobService??=new NativeJoyJobService({ensureMakeSelection:async(materialId,tools)=>{const native=getNativeJoyService(),status=await native.getStatus(),deviceFingerprint=native.currentDeviceFingerprint;if(!status.session||!deviceFingerprint)throw Error('Connect your Joy before preparation.');return getJoyConfigurationService().ensureMakeSelection(materialId,tools,{deviceFingerprint,firmwareSelector:status.session.firmwareSelector});},loadLibrary:()=>getJoyConfigurationService().exportLibrary(),native:getNativeJoyService(),legacyBusy:legacyOwnsCutter,
-  journal:{preflight:()=>getNativeJobJournal().preflight(),observe:s=>getNativeJobJournal().observe(s)},
-  // The isolated preload captures the single intentional button click; IPC
-  // consumes its frame/state-bound receipt before this host-only approval.
-  confirmLoad:()=>approveNativeMakeAction('job-start'),
-  confirmTool:()=>approveNativeMakeAction('job-go'),
-  confirmResume:()=>approveNativeMakeAction('job-resume'),
-  confirmEnd:()=>approveNativeMakeAction('job-end'),
- });
+const nativeInlineIntents = new NativeJoyInlineIntent();
+function trustedNativeSender(event: unknown): boolean {
+  const e = event as IpcMainInvokeEvent;
+  return Boolean(
+    e?.sender &&
+    !e.sender.isDestroyed() &&
+    BrowserWindow.fromWebContents(e.sender) !== null &&
+    e.senderFrame === e.sender.mainFrame &&
+    e.senderFrame &&
+    isTrustedJoyUrl(
+      e.senderFrame.url,
+      resolveRendererEntry({
+        appRoot: path.resolve(__dirname, '..'),
+        viteDevServerUrl: process.env.VITE_DEV_SERVER_URL,
+      }),
+    ),
+  );
+}
+function nativeIntentBinding(action: NativeIntent): string {
+  return JSON.stringify([
+    getNativeJoyService().inlineActionIdentity,
+    action.startsWith('job-') ? getNativeJobService().inlineActionIdentity : null,
+  ]);
+}
+const nativeIntentChannels: Record<string, NativeIntent> = {
+  'native-joy:connect': 'connect',
+  'native-joy:connect-for-make': 'connect',
+  'native-joy:disconnect': 'disconnect',
+  'native-joy:job-start': 'job-start',
+  'native-joy:job-go': 'job-go',
+  'native-joy:job-resume': 'job-resume',
+  'native-joy:job-end': 'job-end',
+};
+function registerNativeUserHandler(
+  name: string,
+  handler: (event: unknown, input?: unknown) => Promise<unknown>,
+) {
+  ipcMain.handle(name, async (event, input) => {
+    const action = nativeIntentChannels[name];
+    if (!action) return handler(event, input);
+    if (!trustedNativeSender(event) || !event.senderFrame)
+      throw Error('Trusted Make window required.');
+    return nativeInlineIntents.run(event.senderFrame, action, nativeIntentBinding(action), () =>
+      handler(event, input),
+    );
+  });
+}
+async function approveNativeMakeAction(action: NativeIntent): Promise<boolean> {
+  if (!(await checkForBlockingCutterProcesses()).ok)
+    throw Error('Close the other cutter application before continuing.');
+  return nativeInlineIntents.approve(action);
+}
+let nativeJobService: NativeJoyJobService | null = null;
+let nativeJobJournal: NativeJoyJobJournal | null = null;
+const legacyOwnsCutter = () =>
+  legacyCutterStarting ||
+  Boolean(
+    activeCutSession &&
+    !['finished', 'stopped', 'blocked'].includes(activeCutSession.getSnapshot().status),
+  );
+function getNativeJobJournal() {
+  return (nativeJobJournal ??= new NativeJoyJobJournal(
+    path.join(app.getPath('userData'), 'native-joy', 'job-diagnostics'),
+  ));
+}
+function getNativeJobService() {
+  return (nativeJobService ??= new NativeJoyJobService({
+    ensureMakeSelection: async (materialId, tools) => {
+      const native = getNativeJoyService(),
+        status = await native.getStatus(),
+        deviceFingerprint = native.currentDeviceFingerprint;
+      if (!status.session || !deviceFingerprint)
+        throw Error('Connect your Joy before preparation.');
+      return getJoyConfigurationService().ensureMakeSelection(materialId, tools, {
+        deviceFingerprint,
+        firmwareSelector: status.session.firmwareSelector,
+      });
+    },
+    loadLibrary: () => getJoyConfigurationService().exportLibrary(),
+    native: getNativeJoyService(),
+    legacyBusy: legacyOwnsCutter,
+    journal: {
+      preflight: () => getNativeJobJournal().preflight(),
+      observe: (s) => getNativeJobJournal().observe(s),
+    },
+    // The isolated preload captures the single intentional button click; IPC
+    // consumes its frame/state-bound receipt before this host-only approval.
+    confirmLoad: () => approveNativeMakeAction('job-start'),
+    confirmTool: () => approveNativeMakeAction('job-go'),
+    confirmResume: () => approveNativeMakeAction('job-resume'),
+    confirmEnd: () => approveNativeMakeAction('job-end'),
+  }));
 }
 const closeAllowedWindows = new WeakSet<BrowserWindow>();
 let updateCheckInProgress = false;
@@ -139,28 +240,28 @@ let installingUpdate = false;
 let updateEventsConfigured = false;
 
 type RendererAction =
-  | "new-project"
-  | "open-project"
-  | "save-project"
-  | "save-project-as"
-  | "example-project"
-  | "set-language"
-  | "edit-cut"
-  | "edit-copy"
-  | "edit-paste"
-  | "edit-delete"
-  | "edit-select-all"
-  | "edit-undo"
-  | "edit-redo"
-  | "edit-group"
-  | "edit-ungroup"
-  | "edit-flip-x"
-  | "edit-flip-y"
-  | "edit-bring-forward"
-  | "edit-send-backward"
-  | "edit-bring-to-front"
-  | "edit-send-to-back"
-  | "close-window";
+  | 'new-project'
+  | 'open-project'
+  | 'save-project'
+  | 'save-project-as'
+  | 'example-project'
+  | 'set-language'
+  | 'edit-cut'
+  | 'edit-copy'
+  | 'edit-paste'
+  | 'edit-delete'
+  | 'edit-select-all'
+  | 'edit-undo'
+  | 'edit-redo'
+  | 'edit-group'
+  | 'edit-ungroup'
+  | 'edit-flip-x'
+  | 'edit-flip-y'
+  | 'edit-bring-forward'
+  | 'edit-send-backward'
+  | 'edit-bring-to-front'
+  | 'edit-send-to-back'
+  | 'close-window';
 
 type ProjectSaveInput = {
   content: string;
@@ -168,9 +269,7 @@ type ProjectSaveInput = {
   currentPath?: string | null;
 };
 
-type ProjectFileResult =
-  | { canceled: true }
-  | { canceled: false; path: string; content?: string };
+type ProjectFileResult = { canceled: true } | { canceled: false; path: string; content?: string };
 
 type WorkspaceEditState = {
   isWorkspaceContextTarget: boolean;
@@ -189,7 +288,7 @@ type ProjectState = {
 
 type PendingUpdateState = {
   version: string;
-  status: "ready" | "installing";
+  status: 'ready' | 'installing';
   createdAt: string;
   updatedAt: string;
   downloadedFile?: string;
@@ -204,14 +303,14 @@ type UpdateProgressState = {
 
 type UpdateRendererState = {
   status:
-    | "idle"
-    | "checking"
-    | "available"
-    | "downloading"
-    | "ready"
-    | "installing"
-    | "not-available"
-    | "failed";
+    | 'idle'
+    | 'checking'
+    | 'available'
+    | 'downloading'
+    | 'ready'
+    | 'installing'
+    | 'not-available'
+    | 'failed';
   visible: boolean;
   manual: boolean;
   version?: string;
@@ -224,7 +323,7 @@ type UpdateRendererState = {
 
 type AppSettings = {
   slicebugLoggingEnabled?: boolean;
-  cutterBackend?: "auto" | "native" | "slicebug";
+  cutterBackend?: 'auto' | 'native' | 'slicebug';
 };
 
 type JimpImage = {
@@ -249,18 +348,18 @@ type RasterTraceBackendOptions = {
   invert: boolean;
 };
 
-const PROJECT_FILE_FILTER = { name: "KindCut Projects", extensions: ["kindcut"] };
+const PROJECT_FILE_FILTER = { name: 'KindCut Projects', extensions: ['kindcut'] };
 const EDIT_STATE_REQUEST_TIMEOUT_MS = 250;
 const PROJECT_STATE_REQUEST_TIMEOUT_MS = 500;
-const PENDING_UPDATE_FILE_NAME = "pending-update.json";
-const SKIPPED_UPDATE_FILE_NAME = "skipped-update.json";
-const SETTINGS_FILE_NAME = "settings.json";
+const PENDING_UPDATE_FILE_NAME = 'pending-update.json';
+const SKIPPED_UPDATE_FILE_NAME = 'skipped-update.json';
+const SETTINGS_FILE_NAME = 'settings.json';
 const ABOUT_COPY =
-  "KindCut helps you design, preview, save, and prepare Cricut projects locally. " +
-  "Cutter handoff is powered by the bundled SliceBug helper and always requires explicit confirmation.";
+  'KindCut helps you design, preview, save, and prepare Cricut projects locally. ' +
+  'Cutter handoff is powered by the bundled SliceBug helper and always requires explicit confirmation.';
 let slicebugLoggingEnabled = false;
 let updateRendererState: UpdateRendererState = {
-  status: "idle",
+  status: 'idle',
   visible: false,
   manual: false,
   currentVersion: app.getVersion(),
@@ -269,7 +368,7 @@ let availableUpdateVersion: string | null = null;
 let availableDownloadedFile: string | null = null;
 
 function ensureKindCutExtension(filePath: string): string {
-  return filePath.toLowerCase().endsWith(".kindcut") ? filePath : `${filePath}.kindcut`;
+  return filePath.toLowerCase().endsWith('.kindcut') ? filePath : `${filePath}.kindcut`;
 }
 
 async function saveProjectFile(input: ProjectSaveInput): Promise<ProjectFileResult> {
@@ -277,7 +376,7 @@ async function saveProjectFile(input: ProjectSaveInput): Promise<ProjectFileResu
   if (!filePath) {
     const focusedWindow = BrowserWindow.getFocusedWindow();
     const saveOptions: SaveDialogOptions = {
-      title: "Save KindCut Project",
+      title: 'Save KindCut Project',
       defaultPath: input.defaultFileName,
       filters: [PROJECT_FILE_FILTER],
     };
@@ -291,15 +390,15 @@ async function saveProjectFile(input: ProjectSaveInput): Promise<ProjectFileResu
   }
 
   const normalizedPath = ensureKindCutExtension(filePath);
-  await fs.writeFile(normalizedPath, input.content, "utf8");
+  await fs.writeFile(normalizedPath, input.content, 'utf8');
   return { canceled: false, path: normalizedPath };
 }
 
 async function openProjectFile(): Promise<ProjectFileResult> {
   const focusedWindow = BrowserWindow.getFocusedWindow();
   const openOptions: OpenDialogOptions = {
-    title: "Open KindCut Project",
-    properties: ["openFile"],
+    title: 'Open KindCut Project',
+    properties: ['openFile'],
     filters: [PROJECT_FILE_FILTER],
   };
   const result = focusedWindow
@@ -310,22 +409,26 @@ async function openProjectFile(): Promise<ProjectFileResult> {
     return { canceled: true };
   }
 
-  const content = await fs.readFile(filePath, "utf8");
+  const content = await fs.readFile(filePath, 'utf8');
   return { canceled: false, path: filePath, content };
 }
 
 // Reopens a project from the welcome screen's recent list (no file dialog).
 async function openProjectFileAtPath(filePath: string): Promise<ProjectFileResult> {
-  if (typeof filePath !== "string" || !path.isAbsolute(filePath) || path.extname(filePath).toLowerCase() !== ".kindcut") {
-    throw new Error("That is not a KindCut project file.");
+  if (
+    typeof filePath !== 'string' ||
+    !path.isAbsolute(filePath) ||
+    path.extname(filePath).toLowerCase() !== '.kindcut'
+  ) {
+    throw new Error('That is not a KindCut project file.');
   }
-  const content = await fs.readFile(filePath, "utf8");
+  const content = await fs.readFile(filePath, 'utf8');
   return { canceled: false, path: filePath, content };
 }
 
 function sendRendererAction(action: RendererAction, value?: string): void {
   for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send("app:action", { action, value });
+    window.webContents.send('app:action', { action, value });
   }
 }
 
@@ -338,18 +441,18 @@ function toggleFocusedWindowDevTools(): void {
   if (focusedWindow.webContents.isDevToolsOpened()) {
     focusedWindow.webContents.closeDevTools();
   } else {
-    focusedWindow.webContents.openDevTools({ mode: "detach" });
+    focusedWindow.webContents.openDevTools({ mode: 'detach' });
   }
 }
 
 function showAboutDialog(): void {
   const focusedWindow = BrowserWindow.getFocusedWindow();
   const options = {
-    type: "info" as const,
-    title: "About KindCut",
+    type: 'info' as const,
+    title: 'About KindCut',
     message: `KindCut ${app.getVersion()}`,
     detail: `${ABOUT_COPY}\n\nCopyright 2026 Joel De Smit.`,
-    buttons: ["OK"],
+    buttons: ['OK'],
   };
 
   if (focusedWindow) {
@@ -362,10 +465,10 @@ function showAboutDialog(): void {
 
 function configureAboutPanel(): void {
   app.setAboutPanelOptions({
-    applicationName: "KindCut",
+    applicationName: 'KindCut',
     applicationVersion: app.getVersion(),
-    version: "Cricut companion 1.0",
-    copyright: "Copyright 2026 Joel De Smit",
+    version: 'Cricut companion 1.0',
+    copyright: 'Copyright 2026 Joel De Smit',
     credits: ABOUT_COPY,
   });
 }
@@ -374,33 +477,43 @@ function getPreferredWindow(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
 }
 
-function showMessage(window: BrowserWindow | null, options: MessageBoxOptions): Promise<MessageBoxReturnValue> {
+function showMessage(
+  window: BrowserWindow | null,
+  options: MessageBoxOptions,
+): Promise<MessageBoxReturnValue> {
   return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
 }
 
 function pendingUpdatePath(): string {
-  return path.join(app.getPath("userData"), PENDING_UPDATE_FILE_NAME);
+  return path.join(app.getPath('userData'), PENDING_UPDATE_FILE_NAME);
 }
 
 function skippedUpdatePath(): string {
-  return path.join(app.getPath("userData"), SKIPPED_UPDATE_FILE_NAME);
+  return path.join(app.getPath('userData'), SKIPPED_UPDATE_FILE_NAME);
 }
 
 function appSettingsPath(): string {
-  return path.join(app.getPath("userData"), SETTINGS_FILE_NAME);
+  return path.join(app.getPath('userData'), SETTINGS_FILE_NAME);
 }
 
 function isAppSettings(value: unknown): value is AppSettings {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== 'object') {
     return false;
   }
   const record = value as Record<string, unknown>;
-  return (record.slicebugLoggingEnabled === undefined || typeof record.slicebugLoggingEnabled === "boolean") && (record.cutterBackend === undefined || record.cutterBackend === "auto" || record.cutterBackend === "native" || record.cutterBackend === "slicebug");
+  return (
+    (record.slicebugLoggingEnabled === undefined ||
+      typeof record.slicebugLoggingEnabled === 'boolean') &&
+    (record.cutterBackend === undefined ||
+      record.cutterBackend === 'auto' ||
+      record.cutterBackend === 'native' ||
+      record.cutterBackend === 'slicebug')
+  );
 }
 
 async function readAppSettings(): Promise<AppSettings> {
   try {
-    const content = await fs.readFile(appSettingsPath(), "utf8");
+    const content = await fs.readFile(appSettingsPath(), 'utf8');
     const parsed = JSON.parse(content) as unknown;
     return isAppSettings(parsed) ? parsed : {};
   } catch {
@@ -410,7 +523,7 @@ async function readAppSettings(): Promise<AppSettings> {
 
 async function writeAppSettings(settings: AppSettings): Promise<void> {
   await fs.mkdir(path.dirname(appSettingsPath()), { recursive: true });
-  await fs.writeFile(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  await fs.writeFile(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
 }
 
 async function loadAppSettings(): Promise<void> {
@@ -424,34 +537,34 @@ async function setSlicebugLoggingPreference(enabled: boolean): Promise<void> {
   setSlicebugLoggingEnabled(enabled);
   await writeAppSettings({ ...(await readAppSettings()), slicebugLoggingEnabled: enabled });
   Menu.setApplicationMenu(createAppMenu());
-  logDiagnostics("info", "[KindCut settings] SliceBug logging changed", { enabled });
+  logDiagnostics('info', '[KindCut settings] SliceBug logging changed', { enabled });
 }
 
 function isPendingUpdateState(value: unknown): value is PendingUpdateState {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== 'object') {
     return false;
   }
   const record = value as Record<string, unknown>;
   return (
-    typeof record.version === "string" &&
-    (record.status === "ready" || record.status === "installing") &&
-    typeof record.createdAt === "string" &&
-    typeof record.updatedAt === "string" &&
-    (record.downloadedFile === undefined || typeof record.downloadedFile === "string")
+    typeof record.version === 'string' &&
+    (record.status === 'ready' || record.status === 'installing') &&
+    typeof record.createdAt === 'string' &&
+    typeof record.updatedAt === 'string' &&
+    (record.downloadedFile === undefined || typeof record.downloadedFile === 'string')
   );
 }
 
 function isSkippedUpdateState(value: unknown): value is SkippedUpdateState {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== 'object') {
     return false;
   }
   const record = value as Record<string, unknown>;
-  return typeof record.version === "string" && typeof record.skippedAt === "string";
+  return typeof record.version === 'string' && typeof record.skippedAt === 'string';
 }
 
 async function readPendingUpdate(): Promise<PendingUpdateState | null> {
   try {
-    const content = await fs.readFile(pendingUpdatePath(), "utf8");
+    const content = await fs.readFile(pendingUpdatePath(), 'utf8');
     const parsed = JSON.parse(content) as unknown;
     return isPendingUpdateState(parsed) ? parsed : null;
   } catch {
@@ -461,7 +574,7 @@ async function readPendingUpdate(): Promise<PendingUpdateState | null> {
 
 async function readSkippedUpdate(): Promise<SkippedUpdateState | null> {
   try {
-    const content = await fs.readFile(skippedUpdatePath(), "utf8");
+    const content = await fs.readFile(skippedUpdatePath(), 'utf8');
     const parsed = JSON.parse(content) as unknown;
     return isSkippedUpdateState(parsed) ? parsed : null;
   } catch {
@@ -471,7 +584,7 @@ async function readSkippedUpdate(): Promise<SkippedUpdateState | null> {
 
 async function writePendingUpdate(
   version: string,
-  status: PendingUpdateState["status"],
+  status: PendingUpdateState['status'],
   downloadedFile?: string | null,
 ): Promise<void> {
   const existing = await readPendingUpdate();
@@ -481,10 +594,11 @@ async function writePendingUpdate(
     status,
     createdAt: existing?.version === version ? existing.createdAt : now,
     updatedAt: now,
-    downloadedFile: downloadedFile ?? (existing?.version === version ? existing.downloadedFile : undefined),
+    downloadedFile:
+      downloadedFile ?? (existing?.version === version ? existing.downloadedFile : undefined),
   };
   await fs.mkdir(path.dirname(pendingUpdatePath()), { recursive: true });
-  await fs.writeFile(pendingUpdatePath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  await fs.writeFile(pendingUpdatePath(), `${JSON.stringify(next, null, 2)}\n`, 'utf8');
 }
 
 async function writeSkippedUpdate(version: string): Promise<void> {
@@ -493,7 +607,7 @@ async function writeSkippedUpdate(version: string): Promise<void> {
     skippedAt: new Date().toISOString(),
   };
   await fs.mkdir(path.dirname(skippedUpdatePath()), { recursive: true });
-  await fs.writeFile(skippedUpdatePath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  await fs.writeFile(skippedUpdatePath(), `${JSON.stringify(next, null, 2)}\n`, 'utf8');
 }
 
 async function clearPendingUpdate(): Promise<void> {
@@ -510,14 +624,19 @@ async function clearStaleSkippedUpdate(): Promise<SkippedUpdateState | null> {
     return null;
   }
   if (isVersionAtLeast(app.getVersion(), skippedUpdate.version)) {
-    logUpdaterEvent("Clearing stale skipped update because installed version caught up", { skippedUpdate });
+    logUpdaterEvent('Clearing stale skipped update because installed version caught up', {
+      skippedUpdate,
+    });
     await clearSkippedUpdate();
     return null;
   }
   return skippedUpdate;
 }
 
-async function shouldSuppressAutomaticUpdate(version: string, interactive: boolean): Promise<boolean> {
+async function shouldSuppressAutomaticUpdate(
+  version: string,
+  interactive: boolean,
+): Promise<boolean> {
   const skippedUpdate = await clearStaleSkippedUpdate();
   return shouldSuppressSkippedUpdate({ availableVersion: version, interactive, skippedUpdate });
 }
@@ -535,14 +654,14 @@ async function fileExists(filePath: string | null | undefined): Promise<boolean>
 }
 
 function getMacAppBundlePath(): string {
-  return path.resolve(path.dirname(process.execPath), "..", "..");
+  return path.resolve(path.dirname(process.execPath), '..', '..');
 }
 
 function buildMacUpdateInstallScript(): string {
   return [
-    "#!/bin/bash",
-    "set -euo pipefail",
-    "",
+    '#!/bin/bash',
+    'set -euo pipefail',
+    '',
     'APP_PATH="$1"',
     'ZIP_PATH="$2"',
     'APP_PID="$3"',
@@ -550,31 +669,31 @@ function buildMacUpdateInstallScript(): string {
     'APP_NAME="$(basename "$APP_PATH")"',
     'BACKUP_PATH="${APP_PATH}.kindcut-update-backup"',
     'TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kindcut-update.XXXXXX")"',
-    "",
+    '',
     'exec >> "$LOG_PATH" 2>&1',
     'echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Installing KindCut update"',
     'echo "App: $APP_PATH"',
     'echo "Zip: $ZIP_PATH"',
-    "",
-    "cleanup() {",
+    '',
+    'cleanup() {',
     '  rm -rf "$TMP_DIR"',
-    "}",
-    "trap cleanup EXIT",
-    "",
-    "for _ in $(seq 1 120); do",
+    '}',
+    'trap cleanup EXIT',
+    '',
+    'for _ in $(seq 1 120); do',
     '  if ! kill -0 "$APP_PID" 2>/dev/null; then',
-    "    break",
-    "  fi",
-    "  sleep 0.5",
-    "done",
-    "",
+    '    break',
+    '  fi',
+    '  sleep 0.5',
+    'done',
+    '',
     'ditto -x -k "$ZIP_PATH" "$TMP_DIR"',
     'NEW_APP="$(find "$TMP_DIR" -maxdepth 3 -name "$APP_NAME" -type d -print -quit)"',
     'if [ -z "$NEW_APP" ]; then',
     '  echo "Could not find $APP_NAME inside update zip"',
-    "  exit 1",
-    "fi",
-    "",
+    '  exit 1',
+    'fi',
+    '',
     'rm -rf "$BACKUP_PATH"',
     'mv "$APP_PATH" "$BACKUP_PATH"',
     'if ! ditto "$NEW_APP" "$APP_PATH"; then',
@@ -582,32 +701,42 @@ function buildMacUpdateInstallScript(): string {
     '  rm -rf "$APP_PATH"',
     '  mv "$BACKUP_PATH" "$APP_PATH"',
     '  open "$APP_PATH"',
-    "  exit 1",
-    "fi",
-    "",
+    '  exit 1',
+    'fi',
+    '',
     'rm -rf "$BACKUP_PATH"',
     'xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true',
     'open "$APP_PATH"',
     'echo "Install complete"',
-    "",
-  ].join("\n");
+    '',
+  ].join('\n');
 }
 
 async function runMacUpdateInstaller(downloadedFile: string): Promise<void> {
   const appBundlePath = getMacAppBundlePath();
-  const logPath = path.join(app.getPath("userData"), "updater-install.log");
-  const scriptPath = path.join(app.getPath("temp"), `kindcut-update-${Date.now()}.sh`);
-  await fs.writeFile(scriptPath, buildMacUpdateInstallScript(), { encoding: "utf8", mode: 0o700 });
-  const child = spawn("/bin/bash", [scriptPath, appBundlePath, downloadedFile, String(process.pid), logPath], {
-    detached: true,
-    stdio: "ignore",
-  });
+  const logPath = path.join(app.getPath('userData'), 'updater-install.log');
+  const scriptPath = path.join(app.getPath('temp'), `kindcut-update-${Date.now()}.sh`);
+  await fs.writeFile(scriptPath, buildMacUpdateInstallScript(), { encoding: 'utf8', mode: 0o700 });
+  const child = spawn(
+    '/bin/bash',
+    [scriptPath, appBundlePath, downloadedFile, String(process.pid), logPath],
+    {
+      detached: true,
+      stdio: 'ignore',
+    },
+  );
   child.unref();
   app.quit();
 }
 
 function pickDownloadedUpdateFile(downloadedFiles: string[]): string | null {
-  return downloadedFiles.find((file) => file.endsWith(".zip") || file.endsWith(".dmg") || file.endsWith(".exe")) ?? downloadedFiles[0] ?? null;
+  return (
+    downloadedFiles.find(
+      (file) => file.endsWith('.zip') || file.endsWith('.dmg') || file.endsWith('.exe'),
+    ) ??
+    downloadedFiles[0] ??
+    null
+  );
 }
 
 function publishUpdateState(next: Partial<UpdateRendererState>): UpdateRendererState {
@@ -616,19 +745,19 @@ function publishUpdateState(next: Partial<UpdateRendererState>): UpdateRendererS
     ...next,
     currentVersion: app.getVersion(),
   };
-  logDiagnostics("info", "[KindCut updater] State changed", updateRendererState);
+  logDiagnostics('info', '[KindCut updater] State changed', updateRendererState);
   for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send("updater:state", updateRendererState);
+    window.webContents.send('updater:state', updateRendererState);
   }
   return updateRendererState;
 }
 
 function logUpdaterEvent(message: string, details: Record<string, unknown> = {}): void {
-  logDiagnostics("info", `[KindCut updater] ${message}`, {
+  logDiagnostics('info', `[KindCut updater] ${message}`, {
     ...details,
     version: app.getVersion(),
     platform: process.platform,
-    updateCacheDir: path.join(app.getPath("userData"), "pending"),
+    updateCacheDir: path.join(app.getPath('userData'), 'pending'),
     pendingUpdatePath: pendingUpdatePath(),
     skippedUpdatePath: skippedUpdatePath(),
   });
@@ -647,9 +776,9 @@ function setWindowProgress(progress: number): void {
 }
 
 function configureUpdates(mainWindow: BrowserWindow): void {
-  const allowDevUpdateCheck = process.env.KINDCUT_ENABLE_DEV_AUTO_UPDATE === "1";
+  const allowDevUpdateCheck = process.env.KINDCUT_ENABLE_DEV_AUTO_UPDATE === '1';
   if (
-    process.env.KINDCUT_DISABLE_AUTO_UPDATE === "1" ||
+    process.env.KINDCUT_DISABLE_AUTO_UPDATE === '1' ||
     (!app.isPackaged && !allowDevUpdateCheck) ||
     (isDevelopment && !allowDevUpdateCheck)
   ) {
@@ -658,7 +787,7 @@ function configureUpdates(mainWindow: BrowserWindow): void {
 
   const updateFeedUrl = process.env.KINDCUT_UPDATE_URL?.trim();
   if (updateFeedUrl) {
-    autoUpdater.setFeedURL({ provider: "generic", url: updateFeedUrl });
+    autoUpdater.setFeedURL({ provider: 'generic', url: updateFeedUrl });
   }
   if (allowDevUpdateCheck) {
     autoUpdater.forceDevUpdateConfig = true;
@@ -671,8 +800,8 @@ function configureUpdates(mainWindow: BrowserWindow): void {
 
   if (!updateEventsConfigured) {
     updateEventsConfigured = true;
-    autoUpdater.on("error", (error) => {
-      logDiagnostics("error", "[KindCut updater] Update error", {
+    autoUpdater.on('error', (error) => {
+      logDiagnostics('error', '[KindCut updater] Update error', {
         name: error.name,
         message: error.message,
         stack: error.stack,
@@ -680,26 +809,26 @@ function configureUpdates(mainWindow: BrowserWindow): void {
       installingUpdate = false;
       clearWindowProgress();
       publishUpdateState({
-        status: "failed",
+        status: 'failed',
         visible: updateRendererState.manual,
-        message: "KindCut could not update right now.",
+        message: 'KindCut could not update right now.',
         detail: error.message,
       });
     });
-    autoUpdater.on("checking-for-update", () => {
-      logUpdaterEvent("Checking for update");
+    autoUpdater.on('checking-for-update', () => {
+      logUpdaterEvent('Checking for update');
     });
-    autoUpdater.on("update-available", (info) => {
-      logUpdaterEvent("Update available", { updateInfo: info });
+    autoUpdater.on('update-available', (info) => {
+      logUpdaterEvent('Update available', { updateInfo: info });
     });
-    autoUpdater.on("update-not-available", (info) => {
-      logUpdaterEvent("Update not available", { updateInfo: info });
+    autoUpdater.on('update-not-available', (info) => {
+      logUpdaterEvent('Update not available', { updateInfo: info });
     });
-    autoUpdater.on("download-progress", (progress) => {
+    autoUpdater.on('download-progress', (progress) => {
       const percent = Math.max(0, Math.min(100, progress.percent || 0));
       setWindowProgress(percent / 100);
       publishUpdateState({
-        status: "downloading",
+        status: 'downloading',
         visible: updateRendererState.visible,
         progress: {
           percent,
@@ -709,8 +838,8 @@ function configureUpdates(mainWindow: BrowserWindow): void {
         },
       });
     });
-    autoUpdater.on("update-downloaded", (event) => {
-      logUpdaterEvent("Update downloaded", {
+    autoUpdater.on('update-downloaded', (event) => {
+      logUpdaterEvent('Update downloaded', {
         updateInfo: event,
         downloadedFile: availableDownloadedFile,
       });
@@ -724,24 +853,26 @@ function configureUpdates(mainWindow: BrowserWindow): void {
 async function startUpdateFlow(mainWindow: BrowserWindow): Promise<void> {
   const pendingUpdate = await readPendingUpdate();
   if (pendingUpdate && isVersionAtLeast(app.getVersion(), pendingUpdate.version)) {
-    logUpdaterEvent("Clearing stale pending update because installed version caught up", { pendingUpdate });
+    logUpdaterEvent('Clearing stale pending update because installed version caught up', {
+      pendingUpdate,
+    });
     await clearPendingUpdate();
     await checkForUpdates({ interactive: false, sourceWindow: mainWindow });
     return;
   }
-  if (pendingUpdate?.status === "ready") {
+  if (pendingUpdate?.status === 'ready') {
     await installPendingUpdateOnStartup(mainWindow, pendingUpdate);
     return;
   }
-  if (pendingUpdate?.status === "installing") {
+  if (pendingUpdate?.status === 'installing') {
     publishUpdateState({
-      status: "installing",
+      status: 'installing',
       visible: true,
       manual: false,
       version: pendingUpdate.version,
       downloadedFile: pendingUpdate.downloadedFile,
       message: `KindCut ${pendingUpdate.version} is installing.`,
-      detail: "If this keeps showing, use Check for Updates from the menu to retry.",
+      detail: 'If this keeps showing, use Check for Updates from the menu to retry.',
     });
     return;
   }
@@ -749,42 +880,48 @@ async function startUpdateFlow(mainWindow: BrowserWindow): Promise<void> {
   await checkForUpdates({ interactive: false, sourceWindow: mainWindow });
 }
 
-async function installPendingUpdateOnStartup(window: BrowserWindow, pendingUpdate: PendingUpdateState): Promise<void> {
+async function installPendingUpdateOnStartup(
+  window: BrowserWindow,
+  pendingUpdate: PendingUpdateState,
+): Promise<void> {
   installingUpdate = true;
   setWindowProgress(2);
   publishUpdateState({
-    status: "installing",
+    status: 'installing',
     visible: true,
     manual: false,
     version: pendingUpdate.version,
     downloadedFile: pendingUpdate.downloadedFile,
     message: `KindCut ${pendingUpdate.version} is installing.`,
-    detail: "The app will restart to complete the update.",
+    detail: 'The app will restart to complete the update.',
   });
 
   try {
     await installPreparedUpdate(pendingUpdate.version, pendingUpdate.downloadedFile);
   } catch (error) {
-    logDiagnostics("error", "[KindCut updater] Failed to install pending update", {
+    logDiagnostics('error', '[KindCut updater] Failed to install pending update', {
       error: error instanceof Error ? error.message : String(error),
       pendingUpdate,
     });
     installingUpdate = false;
-    await writePendingUpdate(pendingUpdate.version, "ready", pendingUpdate.downloadedFile);
+    await writePendingUpdate(pendingUpdate.version, 'ready', pendingUpdate.downloadedFile);
     clearWindowProgress();
     publishUpdateState({
-      status: "ready",
+      status: 'ready',
       visible: true,
       manual: true,
       version: pendingUpdate.version,
       downloadedFile: pendingUpdate.downloadedFile,
       message: `KindCut ${pendingUpdate.version} is ready.`,
-      detail: "Restart KindCut to try installing the update again.",
+      detail: 'Restart KindCut to try installing the update again.',
     });
   }
 }
 
-async function downloadUpdateFileForVersion(version: string, existingFile?: string | null): Promise<string | null> {
+async function downloadUpdateFileForVersion(
+  version: string,
+  existingFile?: string | null,
+): Promise<string | null> {
   // macOS installs via runMacUpdateInstaller(), which only needs the downloaded
   // file path, so a previously downloaded file is enough. On Windows, electron-
   // updater's quitAndInstall() requires the in-memory download state that only
@@ -793,14 +930,14 @@ async function downloadUpdateFileForVersion(version: string, existingFile?: stri
   // "No update filepath provided, can't quit and install". So on Windows always
   // run the updater flow; downloadUpdate() reuses the cached file and does not
   // re-download.
-  if (process.platform === "darwin" && (await fileExists(existingFile))) {
+  if (process.platform === 'darwin' && (await fileExists(existingFile))) {
     return existingFile ?? null;
   }
 
   const result = await autoUpdater.checkForUpdates();
   const updateInfo = result?.updateInfo;
   if (!result?.isUpdateAvailable || !updateInfo || updateInfo.version !== version) {
-    logUpdaterEvent("Requested update version is no longer available", {
+    logUpdaterEvent('Requested update version is no longer available', {
       requestedVersion: version,
       updateInfo,
     });
@@ -811,11 +948,14 @@ async function downloadUpdateFileForVersion(version: string, existingFile?: stri
   const downloadedFiles = await autoUpdater.downloadUpdate();
   const downloadedFile = pickDownloadedUpdateFile(downloadedFiles);
   availableDownloadedFile = downloadedFile;
-  logUpdaterEvent("Downloaded update for version", { version, downloadedFile, downloadedFiles });
+  logUpdaterEvent('Downloaded update for version', { version, downloadedFile, downloadedFiles });
   return downloadedFile;
 }
 
-async function installPreparedUpdate(version: string, downloadedFile?: string | null): Promise<void> {
+async function installPreparedUpdate(
+  version: string,
+  downloadedFile?: string | null,
+): Promise<void> {
   const updateFile = await downloadUpdateFileForVersion(version, downloadedFile);
   if (!updateFile) {
     installingUpdate = false;
@@ -823,27 +963,27 @@ async function installPreparedUpdate(version: string, downloadedFile?: string | 
   }
 
   installingUpdate = true;
-  await writePendingUpdate(version, "installing", updateFile);
+  await writePendingUpdate(version, 'installing', updateFile);
   for (const window of BrowserWindow.getAllWindows()) {
     closeAllowedWindows.add(window);
   }
   clearWindowProgress();
   publishUpdateState({
-    status: "installing",
+    status: 'installing',
     visible: true,
     manual: true,
     version,
     downloadedFile: updateFile,
     message: `KindCut ${version} is installing.`,
-    detail: "KindCut will close and restart to complete the update.",
+    detail: 'KindCut will close and restart to complete the update.',
   });
-  logUpdaterEvent("Installing prepared update", {
+  logUpdaterEvent('Installing prepared update', {
     version,
     downloadedFile: updateFile,
     processPlatform: process.platform,
   });
 
-  if (process.platform === "darwin") {
+  if (process.platform === 'darwin') {
     await runMacUpdateInstaller(updateFile);
     return;
   }
@@ -851,14 +991,22 @@ async function installPreparedUpdate(version: string, downloadedFile?: string | 
   autoUpdater.quitAndInstall(false, true);
 }
 
-async function checkForUpdates({ interactive, sourceWindow }: { interactive: boolean; sourceWindow?: BrowserWindow | null }): Promise<void> {
+async function checkForUpdates({
+  interactive,
+  sourceWindow,
+}: {
+  interactive: boolean;
+  sourceWindow?: BrowserWindow | null;
+}): Promise<void> {
   if (updateCheckInProgress || (installingUpdate && !interactive)) {
     if (interactive) {
       publishUpdateState({
-        status: updateCheckInProgress ? "checking" : "installing",
+        status: updateCheckInProgress ? 'checking' : 'installing',
         visible: true,
         manual: true,
-        message: updateCheckInProgress ? "KindCut is already checking for an update." : "KindCut is already preparing an update.",
+        message: updateCheckInProgress
+          ? 'KindCut is already checking for an update.'
+          : 'KindCut is already preparing an update.',
       });
     }
     return;
@@ -867,10 +1015,10 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
   updateCheckInProgress = true;
   const window = sourceWindow ?? getPreferredWindow();
   publishUpdateState({
-    status: "checking",
+    status: 'checking',
     visible: interactive,
     manual: interactive,
-    message: "Checking for updates...",
+    message: 'Checking for updates...',
     progress: undefined,
   });
 
@@ -882,13 +1030,13 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
       availableUpdateVersion = pendingUpdate.version;
       availableDownloadedFile = pendingUpdate.downloadedFile ?? null;
       publishUpdateState({
-        status: "ready",
+        status: 'ready',
         visible: true,
         manual: interactive,
         version: pendingUpdate.version,
         downloadedFile: pendingUpdate.downloadedFile,
         message: `KindCut ${pendingUpdate.version} is ready.`,
-        detail: "Restart KindCut to complete the update.",
+        detail: 'Restart KindCut to complete the update.',
       });
       return;
     }
@@ -897,10 +1045,10 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
     const updateInfo = result?.updateInfo;
     if (!result?.isUpdateAvailable || !updateInfo) {
       publishUpdateState({
-        status: "not-available",
+        status: 'not-available',
         visible: interactive,
         manual: interactive,
-        message: "KindCut is up to date.",
+        message: 'KindCut is up to date.',
         detail: `You are running KindCut ${app.getVersion()}.`,
       });
       return;
@@ -910,9 +1058,11 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
     availableDownloadedFile = null;
 
     if (await shouldSuppressAutomaticUpdate(updateInfo.version, interactive)) {
-      logUpdaterEvent("Suppressing skipped update for automatic check", { version: updateInfo.version });
+      logUpdaterEvent('Suppressing skipped update for automatic check', {
+        version: updateInfo.version,
+      });
       publishUpdateState({
-        status: "idle",
+        status: 'idle',
         visible: false,
         manual: false,
         version: updateInfo.version,
@@ -926,51 +1076,52 @@ async function checkForUpdates({ interactive, sourceWindow }: { interactive: boo
     const projectState = window ? await requestProjectState(window) : null;
     if (!projectState) {
       publishUpdateState({
-        status: "available",
+        status: 'available',
         visible: interactive,
         manual: interactive,
         version: updateInfo.version,
         message: `KindCut ${updateInfo.version} is available.`,
-        detail: "KindCut could not confirm whether a project is open. Return to the welcome screen before installing.",
+        detail:
+          'KindCut could not confirm whether a project is open. Return to the welcome screen before installing.',
       });
       return;
     }
 
     if (projectState.hasOpenProject || projectState.hasUnsavedChanges) {
       publishUpdateState({
-        status: "available",
+        status: 'available',
         visible: interactive,
         manual: interactive,
         version: updateInfo.version,
         message: `KindCut ${updateInfo.version} is available.`,
         detail: projectState.hasUnsavedChanges
-          ? "Save or close your current project, then return to the welcome screen before installing."
-          : "Close your current project and return to the welcome screen before installing.",
+          ? 'Save or close your current project, then return to the welcome screen before installing.'
+          : 'Close your current project and return to the welcome screen before installing.',
       });
       return;
     }
 
     publishUpdateState({
-      status: "available",
+      status: 'available',
       visible: true,
       manual: interactive,
       version: updateInfo.version,
       message: `KindCut ${updateInfo.version} is available.`,
-      detail: "Download it now or let it continue in the background.",
+      detail: 'Download it now or let it continue in the background.',
     });
   } catch (error) {
     clearWindowProgress();
-    logDiagnostics("error", "[KindCut updater] Could not check for updates", {
+    logDiagnostics('error', '[KindCut updater] Could not check for updates', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       interactive,
     });
     publishUpdateState({
-      status: "failed",
+      status: 'failed',
       visible: interactive,
       manual: interactive,
-      message: "KindCut could not check for updates right now.",
-      detail: error instanceof Error ? error.message : "Please try again later.",
+      message: 'KindCut could not check for updates right now.',
+      detail: error instanceof Error ? error.message : 'Please try again later.',
     });
   } finally {
     updateCheckInProgress = false;
@@ -981,25 +1132,29 @@ function checkForUpdatesFromMenu(): void {
   void checkForUpdates({ interactive: true, sourceWindow: getPreferredWindow() });
 }
 
-async function downloadAvailableUpdate({ background }: { background: boolean }): Promise<UpdateRendererState> {
+async function downloadAvailableUpdate({
+  background,
+}: {
+  background: boolean;
+}): Promise<UpdateRendererState> {
   const version = availableUpdateVersion ?? updateRendererState.version;
   if (!version) {
     return publishUpdateState({
-      status: "failed",
+      status: 'failed',
       visible: true,
       manual: true,
-      message: "No update is ready to download.",
-      detail: "Check for updates again.",
+      message: 'No update is ready to download.',
+      detail: 'Check for updates again.',
     });
   }
 
   publishUpdateState({
-    status: "downloading",
+    status: 'downloading',
     visible: !background,
     manual: true,
     version,
     message: `Downloading KindCut ${version}...`,
-    detail: background ? "The update will continue downloading in the background." : undefined,
+    detail: background ? 'The update will continue downloading in the background.' : undefined,
     progress: { percent: 0 },
   });
 
@@ -1008,40 +1163,40 @@ async function downloadAvailableUpdate({ background }: { background: boolean }):
     clearWindowProgress();
     if (!downloadedFile) {
       return publishUpdateState({
-        status: "failed",
+        status: 'failed',
         visible: true,
         manual: true,
         version,
-        message: "KindCut could not download the update.",
-        detail: "Check for updates again.",
+        message: 'KindCut could not download the update.',
+        detail: 'Check for updates again.',
       });
     }
     availableDownloadedFile = downloadedFile;
-    await writePendingUpdate(version, "ready", downloadedFile);
+    await writePendingUpdate(version, 'ready', downloadedFile);
     return publishUpdateState({
-      status: "ready",
+      status: 'ready',
       visible: true,
       manual: true,
       version,
       downloadedFile,
       progress: { percent: 100 },
       message: `KindCut ${version} is ready.`,
-      detail: "Restart KindCut to complete the update.",
+      detail: 'Restart KindCut to complete the update.',
     });
   } catch (error) {
     clearWindowProgress();
-    logDiagnostics("error", "[KindCut updater] Could not download update", {
+    logDiagnostics('error', '[KindCut updater] Could not download update', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       version,
     });
     return publishUpdateState({
-      status: "failed",
+      status: 'failed',
       visible: true,
       manual: true,
       version,
-      message: "KindCut could not download the update.",
-      detail: error instanceof Error ? error.message : "Please try again later.",
+      message: 'KindCut could not download the update.',
+      detail: error instanceof Error ? error.message : 'Please try again later.',
     });
   }
 }
@@ -1051,11 +1206,11 @@ async function installReadyUpdate(): Promise<UpdateRendererState> {
   const version = pendingUpdate?.version ?? updateRendererState.version ?? availableUpdateVersion;
   if (!version) {
     return publishUpdateState({
-      status: "failed",
+      status: 'failed',
       visible: true,
       manual: true,
-      message: "No downloaded update is ready.",
-      detail: "Download the update first.",
+      message: 'No downloaded update is ready.',
+      detail: 'Download the update first.',
     });
   }
   await installPreparedUpdate(version, pendingUpdate?.downloadedFile ?? availableDownloadedFile);
@@ -1070,20 +1225,20 @@ async function skipAvailableUpdate(): Promise<UpdateRendererState> {
   const version = updateRendererState.version ?? availableUpdateVersion;
   if (!version) {
     return publishUpdateState({
-      status: "failed",
+      status: 'failed',
       visible: true,
       manual: true,
-      message: "No update is ready to skip.",
-      detail: "Check for updates again.",
+      message: 'No update is ready to skip.',
+      detail: 'Check for updates again.',
     });
   }
 
   await writeSkippedUpdate(version);
   availableUpdateVersion = null;
   availableDownloadedFile = null;
-  logUpdaterEvent("Skipped update version", { version });
+  logUpdaterEvent('Skipped update version', { version });
   return publishUpdateState({
-    status: "idle",
+    status: 'idle',
     visible: false,
     manual: false,
     version,
@@ -1098,32 +1253,32 @@ async function openLogsFolder(): Promise<void> {
   const logsDir = getDiagnosticsLogsDir();
   if (!logsDir) {
     await showMessage(getPreferredWindow(), {
-      type: "warning",
-      title: "KindCut Logs",
-      message: "The logs folder is not ready yet.",
-      buttons: ["OK"],
+      type: 'warning',
+      title: 'KindCut Logs',
+      message: 'The logs folder is not ready yet.',
+      buttons: ['OK'],
     });
     return;
   }
 
   await fs.mkdir(logsDir, { recursive: true });
-  logDiagnostics("info", "[KindCut diagnostics] Opening logs folder", { logsDir });
+  logDiagnostics('info', '[KindCut diagnostics] Opening logs folder', { logsDir });
   const result = await shell.openPath(logsDir);
   if (result) {
     await showMessage(getPreferredWindow(), {
-      type: "warning",
-      title: "KindCut Logs",
-      message: "KindCut could not open the logs folder.",
+      type: 'warning',
+      title: 'KindCut Logs',
+      message: 'KindCut could not open the logs folder.',
       detail: result,
-      buttons: ["OK"],
+      buttons: ['OK'],
     });
   }
 }
 
 function createSlicebugLoggingMenuItem(): MenuItemConstructorOptions {
   return {
-    label: "Enable SliceBug Logging",
-    type: "checkbox",
+    label: 'Enable SliceBug Logging',
+    type: 'checkbox',
     checked: slicebugLoggingEnabled,
     click: (menuItem) => {
       void setSlicebugLoggingPreference(Boolean(menuItem.checked));
@@ -1133,50 +1288,101 @@ function createSlicebugLoggingMenuItem(): MenuItemConstructorOptions {
 
 function createProjectMenu(): MenuItemConstructorOptions {
   return {
-    label: "Project",
+    label: 'Project',
     submenu: [
-      { label: "New Project", accelerator: "CmdOrCtrl+N", click: () => sendRendererAction("new-project") },
-      { label: "Open Project...", accelerator: "CmdOrCtrl+O", click: () => sendRendererAction("open-project") },
-      { label: "Save Project", accelerator: "CmdOrCtrl+S", click: () => sendRendererAction("save-project") },
-      { label: "Save Project As...", accelerator: "Shift+CmdOrCtrl+S", click: () => sendRendererAction("save-project-as") },
-      { type: "separator" },
-      { label: "Example Project", click: () => sendRendererAction("example-project") },
+      {
+        label: 'New Project',
+        accelerator: 'CmdOrCtrl+N',
+        click: () => sendRendererAction('new-project'),
+      },
+      {
+        label: 'Open Project...',
+        accelerator: 'CmdOrCtrl+O',
+        click: () => sendRendererAction('open-project'),
+      },
+      {
+        label: 'Save Project',
+        accelerator: 'CmdOrCtrl+S',
+        click: () => sendRendererAction('save-project'),
+      },
+      {
+        label: 'Save Project As...',
+        accelerator: 'Shift+CmdOrCtrl+S',
+        click: () => sendRendererAction('save-project-as'),
+      },
+      { type: 'separator' },
+      { label: 'Example Project', click: () => sendRendererAction('example-project') },
     ],
   };
 }
 
 function createEditMenu(): MenuItemConstructorOptions {
   return {
-    label: "Edit",
+    label: 'Edit',
     submenu: [
       // registerAccelerator: false — let the renderer handle these via keydown events so
       // the isEditableKeyboardTarget check can suppress them when a text field is focused.
-      { label: "Undo", accelerator: "CmdOrCtrl+Z", registerAccelerator: false, click: () => sendRendererAction("edit-undo") },
-      { label: "Redo", accelerator: process.platform === "darwin" ? "Shift+Cmd+Z" : "Ctrl+Y", registerAccelerator: false, click: () => sendRendererAction("edit-redo") },
-      { type: "separator" },
-      { label: "Cut", accelerator: "CmdOrCtrl+X", registerAccelerator: false, click: () => sendRendererAction("edit-cut") },
-      { label: "Copy", accelerator: "CmdOrCtrl+C", registerAccelerator: false, click: () => sendRendererAction("edit-copy") },
-      { label: "Paste", accelerator: "CmdOrCtrl+V", registerAccelerator: false, click: () => sendRendererAction("edit-paste") },
-      { type: "separator" },
-      { label: "Select All", accelerator: "CmdOrCtrl+A", registerAccelerator: false, click: () => sendRendererAction("edit-select-all") },
-      { label: "Delete", accelerator: "Backspace", registerAccelerator: false, click: () => sendRendererAction("edit-delete") },
+      {
+        label: 'Undo',
+        accelerator: 'CmdOrCtrl+Z',
+        registerAccelerator: false,
+        click: () => sendRendererAction('edit-undo'),
+      },
+      {
+        label: 'Redo',
+        accelerator: process.platform === 'darwin' ? 'Shift+Cmd+Z' : 'Ctrl+Y',
+        registerAccelerator: false,
+        click: () => sendRendererAction('edit-redo'),
+      },
+      { type: 'separator' },
+      {
+        label: 'Cut',
+        accelerator: 'CmdOrCtrl+X',
+        registerAccelerator: false,
+        click: () => sendRendererAction('edit-cut'),
+      },
+      {
+        label: 'Copy',
+        accelerator: 'CmdOrCtrl+C',
+        registerAccelerator: false,
+        click: () => sendRendererAction('edit-copy'),
+      },
+      {
+        label: 'Paste',
+        accelerator: 'CmdOrCtrl+V',
+        registerAccelerator: false,
+        click: () => sendRendererAction('edit-paste'),
+      },
+      { type: 'separator' },
+      {
+        label: 'Select All',
+        accelerator: 'CmdOrCtrl+A',
+        registerAccelerator: false,
+        click: () => sendRendererAction('edit-select-all'),
+      },
+      {
+        label: 'Delete',
+        accelerator: 'Backspace',
+        registerAccelerator: false,
+        click: () => sendRendererAction('edit-delete'),
+      },
     ],
   };
 }
 
 function createAppMenu(): ReturnType<typeof Menu.buildFromTemplate> {
   const template: MenuItemConstructorOptions[] = [
-    ...(process.platform === "darwin"
+    ...(process.platform === 'darwin'
       ? [
           {
             label: app.name,
             submenu: [
-              { role: "about" },
-              { label: "Check for Updates...", click: checkForUpdatesFromMenu },
-              { label: "Open Logs Folder", click: () => void openLogsFolder() },
+              { role: 'about' },
+              { label: 'Check for Updates...', click: checkForUpdatesFromMenu },
+              { label: 'Open Logs Folder', click: () => void openLogsFolder() },
               createSlicebugLoggingMenuItem(),
-              { type: "separator" },
-              { role: "quit" },
+              { type: 'separator' },
+              { role: 'quit' },
             ],
           } satisfies MenuItemConstructorOptions,
         ]
@@ -1184,37 +1390,50 @@ function createAppMenu(): ReturnType<typeof Menu.buildFromTemplate> {
     createProjectMenu(),
     createEditMenu(),
     {
-      label: "View",
+      label: 'View',
       submenu: [
-        { label: "Fullscreen", role: "togglefullscreen" },
-        { label: "Toggle Debug Windows", accelerator: "Alt+CmdOrCtrl+I", click: toggleFocusedWindowDevTools },
-        { type: "separator" },
-        { role: "reload" },
+        { label: 'Fullscreen', role: 'togglefullscreen' },
+        {
+          label: 'Toggle Debug Windows',
+          accelerator: 'Alt+CmdOrCtrl+I',
+          click: toggleFocusedWindowDevTools,
+        },
+        { type: 'separator' },
+        { role: 'reload' },
       ],
     },
     {
-      label: "Settings",
+      label: 'Settings',
       submenu: [
         {
-          label: "Language",
+          label: 'Language',
           submenu: [
-            { label: "Nederlands", type: "radio", checked: true, click: () => sendRendererAction("set-language", "nl") },
-            { label: "English", type: "radio", click: () => sendRendererAction("set-language", "en") },
+            {
+              label: 'Nederlands',
+              type: 'radio',
+              checked: true,
+              click: () => sendRendererAction('set-language', 'nl'),
+            },
+            {
+              label: 'English',
+              type: 'radio',
+              click: () => sendRendererAction('set-language', 'en'),
+            },
           ],
         },
       ],
     },
-    ...(process.platform === "darwin"
+    ...(process.platform === 'darwin'
       ? []
       : [
           {
-            role: "help",
+            role: 'help',
             submenu: [
-              { label: "Check for Updates...", click: checkForUpdatesFromMenu },
-              { label: "Open Logs Folder", click: () => void openLogsFolder() },
+              { label: 'Check for Updates...', click: checkForUpdatesFromMenu },
+              { label: 'Open Logs Folder', click: () => void openLogsFolder() },
               createSlicebugLoggingMenuItem(),
-              { type: "separator" },
-              { label: "About KindCut", click: showAboutDialog },
+              { type: 'separator' },
+              { label: 'About KindCut', click: showAboutDialog },
             ],
           } satisfies MenuItemConstructorOptions,
         ]),
@@ -1228,7 +1447,7 @@ function requestWorkspaceEditState(window: BrowserWindow): Promise<WorkspaceEdit
 
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
-      ipcMain.removeListener("workspace-edit-state:response", handleResponse);
+      ipcMain.removeListener('workspace-edit-state:response', handleResponse);
       resolve(null);
     }, EDIT_STATE_REQUEST_TIMEOUT_MS);
 
@@ -1240,12 +1459,12 @@ function requestWorkspaceEditState(window: BrowserWindow): Promise<WorkspaceEdit
         return;
       }
       clearTimeout(timeout);
-      ipcMain.removeListener("workspace-edit-state:response", handleResponse);
+      ipcMain.removeListener('workspace-edit-state:response', handleResponse);
       resolve(payload.state ?? null);
     }
 
-    ipcMain.on("workspace-edit-state:response", handleResponse);
-    window.webContents.send("workspace-edit-state:request", requestId);
+    ipcMain.on('workspace-edit-state:response', handleResponse);
+    window.webContents.send('workspace-edit-state:request', requestId);
   });
 }
 
@@ -1254,7 +1473,7 @@ function requestProjectState(window: BrowserWindow): Promise<ProjectState | null
 
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
-      ipcMain.removeListener("project-state:response", handleResponse);
+      ipcMain.removeListener('project-state:response', handleResponse);
       resolve(null);
     }, PROJECT_STATE_REQUEST_TIMEOUT_MS);
 
@@ -1266,12 +1485,12 @@ function requestProjectState(window: BrowserWindow): Promise<ProjectState | null
         return;
       }
       clearTimeout(timeout);
-      ipcMain.removeListener("project-state:response", handleResponse);
+      ipcMain.removeListener('project-state:response', handleResponse);
       resolve(payload.state ?? null);
     }
 
-    ipcMain.on("project-state:response", handleResponse);
-    window.webContents.send("project-state:request", requestId);
+    ipcMain.on('project-state:response', handleResponse);
+    window.webContents.send('project-state:request', requestId);
   });
 }
 
@@ -1284,56 +1503,125 @@ async function showContextMenu(window: BrowserWindow): Promise<void> {
   const hasSelection = editState.selectedObjectCount > 0;
   const hasObjects = editState.objectCount > 0;
   const contextMenu = Menu.buildFromTemplate([
-    { label: "Cut", accelerator: "CmdOrCtrl+X", enabled: hasSelection, click: () => sendRendererAction("edit-cut") },
-    { label: "Copy", accelerator: "CmdOrCtrl+C", enabled: hasSelection, click: () => sendRendererAction("edit-copy") },
-    { label: "Paste", accelerator: "CmdOrCtrl+V", enabled: editState.hasInternalClipboard, click: () => sendRendererAction("edit-paste") },
-    { label: "Delete", accelerator: "Backspace", enabled: hasSelection, click: () => sendRendererAction("edit-delete") },
-    { type: "separator" },
-    { label: "Group", enabled: editState.canGroup, click: () => sendRendererAction("edit-group") },
-    { label: "Ungroup", enabled: editState.canUngroup, click: () => sendRendererAction("edit-ungroup") },
-    { type: "separator" },
-    { label: "Bring to Front", enabled: editState.canReorder, click: () => sendRendererAction("edit-bring-to-front") },
-    { label: "Bring Forward", enabled: editState.canReorder, click: () => sendRendererAction("edit-bring-forward") },
-    { label: "Send Backward", enabled: editState.canReorder, click: () => sendRendererAction("edit-send-backward") },
-    { label: "Send to Back", enabled: editState.canReorder, click: () => sendRendererAction("edit-send-to-back") },
-    { type: "separator" },
-    { label: "Flip Horizontal", enabled: hasSelection, click: () => sendRendererAction("edit-flip-x") },
-    { label: "Flip Vertical", enabled: hasSelection, click: () => sendRendererAction("edit-flip-y") },
-    { type: "separator" },
-    { label: "Select All", accelerator: "CmdOrCtrl+A", enabled: hasObjects, click: () => sendRendererAction("edit-select-all") },
-    { type: "separator" },
-    { label: "Check for Updates...", click: checkForUpdatesFromMenu },
-    { label: "Open Logs Folder", click: () => void openLogsFolder() },
+    {
+      label: 'Cut',
+      accelerator: 'CmdOrCtrl+X',
+      enabled: hasSelection,
+      click: () => sendRendererAction('edit-cut'),
+    },
+    {
+      label: 'Copy',
+      accelerator: 'CmdOrCtrl+C',
+      enabled: hasSelection,
+      click: () => sendRendererAction('edit-copy'),
+    },
+    {
+      label: 'Paste',
+      accelerator: 'CmdOrCtrl+V',
+      enabled: editState.hasInternalClipboard,
+      click: () => sendRendererAction('edit-paste'),
+    },
+    {
+      label: 'Delete',
+      accelerator: 'Backspace',
+      enabled: hasSelection,
+      click: () => sendRendererAction('edit-delete'),
+    },
+    { type: 'separator' },
+    { label: 'Group', enabled: editState.canGroup, click: () => sendRendererAction('edit-group') },
+    {
+      label: 'Ungroup',
+      enabled: editState.canUngroup,
+      click: () => sendRendererAction('edit-ungroup'),
+    },
+    { type: 'separator' },
+    {
+      label: 'Bring to Front',
+      enabled: editState.canReorder,
+      click: () => sendRendererAction('edit-bring-to-front'),
+    },
+    {
+      label: 'Bring Forward',
+      enabled: editState.canReorder,
+      click: () => sendRendererAction('edit-bring-forward'),
+    },
+    {
+      label: 'Send Backward',
+      enabled: editState.canReorder,
+      click: () => sendRendererAction('edit-send-backward'),
+    },
+    {
+      label: 'Send to Back',
+      enabled: editState.canReorder,
+      click: () => sendRendererAction('edit-send-to-back'),
+    },
+    { type: 'separator' },
+    {
+      label: 'Flip Horizontal',
+      enabled: hasSelection,
+      click: () => sendRendererAction('edit-flip-x'),
+    },
+    {
+      label: 'Flip Vertical',
+      enabled: hasSelection,
+      click: () => sendRendererAction('edit-flip-y'),
+    },
+    { type: 'separator' },
+    {
+      label: 'Select All',
+      accelerator: 'CmdOrCtrl+A',
+      enabled: hasObjects,
+      click: () => sendRendererAction('edit-select-all'),
+    },
+    { type: 'separator' },
+    { label: 'Check for Updates...', click: checkForUpdatesFromMenu },
+    { label: 'Open Logs Folder', click: () => void openLogsFolder() },
     createSlicebugLoggingMenuItem(),
   ]);
   contextMenu.popup({ window });
 }
 
 async function createMainWindow(): Promise<BrowserWindow> {
-  const preloadPath = path.join(__dirname, "preload.js");
+  const preloadPath = path.join(__dirname, 'preload.js');
   const mainWindow = new BrowserWindow(createMainWindowOptions({ preloadPath }));
-  mainWindow.webContents.on('did-start-navigation',()=>nativeInlineIntents.clear());
-  mainWindow.webContents.on('render-process-gone',()=>nativeInlineIntents.clear());
+  mainWindow.webContents.on('did-start-navigation', () => nativeInlineIntents.clear());
+  mainWindow.webContents.on('render-process-gone', () => nativeInlineIntents.clear());
 
-  mainWindow.once("ready-to-show", () => {
+  mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
-    return { action: "deny" };
+    return { action: 'deny' };
   });
 
-  mainWindow.webContents.on("context-menu", (_, params) => {
+  mainWindow.webContents.on('context-menu', (_, params) => {
     if (params.isEditable) {
       const { editFlags } = params;
       const hasSelection = params.selectionText.length > 0;
       const inputMenu = Menu.buildFromTemplate([
-        { label: "Cut", enabled: hasSelection && editFlags.canCut, click: () => mainWindow.webContents.cut() },
-        { label: "Copy", enabled: hasSelection && editFlags.canCopy, click: () => mainWindow.webContents.copy() },
-        { label: "Paste", enabled: editFlags.canPaste, click: () => mainWindow.webContents.paste() },
-        { type: "separator" },
-        { label: "Select All", enabled: editFlags.canSelectAll, click: () => mainWindow.webContents.selectAll() },
+        {
+          label: 'Cut',
+          enabled: hasSelection && editFlags.canCut,
+          click: () => mainWindow.webContents.cut(),
+        },
+        {
+          label: 'Copy',
+          enabled: hasSelection && editFlags.canCopy,
+          click: () => mainWindow.webContents.copy(),
+        },
+        {
+          label: 'Paste',
+          enabled: editFlags.canPaste,
+          click: () => mainWindow.webContents.paste(),
+        },
+        { type: 'separator' },
+        {
+          label: 'Select All',
+          enabled: editFlags.canSelectAll,
+          click: () => mainWindow.webContents.selectAll(),
+        },
       ]);
       inputMenu.popup({ window: mainWindow });
     }
@@ -1341,20 +1629,20 @@ async function createMainWindow(): Promise<BrowserWindow> {
     // "workspace:show-context-menu" IPC) so a right-drag can pan without popping a menu.
   });
 
-  mainWindow.on("close", (event) => {
+  mainWindow.on('close', (event) => {
     if (installingUpdate || closeAllowedWindows.has(mainWindow)) {
       return;
     }
     event.preventDefault();
-    mainWindow.webContents.send("app:action", { action: "close-window" });
+    mainWindow.webContents.send('app:action', { action: 'close-window' });
   });
 
   const rendererEntry = resolveRendererEntry({
-    appRoot: path.resolve(__dirname, ".."),
+    appRoot: path.resolve(__dirname, '..'),
     viteDevServerUrl: process.env.VITE_DEV_SERVER_URL,
   });
 
-  if (rendererEntry.type === "url") {
+  if (rendererEntry.type === 'url') {
     await mainWindow.loadURL(rendererEntry.value);
   } else {
     await mainWindow.loadFile(rendererEntry.value);
@@ -1363,18 +1651,23 @@ async function createMainWindow(): Promise<BrowserWindow> {
   return mainWindow;
 }
 
-app.setName("KindCut");
+app.setName('KindCut');
 configureAboutPanel();
 Menu.setApplicationMenu(createAppMenu());
 
-ipcMain.handle("workspace:show-context-menu", (event) => {
+ipcMain.handle('workspace:show-context-menu', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win) void showContextMenu(win);
 });
-ipcMain.handle("project:save", async (_event, input: ProjectSaveInput): Promise<ProjectFileResult> => saveProjectFile(input));
-ipcMain.handle("project:open", async (): Promise<ProjectFileResult> => openProjectFile());
-ipcMain.handle("project:open-path", async (_event, filePath: string): Promise<ProjectFileResult> => openProjectFileAtPath(filePath));
-ipcMain.handle("app:close-confirmed", (event) => {
+ipcMain.handle(
+  'project:save',
+  async (_event, input: ProjectSaveInput): Promise<ProjectFileResult> => saveProjectFile(input),
+);
+ipcMain.handle('project:open', async (): Promise<ProjectFileResult> => openProjectFile());
+ipcMain.handle('project:open-path', async (_event, filePath: string): Promise<ProjectFileResult> =>
+  openProjectFileAtPath(filePath),
+);
+ipcMain.handle('app:close-confirmed', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win) {
     return;
@@ -1382,105 +1675,169 @@ ipcMain.handle("app:close-confirmed", (event) => {
   closeAllowedWindows.add(win);
   win.close();
 });
-ipcMain.handle("updater:get-state", () => updateRendererState);
-ipcMain.handle("updater:check", async (event) => {
-  await checkForUpdates({ interactive: true, sourceWindow: BrowserWindow.fromWebContents(event.sender) });
+ipcMain.handle('updater:get-state', () => updateRendererState);
+ipcMain.handle('updater:check', async (event) => {
+  await checkForUpdates({
+    interactive: true,
+    sourceWindow: BrowserWindow.fromWebContents(event.sender),
+  });
   return updateRendererState;
 });
-ipcMain.handle("updater:download", async (_event, input?: { background?: boolean }) =>
+ipcMain.handle('updater:download', async (_event, input?: { background?: boolean }) =>
   downloadAvailableUpdate({ background: Boolean(input?.background) }),
 );
-ipcMain.handle("updater:install", async () => installReadyUpdate());
-ipcMain.handle("updater:dismiss", () => dismissUpdateModal());
-ipcMain.handle("updater:skip", async () => skipAvailableUpdate());
+ipcMain.handle('updater:install', async () => installReadyUpdate());
+ipcMain.handle('updater:dismiss', () => dismissUpdateModal());
+ipcMain.handle('updater:skip', async () => skipAvailableUpdate());
 function trustedCutterSender(e: IpcMainInvokeEvent): boolean {
-  const entry=resolveRendererEntry({appRoot:path.resolve(__dirname,".."),viteDevServerUrl:process.env.VITE_DEV_SERVER_URL});
-  return !e.sender.isDestroyed() && BrowserWindow.fromWebContents(e.sender)!==null &&
-    e.senderFrame===e.sender.mainFrame && Boolean(e.senderFrame&&isTrustedJoyUrl(e.senderFrame.url,entry));
+  const entry = resolveRendererEntry({
+    appRoot: path.resolve(__dirname, '..'),
+    viteDevServerUrl: process.env.VITE_DEV_SERVER_URL,
+  });
+  return (
+    !e.sender.isDestroyed() &&
+    BrowserWindow.fromWebContents(e.sender) !== null &&
+    e.senderFrame === e.sender.mainFrame &&
+    Boolean(e.senderFrame && isTrustedJoyUrl(e.senderFrame.url, entry))
+  );
 }
 function requireCutterSender(e: IpcMainInvokeEvent): void {
-  if(!trustedCutterSender(e))throw new Error("Cutter operations require the trusted main-frame renderer.");
+  if (!trustedCutterSender(e))
+    throw new Error('Cutter operations require the trusted main-frame renderer.');
 }
-ipcMain.handle("cutter:get-backend", async (event) => {requireCutterSender(event);return (await readAppSettings()).cutterBackend ?? "auto";});
-ipcMain.handle("cutter:set-backend", async (event, value: unknown) => {
+ipcMain.handle('cutter:get-backend', async (event) => {
   requireCutterSender(event);
-  if (value !== "auto" && value !== "native" && value !== "slicebug") throw new Error("Invalid cutter backend preference.");
-  await writeAppSettings({ ...(await readAppSettings()), cutterBackend: value }); return value;
+  return (await readAppSettings()).cutterBackend ?? 'auto';
 });
-ipcMain.handle("slicebug:get-status", async () => getSlicebugStatus());
-ipcMain.handle("slicebug:get-setup-status", async () => getSlicebugSetupStatus());
-ipcMain.handle("slicebug:bootstrap", async (_event, input?: { designSpacePath?: string; designSpaceProfilePath?: string }) =>
-  bootstrapSlicebug(input),
+ipcMain.handle('cutter:set-backend', async (event, value: unknown) => {
+  requireCutterSender(event);
+  if (value !== 'auto' && value !== 'native' && value !== 'slicebug')
+    throw new Error('Invalid cutter backend preference.');
+  await writeAppSettings({ ...(await readAppSettings()), cutterBackend: value });
+  return value;
+});
+ipcMain.handle('slicebug:get-status', async () => getSlicebugStatus());
+ipcMain.handle('slicebug:get-setup-status', async () => getSlicebugSetupStatus());
+ipcMain.handle(
+  'slicebug:bootstrap',
+  async (_event, input?: { designSpacePath?: string; designSpaceProfilePath?: string }) =>
+    bootstrapSlicebug(input),
 );
-ipcMain.handle("slicebug:generate-sample-plan", async (_event, choices?: { materialId?: number; matPreset?: string }) =>
-  generateSampleSlicebugPlan(choices),
+ipcMain.handle(
+  'slicebug:generate-sample-plan',
+  async (_event, choices?: { materialId?: number; matPreset?: string }) =>
+    generateSampleSlicebugPlan(choices),
 );
-ipcMain.handle("slicebug:create-plan", async (_event, input: SvgPlanInput) => generateSvgSlicebugPlan(input));
-ipcMain.handle("slicebug:start-cut-session", async (_event, planPath: string): Promise<CutSessionSnapshot> => {
-  requireCutterSender(_event);
-  return acquireCutterEntry({
-    acquire: () => { if (legacyCutterStarting || (activeCutSession && !["finished","stopped","blocked"].includes(activeCutSession.getSnapshot().status))) return false; legacyCutterStarting = true; return true; },
-    release: () => { legacyCutterStarting = false; },
-    readBackend: async () => (await readAppSettings()).cutterBackend ?? "auto",
-    nativeOwnsHardware: () => Boolean(nativeJoyService?.ownsHardware),
-    confirmFallback: async () => {
-      const choice = await dialog.showMessageBox({ type: "warning", buttons: ["Cancel", "Use SliceBug for this cut"], defaultId: 0, cancelId: 0, title: "Native cutting is not ready", message: "Auto cannot cut with the experimental native runtime yet.", detail: "Explicitly confirm SliceBug before the cut session starts. No automatic fallback will occur." });
-      return choice.response === 1;
-    },
-    confirmDisconnect: async () => {
-      const choice = await dialog.showMessageBox({ type: "warning", buttons: ["Cancel", "Disconnect and continue"], defaultId: 0, cancelId: 0, title: "Native session connected", message: "Disconnect the experimental native session before using SliceBug?", detail: "The session will be disconnected before the legacy cut starts." });
-      return choice.response === 1;
-    },
-    disconnectNative: async () => { await nativeJoyService?.disconnect(); },
-    start: async () => {
-  const blocker = await checkForBlockingCutterProcesses();
-  if (!blocker.ok) {
-    activeCutSession = null;
-    return {
-      id: `cut-blocked-${Date.now()}`,
-      status: "blocked",
-      action: {
-        kind: "error",
-        code: "error.blockingProcesses",
-        title: "Close Design Space",
-        message: blocker.message,
-        requiresContinue: false,
-        canStop: false,
-        tone: "error",
+ipcMain.handle('slicebug:create-plan', async (_event, input: SvgPlanInput) =>
+  generateSvgSlicebugPlan(input),
+);
+ipcMain.handle(
+  'slicebug:start-cut-session',
+  async (_event, planPath: string): Promise<CutSessionSnapshot> => {
+    requireCutterSender(_event);
+    return acquireCutterEntry({
+      acquire: () => {
+        if (
+          legacyCutterStarting ||
+          (activeCutSession &&
+            !['finished', 'stopped', 'blocked'].includes(activeCutSession.getSnapshot().status))
+        )
+          return false;
+        legacyCutterStarting = true;
+        return true;
       },
-      transcript: blocker.message,
-      command: "",
-      args: [],
-      planPath,
-    };
-  }
+      release: () => {
+        legacyCutterStarting = false;
+      },
+      readBackend: async () => (await readAppSettings()).cutterBackend ?? 'auto',
+      nativeOwnsHardware: () => Boolean(nativeJoyService?.ownsHardware),
+      confirmFallback: async () => {
+        const choice = await dialog.showMessageBox({
+          type: 'warning',
+          buttons: ['Cancel', 'Use SliceBug for this cut'],
+          defaultId: 0,
+          cancelId: 0,
+          title: 'Native cutting is not ready',
+          message: 'Auto cannot cut with the experimental native runtime yet.',
+          detail:
+            'Explicitly confirm SliceBug before the cut session starts. No automatic fallback will occur.',
+        });
+        return choice.response === 1;
+      },
+      confirmDisconnect: async () => {
+        const choice = await dialog.showMessageBox({
+          type: 'warning',
+          buttons: ['Cancel', 'Disconnect and continue'],
+          defaultId: 0,
+          cancelId: 0,
+          title: 'Native session connected',
+          message: 'Disconnect the experimental native session before using SliceBug?',
+          detail: 'The session will be disconnected before the legacy cut starts.',
+        });
+        return choice.response === 1;
+      },
+      disconnectNative: async () => {
+        await nativeJoyService?.disconnect();
+      },
+      start: async () => {
+        const blocker = await checkForBlockingCutterProcesses();
+        if (!blocker.ok) {
+          activeCutSession = null;
+          return {
+            id: `cut-blocked-${Date.now()}`,
+            status: 'blocked',
+            action: {
+              kind: 'error',
+              code: 'error.blockingProcesses',
+              title: 'Close Design Space',
+              message: blocker.message,
+              requiresContinue: false,
+              canStop: false,
+              tone: 'error',
+            },
+            transcript: blocker.message,
+            command: '',
+            args: [],
+            planPath,
+          };
+        }
 
-  const status = await getSlicebugStatus();
-  const executable = status.executable ?? "slicebug";
-  activeCutSession = new SlicebugCutSession({
-    id: `cut-${Date.now()}`,
-    executable,
-    planPath,
-    smokeMode:
-      process.env.CRICUT_COMPANION_SMOKE_SLICEBUG === "1" ||
-      process.env.CRICUT_COMPANION_SMOKE_PLAN === "1" ||
-      process.env.CRICUT_COMPANION_SMOKE_CUT === "1" ||
-      process.env.NODE_ENV === "test",
-  });
-      return activeCutSession.start();
-    },
-  });
-});
-ipcMain.handle("slicebug:get-cut-session", async (): Promise<CutSessionSnapshot | null> => activeCutSession?.getSnapshot() ?? null);
-ipcMain.handle("slicebug:continue-cut-session", async (): Promise<CutSessionSnapshot | null> => activeCutSession?.continue() ?? null);
-ipcMain.handle("slicebug:stop-cut-session", async (): Promise<CutSessionSnapshot | null> => activeCutSession?.stop() ?? null);
+        const status = await getSlicebugStatus();
+        const executable = status.executable ?? 'slicebug';
+        activeCutSession = new SlicebugCutSession({
+          id: `cut-${Date.now()}`,
+          executable,
+          planPath,
+          smokeMode:
+            process.env.CRICUT_COMPANION_SMOKE_SLICEBUG === '1' ||
+            process.env.CRICUT_COMPANION_SMOKE_PLAN === '1' ||
+            process.env.CRICUT_COMPANION_SMOKE_CUT === '1' ||
+            process.env.NODE_ENV === 'test',
+        });
+        return activeCutSession.start();
+      },
+    });
+  },
+);
+ipcMain.handle(
+  'slicebug:get-cut-session',
+  async (): Promise<CutSessionSnapshot | null> => activeCutSession?.getSnapshot() ?? null,
+);
+ipcMain.handle(
+  'slicebug:continue-cut-session',
+  async (): Promise<CutSessionSnapshot | null> => activeCutSession?.continue() ?? null,
+);
+ipcMain.handle(
+  'slicebug:stop-cut-session',
+  async (): Promise<CutSessionSnapshot | null> => activeCutSession?.stop() ?? null,
+);
 
 // ── Image library ─────────────────────────────────────────────────────────────
 
 type LibraryImageMeta = { name: string; path: string; isAi: boolean; svg: string };
 
 function getLibraryDir(): string {
-  return path.join(app.getPath("documents"), "KindCut", "images");
+  return path.join(app.getPath('documents'), 'KindCut', 'images');
 }
 
 async function ensureLibraryDir(): Promise<void> {
@@ -1489,21 +1846,28 @@ async function ensureLibraryDir(): Promise<void> {
 
 function sanitizeFileName(name: string): string {
   // Keep accented and non-Latin letters (song titles, Dutch prompts); drop everything else risky in file names.
-  return name.normalize("NFC").replace(/[^\p{L}\p{N}\-_\s]/gu, "").trim().replace(/\s+/g, "-").slice(0, 60) || `image-${Date.now()}`;
+  return (
+    name
+      .normalize('NFC')
+      .replace(/[^\p{L}\p{N}\-_\s]/gu, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .slice(0, 60) || `image-${Date.now()}`
+  );
 }
 
 function displayNameFromLibraryFileName(file: string): string {
-  const baseName = file.toLowerCase().endsWith(".ai.svg") ? file.slice(0, -7) : file.slice(0, -4);
-  return baseName.replace(/-/g, " ");
+  const baseName = file.toLowerCase().endsWith('.ai.svg') ? file.slice(0, -7) : file.slice(0, -4);
+  return baseName.replace(/-/g, ' ');
 }
 
 async function findAvailableLibraryPath(
   requestedName: string,
-  ext: ".svg" | ".ai.svg",
+  ext: '.svg' | '.ai.svg',
   currentPath?: string,
 ): Promise<{ displayName: string; filePath: string }> {
   await ensureLibraryDir();
-  const trimmed = requestedName.trim() || "image";
+  const trimmed = requestedName.trim() || 'image';
   let suffix = 1;
 
   while (true) {
@@ -1512,11 +1876,19 @@ async function findAvailableLibraryPath(
     const filePath = path.join(getLibraryDir(), `${safeName}${ext}`);
     const normalPath = path.join(getLibraryDir(), `${safeName}.svg`);
     const aiPath = path.join(getLibraryDir(), `${safeName}.ai.svg`);
-    const candidatePaths = [normalPath, aiPath].filter((candidate) => !currentPath || path.resolve(candidate) !== path.resolve(currentPath));
-    if (candidatePaths.length < 2 && currentPath && path.resolve(filePath) === path.resolve(currentPath)) {
+    const candidatePaths = [normalPath, aiPath].filter(
+      (candidate) => !currentPath || path.resolve(candidate) !== path.resolve(currentPath),
+    );
+    if (
+      candidatePaths.length < 2 &&
+      currentPath &&
+      path.resolve(filePath) === path.resolve(currentPath)
+    ) {
       return { displayName, filePath };
     }
-    const hasDisplayNameCollision = (await Promise.all(candidatePaths.map((candidate) => fileExists(candidate)))).some(Boolean);
+    const hasDisplayNameCollision = (
+      await Promise.all(candidatePaths.map((candidate) => fileExists(candidate)))
+    ).some(Boolean);
     if (!hasDisplayNameCollision) {
       return { displayName, filePath };
     }
@@ -1524,16 +1896,16 @@ async function findAvailableLibraryPath(
   }
 }
 
-ipcMain.handle("library:list", async (): Promise<LibraryImageMeta[]> => {
+ipcMain.handle('library:list', async (): Promise<LibraryImageMeta[]> => {
   await ensureLibraryDir();
   const dir = getLibraryDir();
   const files = await fs.readdir(dir);
-  const svgFiles = files.filter((f) => f.toLowerCase().endsWith(".svg")).sort();
+  const svgFiles = files.filter((f) => f.toLowerCase().endsWith('.svg')).sort();
   const items = await Promise.all(
     svgFiles.map(async (file) => {
       const filePath = path.join(dir, file);
-      const svg = await fs.readFile(filePath, "utf8");
-      const isAi = file.toLowerCase().endsWith(".ai.svg");
+      const svg = await fs.readFile(filePath, 'utf8');
+      const isAi = file.toLowerCase().endsWith('.ai.svg');
       const displayName = displayNameFromLibraryFileName(file);
       return { name: displayName, path: filePath, isAi, svg };
     }),
@@ -1541,34 +1913,40 @@ ipcMain.handle("library:list", async (): Promise<LibraryImageMeta[]> => {
   return items;
 });
 
-ipcMain.handle("library:save", async (_event, input: { name: string; svg: string; isAi: boolean }): Promise<string> => {
-  await ensureLibraryDir();
-  const ext = input.isAi ? ".ai.svg" : ".svg";
-  const { filePath } = await findAvailableLibraryPath(input.name, ext);
-  await fs.writeFile(filePath, input.svg, "utf8");
-  return filePath;
-});
+ipcMain.handle(
+  'library:save',
+  async (_event, input: { name: string; svg: string; isAi: boolean }): Promise<string> => {
+    await ensureLibraryDir();
+    const ext = input.isAi ? '.ai.svg' : '.svg';
+    const { filePath } = await findAvailableLibraryPath(input.name, ext);
+    await fs.writeFile(filePath, input.svg, 'utf8');
+    return filePath;
+  },
+);
 
-ipcMain.handle("library:rename", async (_event, input: { filePath: string; name: string }): Promise<LibraryImageMeta> => {
-  await ensureLibraryDir();
-  const currentPath = path.resolve(input.filePath);
-  const libraryDir = path.resolve(getLibraryDir());
-  if (!currentPath.startsWith(`${libraryDir}${path.sep}`)) {
-    throw new Error("That image is outside the KindCut image library.");
-  }
+ipcMain.handle(
+  'library:rename',
+  async (_event, input: { filePath: string; name: string }): Promise<LibraryImageMeta> => {
+    await ensureLibraryDir();
+    const currentPath = path.resolve(input.filePath);
+    const libraryDir = path.resolve(getLibraryDir());
+    if (!currentPath.startsWith(`${libraryDir}${path.sep}`)) {
+      throw new Error('That image is outside the KindCut image library.');
+    }
 
-  const currentFileName = path.basename(currentPath);
-  const isAi = currentFileName.toLowerCase().endsWith(".ai.svg");
-  const ext = isAi ? ".ai.svg" : ".svg";
-  const { displayName, filePath } = await findAvailableLibraryPath(input.name, ext, currentPath);
-  if (path.resolve(filePath) !== currentPath) {
-    await fs.rename(currentPath, filePath);
-  }
-  const svg = await fs.readFile(filePath, "utf8");
-  return { name: displayName, path: filePath, isAi, svg };
-});
+    const currentFileName = path.basename(currentPath);
+    const isAi = currentFileName.toLowerCase().endsWith('.ai.svg');
+    const ext = isAi ? '.ai.svg' : '.svg';
+    const { displayName, filePath } = await findAvailableLibraryPath(input.name, ext, currentPath);
+    if (path.resolve(filePath) !== currentPath) {
+      await fs.rename(currentPath, filePath);
+    }
+    const svg = await fs.readFile(filePath, 'utf8');
+    return { name: displayName, path: filePath, isAi, svg };
+  },
+);
 
-ipcMain.handle("library:delete", async (_event, filePath: string): Promise<void> => {
+ipcMain.handle('library:delete', async (_event, filePath: string): Promise<void> => {
   await fs.unlink(filePath);
 });
 
@@ -1578,7 +1956,7 @@ type SpotifyCodeMeta = { name: string; path: string; svg: string; uri: string | 
 
 // Kept in their own subfolder so they don't crowd the image library.
 function getSpotifyCodeDir(): string {
-  return path.join(getLibraryDir(), "spotify");
+  return path.join(getLibraryDir(), 'spotify');
 }
 
 function spotifyLookupOptions(): SpotifyLookupOptions {
@@ -1587,20 +1965,29 @@ function spotifyLookupOptions(): SpotifyLookupOptions {
 
 function logSpotifyLookupError(action: string): (error: unknown) => void {
   return (error) => {
-    logDiagnostics("warn", `[Spotify] ${action} failed`, error instanceof Error ? error.message : error);
+    logDiagnostics(
+      'warn',
+      `[Spotify] ${action} failed`,
+      error instanceof Error ? error.message : error,
+    );
   };
 }
 
 async function listSpotifyCodes(): Promise<SpotifyCodeMeta[]> {
   const dir = getSpotifyCodeDir();
   await fs.mkdir(dir, { recursive: true });
-  const files = (await fs.readdir(dir)).filter((file) => file.toLowerCase().endsWith(".svg"));
+  const files = (await fs.readdir(dir)).filter((file) => file.toLowerCase().endsWith('.svg'));
   const items = await Promise.all(
     files.map(async (file) => {
       const filePath = path.join(dir, file);
-      const svg = await fs.readFile(filePath, "utf8");
+      const svg = await fs.readFile(filePath, 'utf8');
       const info = readSpotifyCodeSvgInfo(svg);
-      return { name: info.label ?? displayNameFromLibraryFileName(file), path: filePath, svg, uri: info.uri };
+      return {
+        name: info.label ?? displayNameFromLibraryFileName(file),
+        path: filePath,
+        svg,
+        uri: info.uri,
+      };
     }),
   );
   return items.sort((a, b) => a.name.localeCompare(b.name));
@@ -1618,38 +2005,52 @@ async function findAvailableSpotifyCodePath(name: string): Promise<string> {
   }
 }
 
-ipcMain.handle("spotify:search", async (_event, query: string): Promise<SpotifyLookupResult<SpotifySearchResult[]>> =>
-  runSpotifyLookup(() => searchSpotifySongs(query, spotifyLookupOptions()), logSpotifyLookupError("Search")),
+ipcMain.handle(
+  'spotify:search',
+  async (_event, query: string): Promise<SpotifyLookupResult<SpotifySearchResult[]>> =>
+    runSpotifyLookup(
+      () => searchSpotifySongs(query, spotifyLookupOptions()),
+      logSpotifyLookupError('Search'),
+    ),
 );
 
-ipcMain.handle("spotify:list", async (): Promise<SpotifyCodeMeta[]> => listSpotifyCodes());
+ipcMain.handle('spotify:list', async (): Promise<SpotifyCodeMeta[]> => listSpotifyCodes());
 
-ipcMain.handle("spotify:create", async (_event, request: SpotifyCodeRequest): Promise<SpotifyLookupResult<SpotifyCodeMeta>> =>
-  runSpotifyLookup(async () => {
-    const options = spotifyLookupOptions();
-    const entity = await resolveSpotifyEntity(request, options);
-    // Re-adding a song reuses its saved code instead of piling up numbered copies.
-    const existing = (await listSpotifyCodes()).find((code) => code.uri === entity.uri);
-    if (existing) {
-      return existing;
-    }
-    const svg = await fetchSpotifyCodeSvg(entity, options);
-    const filePath = await findAvailableSpotifyCodePath(spotifyCodeDisplayName(entity.title, entity.artist));
-    await fs.writeFile(filePath, svg, "utf8");
-    logDiagnostics("info", "[Spotify] Saved code", { uri: entity.uri, filePath });
-    return { name: spotifyCodeDisplayName(entity.title, entity.artist), path: filePath, svg, uri: entity.uri };
-  }, logSpotifyLookupError("Create code")),
+ipcMain.handle(
+  'spotify:create',
+  async (_event, request: SpotifyCodeRequest): Promise<SpotifyLookupResult<SpotifyCodeMeta>> =>
+    runSpotifyLookup(async () => {
+      const options = spotifyLookupOptions();
+      const entity = await resolveSpotifyEntity(request, options);
+      // Re-adding a song reuses its saved code instead of piling up numbered copies.
+      const existing = (await listSpotifyCodes()).find((code) => code.uri === entity.uri);
+      if (existing) {
+        return existing;
+      }
+      const svg = await fetchSpotifyCodeSvg(entity, options);
+      const filePath = await findAvailableSpotifyCodePath(
+        spotifyCodeDisplayName(entity.title, entity.artist),
+      );
+      await fs.writeFile(filePath, svg, 'utf8');
+      logDiagnostics('info', '[Spotify] Saved code', { uri: entity.uri, filePath });
+      return {
+        name: spotifyCodeDisplayName(entity.title, entity.artist),
+        path: filePath,
+        svg,
+        uri: entity.uri,
+      };
+    }, logSpotifyLookupError('Create code')),
 );
 
-ipcMain.handle("spotify:delete", async (_event, filePath: string): Promise<void> => {
+ipcMain.handle('spotify:delete', async (_event, filePath: string): Promise<void> => {
   const target = path.resolve(filePath);
   if (!target.startsWith(`${path.resolve(getSpotifyCodeDir())}${path.sep}`)) {
-    throw new Error("That file is outside the KindCut Spotify code folder.");
+    throw new Error('That file is outside the KindCut Spotify code folder.');
   }
   await fs.unlink(target);
 });
 
-ipcMain.handle("system:fonts", async (): Promise<string[]> => {
+ipcMain.handle('system:fonts', async (): Promise<string[]> => {
   try {
     // app.getSystemFonts() available in Electron 26+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1700,7 +2101,10 @@ function mapRasterTraceOptions(options?: RasterTraceOptions | null): RasterTrace
   };
 }
 
-async function preprocessToBlackWhite(pngBuffer: Buffer, options?: RasterTraceOptions): Promise<Buffer> {
+async function preprocessToBlackWhite(
+  pngBuffer: Buffer,
+  options?: RasterTraceOptions,
+): Promise<Buffer> {
   // Convert colour images to true black/white so the threshold slider stays predictable.
   const traceOptions = mapRasterTraceOptions(options);
   const image = await Jimp.read(pngBuffer);
@@ -1734,197 +2138,397 @@ async function preprocessToBlackWhite(pngBuffer: Buffer, options?: RasterTraceOp
 function traceWithPotrace(buffer: Buffer, options?: RasterTraceOptions): Promise<string> {
   const traceOptions = mapRasterTraceOptions(options);
   return new Promise((resolve, reject) => {
-    potrace.trace(buffer, {
-      threshold: 128,    // image is already B&W from Jimp, simple 50% threshold
-      turdSize: traceOptions.turdSize,     // remove JPEG/PNG noise blobs
-      optCurve: true,
-      optTolerance: traceOptions.optTolerance,
-      color: "#000000",
-      background: "transparent",
-    }, (err, svg) => {
-      if (err) reject(err);
-      else resolve(svg);
-    });
+    potrace.trace(
+      buffer,
+      {
+        threshold: 128, // image is already B&W from Jimp, simple 50% threshold
+        turdSize: traceOptions.turdSize, // remove JPEG/PNG noise blobs
+        optCurve: true,
+        optTolerance: traceOptions.optTolerance,
+        color: '#000000',
+        background: 'transparent',
+      },
+      (err, svg) => {
+        if (err) reject(err);
+        else resolve(svg);
+      },
+    );
   });
 }
 
-async function traceRasterBase64ToSvg(base64: string, options?: RasterTraceOptions): Promise<string> {
-  const rawBuffer = Buffer.from(base64, "base64");
+async function traceRasterBase64ToSvg(
+  base64: string,
+  options?: RasterTraceOptions,
+): Promise<string> {
+  const rawBuffer = Buffer.from(base64, 'base64');
   const bwBuffer = await preprocessToBlackWhite(rawBuffer, options);
   return traceWithPotrace(bwBuffer, options);
 }
 
 // Split into separate handlers so the renderer can show step-by-step progress
 
-ipcMain.handle("ai:dalle-generate-png", async (
-  _event,
-  input: { prompt: string; complexity: number; language: string; apiKey: string; imageModel?: string },
-): Promise<string> => {
-  const { prompt, complexity, apiKey, imageModel = "gpt-image-2.5-flare" } = input;
-  if (!apiKey.trim()) throw new Error("No OpenAI API key configured.");
+ipcMain.handle(
+  'ai:dalle-generate-png',
+  async (
+    _event,
+    input: {
+      prompt: string;
+      complexity: number;
+      language: string;
+      apiKey: string;
+      imageModel?: string;
+    },
+  ): Promise<string> => {
+    const { prompt, complexity, apiKey, imageModel = 'gpt-image-2.5-flare' } = input;
+    if (!apiKey.trim()) throw new Error('No OpenAI API key configured.');
 
-  const imagePrompt = buildGptImagePrompt(prompt.trim(), complexity);
+    const imagePrompt = buildGptImagePrompt(prompt.trim(), complexity);
 
-  const requestBody = {
-    model: imageModel,   // gpt-image-1 / 1.5 / 2 / 2.5-flare / 2.5-sunburst
-    prompt: imagePrompt,
-    n: 1,
-    size: "1024x1024",
-    // high = cleanest edges for Jimp threshold + Potrace tracing. The 2.5 models also offer
-    // xhigh/max, but extra detail only turns into noise and tiny islands in a traced silhouette.
-    quality: "high",
-  };
+    const requestBody = {
+      model: imageModel, // gpt-image-1 / 1.5 / 2 / 2.5-flare / 2.5-sunburst
+      prompt: imagePrompt,
+      n: 1,
+      size: '1024x1024',
+      // high = cleanest edges for Jimp threshold + Potrace tracing. The 2.5 models also offer
+      // xhigh/max, but extra detail only turns into noise and tiny islands in a traced silhouette.
+      quality: 'high',
+    };
 
-  const imgResponse = await fetch("https://api.openai.com/v1/images/generations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(requestBody),
-  });
+    const imgResponse = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(requestBody),
+    });
 
-  if (!imgResponse.ok) {
-    let msg = `GPT Image error ${imgResponse.status}`;
-    try {
-      const err = (await imgResponse.json()) as { error?: { message?: string } };
-      if (err?.error?.message) msg = err.error.message;
-    } catch { /* ignore */ }
-    throw new Error(msg);
-  }
+    if (!imgResponse.ok) {
+      let msg = `GPT Image error ${imgResponse.status}`;
+      try {
+        const err = (await imgResponse.json()) as { error?: { message?: string } };
+        if (err?.error?.message) msg = err.error.message;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
 
-  const imgData = (await imgResponse.json()) as { data?: Array<{ b64_json?: string; url?: string }> };
-  const item = imgData.data?.[0];
+    const imgData = (await imgResponse.json()) as {
+      data?: Array<{ b64_json?: string; url?: string }>;
+    };
+    const item = imgData.data?.[0];
 
-  // gpt-image-1 returns b64_json directly; dall-e-3 with response_format=b64_json also does
-  if (item?.b64_json) return item.b64_json;
+    // gpt-image-1 returns b64_json directly; dall-e-3 with response_format=b64_json also does
+    if (item?.b64_json) return item.b64_json;
 
-  // Fallback: fetch URL if returned
-  if (item?.url) {
-    const urlRes = await fetch(item.url);
-    const arrayBuf = await urlRes.arrayBuffer();
-    return Buffer.from(arrayBuf).toString("base64");
-  }
+    // Fallback: fetch URL if returned
+    if (item?.url) {
+      const urlRes = await fetch(item.url);
+      const arrayBuf = await urlRes.arrayBuffer();
+      return Buffer.from(arrayBuf).toString('base64');
+    }
 
-  throw new Error("Image generation returned no image data.");
-});
+    throw new Error('Image generation returned no image data.');
+  },
+);
 
-ipcMain.handle("ai:trace-png-to-svg", async (_event, pngBase64: string): Promise<string> => {
+ipcMain.handle('ai:trace-png-to-svg', async (_event, pngBase64: string): Promise<string> => {
   return traceRasterBase64ToSvg(pngBase64);
 });
 
-ipcMain.handle("image:trace-raster-to-svg", async (_event, input: {
-  base64: string;
-  fileName?: string;
-  mimeType?: string;
-  traceOptions?: RasterTraceOptions;
-}): Promise<string> => {
-  const traceOptions = mapRasterTraceOptions(input.traceOptions);
-  logDiagnostics("info", "[KindCut image import] Tracing local raster image", {
-    fileName: input.fileName,
-    mimeType: input.mimeType,
-    byteLength: Buffer.byteLength(input.base64, "base64"),
-    traceOptions,
-  });
-  return traceRasterBase64ToSvg(input.base64, input.traceOptions);
-});
+ipcMain.handle(
+  'image:trace-raster-to-svg',
+  async (
+    _event,
+    input: {
+      base64: string;
+      fileName?: string;
+      mimeType?: string;
+      traceOptions?: RasterTraceOptions;
+    },
+  ): Promise<string> => {
+    const traceOptions = mapRasterTraceOptions(input.traceOptions);
+    logDiagnostics('info', '[KindCut image import] Tracing local raster image', {
+      fileName: input.fileName,
+      mimeType: input.mimeType,
+      byteLength: Buffer.byteLength(input.base64, 'base64'),
+      traceOptions,
+    });
+    return traceRasterBase64ToSvg(input.base64, input.traceOptions);
+  },
+);
 
 app.whenReady().then(async () => {
-  configureDiagnosticsLog(path.join(app.getPath("userData"), "logs"));
+  configureDiagnosticsLog(path.join(app.getPath('userData'), 'logs'));
   await loadAppSettings();
-  const joyRendererEntry = resolveRendererEntry({ appRoot: path.resolve(__dirname, ".."), viteDevServerUrl: process.env.VITE_DEV_SERVER_URL });
-  ipcMain.on('native-joy:trusted-click',(event,action:unknown)=>{if(!trustedNativeSender(event)||!event.senderFrame)return;if(action===null){nativeInlineIntents.revoke(event.senderFrame);return;}if(isNativeIntent(action))nativeInlineIntents.record(event.senderFrame,action,nativeIntentBinding(action));});
+  const joyRendererEntry = resolveRendererEntry({
+    appRoot: path.resolve(__dirname, '..'),
+    viteDevServerUrl: process.env.VITE_DEV_SERVER_URL,
+  });
+  ipcMain.on('native-joy:trusted-click', (event, action: unknown) => {
+    if (!trustedNativeSender(event) || !event.senderFrame) return;
+    if (action === null) {
+      nativeInlineIntents.revoke(event.senderFrame);
+      return;
+    }
+    if (isNativeIntent(action))
+      nativeInlineIntents.record(event.senderFrame, action, nativeIntentBinding(action));
+  });
   registerNativeJoyIpc({
-    diagnostics:{
-      prepare:height=>getNativeJoyLoadingJournal().prepare(height),
-      restore:async()=>getNativeJoyService().ownsHardware?null:getNativeJoyLoadingJournal().restoreTerminalState(),
-      record:state=>getNativeJoyLoadingJournal().record(state as NativeJoyLoadingState),
-      export:async()=>{
-        if(getNativeJoyService().getLoadingState().active)throw new Error('End loading before exporting diagnostics.');
-        try{await getNativeJoyLoadingJournal().readLatest();}catch{throw new Error('No valid saved loading diagnostics are available yet.');}
-        const answer=await dialog.showSaveDialog({title:'Export loading diagnostics',defaultPath:'KindCut-Joy-loading-diagnostics.json',filters:[{name:'KindCut loading diagnostics',extensions:['json']}]});
-        if(answer.canceled||!answer.filePath)return{canceled:true};
-        if(getNativeJoyService().getLoadingState().active)throw new Error('Loading started while diagnostic export was open.');
-        try{await getNativeJoyLoadingJournal().exportTo(answer.filePath);}catch{throw new Error('Loading diagnostics could not be exported. Check the destination and available disk space.');}
-        return{canceled:false};
+    diagnostics: {
+      prepare: (height) => getNativeJoyLoadingJournal().prepare(height),
+      restore: async () =>
+        getNativeJoyService().ownsHardware
+          ? null
+          : getNativeJoyLoadingJournal().restoreTerminalState(),
+      record: (state) => getNativeJoyLoadingJournal().record(state as NativeJoyLoadingState),
+      export: async () => {
+        if (getNativeJoyService().getLoadingState().active)
+          throw new Error('End loading before exporting diagnostics.');
+        try {
+          await getNativeJoyLoadingJournal().readLatest();
+        } catch {
+          throw new Error('No valid saved loading diagnostics are available yet.');
+        }
+        const answer = await dialog.showSaveDialog({
+          title: 'Export loading diagnostics',
+          defaultPath: 'KindCut-Joy-loading-diagnostics.json',
+          filters: [{ name: 'KindCut loading diagnostics', extensions: ['json'] }],
+        });
+        if (answer.canceled || !answer.filePath) return { canceled: true };
+        if (getNativeJoyService().getLoadingState().active)
+          throw new Error('Loading started while diagnostic export was open.');
+        try {
+          await getNativeJoyLoadingJournal().exportTo(answer.filePath);
+        } catch {
+          throw new Error(
+            'Loading diagnostics could not be exported. Check the destination and available disk space.',
+          );
+        }
+        return { canceled: false };
       },
     },
-    register:registerNativeUserHandler,
+    register: registerNativeUserHandler,
     isTrusted: (event) => {
       const e = event as IpcMainInvokeEvent;
-      return !e.sender.isDestroyed() && BrowserWindow.fromWebContents(e.sender) !== null &&
-        e.senderFrame === e.sender.mainFrame && Boolean(e.senderFrame && isTrustedJoyUrl(e.senderFrame.url, joyRendererEntry));
+      return (
+        !e.sender.isDestroyed() &&
+        BrowserWindow.fromWebContents(e.sender) !== null &&
+        e.senderFrame === e.sender.mainFrame &&
+        Boolean(e.senderFrame && isTrustedJoyUrl(e.senderFrame.url, joyRendererEntry))
+      );
     },
     service: getNativeJoyService,
     listDevices: async () => {
-      if(process.platform!=="darwin")return [];
-      const folder=app.isPackaged?path.join(process.resourcesPath,"joy"):path.resolve(app.getAppPath(),"../../packages/joy-runtime/dist/kindcut-joy-runtime");
-      return discoverJoyDevices(path.join(folder,"_internal/bluetooth/joy_rfcomm"));
+      if (process.platform !== 'darwin') return [];
+      const folder = app.isPackaged
+        ? path.join(process.resourcesPath, 'joy')
+        : path.resolve(app.getAppPath(), '../../packages/joy-runtime/dist/kindcut-joy-runtime');
+      return discoverJoyDevices(path.join(folder, '_internal/bluetooth/joy_rfcomm'));
     },
-    ensureDeviceSettings:async(currentAttempt)=>{
-      const native=getNativeJoyService(),generation=native.loadingApprovalContext(),deviceFingerprint=native.currentDeviceFingerprint,status=await native.getStatus();
-      if(!deviceFingerprint||!status.session||status.session.firmwareSelector!==8.164000001||status.session.fallbackUsed)throw Error('Connect a supported original Joy.');
-      await ensureConnectedJoyCalibration({generation,deviceFingerprint,firmwareSelector:status.session.firmwareSelector},{
-       current:()=>{try{return currentAttempt()&&getNativeJoyService()===native&&native.loadingApprovalContext()===generation&&native.currentDeviceFingerprint===deviceFingerprint;}catch{return false;}},
-       load:()=>getJoyConfigurationService().exportLibrary(),read:()=>native.captureCalibration(true,generation),save:value=>getJoyConfigurationService().storeCalibration(value),
-      });
+    ensureDeviceSettings: async (currentAttempt) => {
+      const native = getNativeJoyService(),
+        generation = native.loadingApprovalContext(),
+        deviceFingerprint = native.currentDeviceFingerprint,
+        status = await native.getStatus();
+      if (
+        !deviceFingerprint ||
+        !status.session ||
+        status.session.firmwareSelector !== 8.164000001 ||
+        status.session.fallbackUsed
+      )
+        throw Error('Connect a supported original Joy.');
+      await ensureConnectedJoyCalibration(
+        { generation, deviceFingerprint, firmwareSelector: status.session.firmwareSelector },
+        {
+          current: () => {
+            try {
+              return (
+                currentAttempt() &&
+                getNativeJoyService() === native &&
+                native.loadingApprovalContext() === generation &&
+                native.currentDeviceFingerprint === deviceFingerprint
+              );
+            } catch {
+              return false;
+            }
+          },
+          load: () => getJoyConfigurationService().exportLibrary(),
+          read: () => native.captureCalibration(true, generation),
+          save: (value) => getJoyConfigurationService().storeCalibration(value),
+        },
+      );
     },
-    cutterBusy: () => legacyCutterStarting || Boolean(activeCutSession && !["finished", "stopped", "blocked"].includes(activeCutSession.getSnapshot().status)),
-    assertCurrent:action=>{nativeInlineIntents.assertCurrent(action);},
+    cutterBusy: () =>
+      legacyCutterStarting ||
+      Boolean(
+        activeCutSession &&
+        !['finished', 'stopped', 'blocked'].includes(activeCutSession.getSnapshot().status),
+      ),
+    assertCurrent: (action) => {
+      nativeInlineIntents.assertCurrent(action);
+    },
     confirmImport: async () => {
-      if (!safeStorage.isEncryptionAvailable()) throw new Error("Keychain protection is unavailable. No provisioning will be saved.");
-      const answer = await dialog.showMessageBox({ type: "question", title: "Import native Joy material", message: "Import material, settings and keys?", detail: "Choose an existing settings-cache JSON (settings8_raw) or a KindCut provisioning bundle. KindCut validates and protects imported material using macOS Keychain-backed storage. No Cricut helper, Design Space installation or login is required. Import does not operate the cutter.", buttons: ["Import", "Cancel"], defaultId: 1, cancelId: 1 });
+      if (!safeStorage.isEncryptionAvailable())
+        throw new Error('Keychain protection is unavailable. No provisioning will be saved.');
+      const answer = await dialog.showMessageBox({
+        type: 'question',
+        title: 'Import native Joy material',
+        message: 'Import material, settings and keys?',
+        detail:
+          'Choose an existing settings-cache JSON (settings8_raw) or a KindCut provisioning bundle. KindCut validates and protects imported material using macOS Keychain-backed storage. No Cricut helper, Design Space installation or login is required. Import does not operate the cutter.',
+        buttons: ['Import', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+      });
       return answer.response === 0;
     },
     chooseCache: async () => {
-      const answer = await dialog.showOpenDialog({ title: "Import material / settings / keys", defaultPath: path.join(app.getPath("home"), ".slicebug", "keys.json"), properties: ["openFile"], filters: [{ name: "Settings cache or KindCut provisioning bundle", extensions: ["json"] }] });
-      return answer.canceled ? null : answer.filePaths[0] ?? null;
+      const answer = await dialog.showOpenDialog({
+        title: 'Import material / settings / keys',
+        defaultPath: path.join(app.getPath('home'), '.slicebug', 'keys.json'),
+        properties: ['openFile'],
+        filters: [{ name: 'Settings cache or KindCut provisioning bundle', extensions: ['json'] }],
+      });
+      return answer.canceled ? null : (answer.filePaths[0] ?? null);
     },
 
     confirmHardware: () => approveNativeMakeAction('connect'),
-    confirmLoading: async heightInches => {
-      const check=async()=>{
-        const blocker=await checkForBlockingCutterProcesses();
-        if(!blocker.ok){await dialog.showMessageBox({type:'warning',title:'Cutter is unavailable',message:blocker.message});return false;}
+    confirmLoading: async (heightInches) => {
+      const check = async () => {
+        const blocker = await checkForBlockingCutterProcesses();
+        if (!blocker.ok) {
+          await dialog.showMessageBox({
+            type: 'warning',
+            title: 'Cutter is unavailable',
+            message: blocker.message,
+          });
+          return false;
+        }
         return true;
       };
-      if(!await check())return false;
-      const answer=await dialog.showMessageBox({type:'warning',title:'Load and align mat',message:`Experimental ${heightInches}-inch sensor-driven mat loading`,detail:'Confirm the entire BLADE HOUSING is removed and the front and back are clear. Leave the mat out until KindCut shows Insert mat now after sensor arming. The loading sequence requests the ready light, detects insertion, grips, measures and aligns the mat and carriage, then holds the session ready. Physical loading/alignment remains unverified. No job or cutting starts. End loading session releases ownership; it does not prove the mat is ejected or motion stopped. Cancel is not a guaranteed emergency stop.',buttons:['Blade housing removed — run check','Cancel'],defaultId:1,cancelId:1});
-      return answer.response===0&&await check();
+      if (!(await check())) return false;
+      const answer = await dialog.showMessageBox({
+        type: 'warning',
+        title: 'Load and align mat',
+        message: `Experimental ${heightInches}-inch sensor-driven mat loading`,
+        detail:
+          'Confirm the entire BLADE HOUSING is removed and the front and back are clear. Leave the mat out until KindCut shows Insert mat now after sensor arming. The loading sequence requests the ready light, detects insertion, grips, measures and aligns the mat and carriage, then holds the session ready. Physical loading/alignment remains unverified. No job or cutting starts. End loading session releases ownership; it does not prove the mat is ejected or motion stopped. Cancel is not a guaranteed emergency stop.',
+        buttons: ['Blade housing removed — run check', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+      });
+      return answer.response === 0 && (await check());
     },
-    confirmMat: async action => {
-      const answer=await dialog.showMessageBox({type:'warning',title:action==='load'?'Load mat':'Unload mat',message:action==='load'?'Guide the mat into the Joy rollers. Ready to load?':'Ready to release the mat?',detail:'The rollers may move. Keep fingers and loose objects clear. This sends only a mat-control command, not a cut. An acknowledgement does not verify physical mat presence.',buttons:[action==='load'?'Load mat':'Unload mat','Cancel'],defaultId:1,cancelId:1});
-      return answer.response===0;
+    confirmMat: async (action) => {
+      const answer = await dialog.showMessageBox({
+        type: 'warning',
+        title: action === 'load' ? 'Load mat' : 'Unload mat',
+        message:
+          action === 'load'
+            ? 'Guide the mat into the Joy rollers. Ready to load?'
+            : 'Ready to release the mat?',
+        detail:
+          'The rollers may move. Keep fingers and loose objects clear. This sends only a mat-control command, not a cut. An acknowledgement does not verify physical mat presence.',
+        buttons: [action === 'load' ? 'Load mat' : 'Unload mat', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+      });
+      return answer.response === 0;
     },
   });
   registerNativeJoyConfigurationIpc({
-    register:(name,handler)=>ipcMain.handle(name,handler),
-    isTrusted:event=>{const e=event as IpcMainInvokeEvent;return !e.sender.isDestroyed()&&BrowserWindow.fromWebContents(e.sender)!==null&&e.senderFrame===e.sender.mainFrame&&Boolean(e.senderFrame&&isTrustedJoyUrl(e.senderFrame.url,joyRendererEntry));},
-    cutterBusy:()=>legacyOwnsCutter()||getNativeJoyService().ownsJob,
-    service:getJoyConfigurationService,native:getNativeJoyService,
-    confirmRead:async()=>{
-      const check=async()=>{const blocker=await checkForBlockingCutterProcesses();if(!blocker.ok){await dialog.showMessageBox({type:'warning',message:blocker.message});return false;}return true;};
-      if(!await check())return false;
-      const answer=await dialog.showMessageBox({type:'question',title:'Read saved Joy calibration',message:'Read the connected original Joy’s saved pressure table?',detail:'Reads sixteen stored pressure/count entries from the already initialized session. No mechanical calibration, pressure change, rollers/carriage movement, reset or job is requested. Remove all tools for this first experimental read. Saved data is bound to this Joy; physical calibration and material suitability remain unverified.',buttons:['Read saved calibration','Cancel'],defaultId:1,cancelId:1});
-      return answer.response===0&&await check();
+    register: (name, handler) => ipcMain.handle(name, handler),
+    isTrusted: (event) => {
+      const e = event as IpcMainInvokeEvent;
+      return (
+        !e.sender.isDestroyed() &&
+        BrowserWindow.fromWebContents(e.sender) !== null &&
+        e.senderFrame === e.sender.mainFrame &&
+        Boolean(e.senderFrame && isTrustedJoyUrl(e.senderFrame.url, joyRendererEntry))
+      );
     },
-    readImport:async()=>{const answer=await dialog.showOpenDialog({title:'Import KindCut Joy profiles and calibration',properties:['openFile'],filters:[{name:'KindCut configuration library',extensions:['json']}]});return answer.canceled||!answer.filePaths[0]?null:await readConfigurationFile(answer.filePaths[0]);},
-    writeExport:async value=>{const answer=await dialog.showSaveDialog({title:'Export KindCut Joy configuration library',defaultPath:'kindcut-joy-profiles.json',filters:[{name:'KindCut configuration library',extensions:['json']}]});if(answer.canceled||!answer.filePath)return false;await exportConfigurationLibrary(answer.filePath,value);return true;},
+    cutterBusy: () => legacyOwnsCutter() || getNativeJoyService().ownsJob,
+    service: getJoyConfigurationService,
+    native: getNativeJoyService,
+    confirmRead: async () => {
+      const check = async () => {
+        const blocker = await checkForBlockingCutterProcesses();
+        if (!blocker.ok) {
+          await dialog.showMessageBox({ type: 'warning', message: blocker.message });
+          return false;
+        }
+        return true;
+      };
+      if (!(await check())) return false;
+      const answer = await dialog.showMessageBox({
+        type: 'question',
+        title: 'Read saved Joy calibration',
+        message: 'Read the connected original Joy’s saved pressure table?',
+        detail:
+          'Reads sixteen stored pressure/count entries from the already initialized session. No mechanical calibration, pressure change, rollers/carriage movement, reset or job is requested. Remove all tools for this first experimental read. Saved data is bound to this Joy; physical calibration and material suitability remain unverified.',
+        buttons: ['Read saved calibration', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+      });
+      return answer.response === 0 && (await check());
+    },
+    readImport: async () => {
+      const answer = await dialog.showOpenDialog({
+        title: 'Import KindCut Joy profiles and calibration',
+        properties: ['openFile'],
+        filters: [{ name: 'KindCut configuration library', extensions: ['json'] }],
+      });
+      return answer.canceled || !answer.filePaths[0]
+        ? null
+        : await readConfigurationFile(answer.filePaths[0]);
+    },
+    writeExport: async (value) => {
+      const answer = await dialog.showSaveDialog({
+        title: 'Export KindCut Joy configuration library',
+        defaultPath: 'kindcut-joy-profiles.json',
+        filters: [{ name: 'KindCut configuration library', extensions: ['json'] }],
+      });
+      if (answer.canceled || !answer.filePath) return false;
+      await exportConfigurationLibrary(answer.filePath, value);
+      return true;
+    },
   });
   registerNativeJoyJobIpc({
-    register:registerNativeUserHandler,
-    isTrusted:event=>{const e=event as IpcMainInvokeEvent;return !e.sender.isDestroyed()&&BrowserWindow.fromWebContents(e.sender)!==null&&e.senderFrame===e.sender.mainFrame&&Boolean(e.senderFrame&&isTrustedJoyUrl(e.senderFrame.url,joyRendererEntry));},
-    service:getNativeJobService,
-    restoreHistory:()=>getNativeJoyService().ownsHardware?Promise.resolve(null):getNativeJobJournal().restoreTerminalState(),
-    recoveryInfo:()=>getNativeJoyService().ownsHardware?Promise.resolve(null):getNativeJobJournal().recoveryInfo(),
-    canExport:()=>!getNativeJoyService().ownsHardware&&!legacyOwnsCutter(),
-    export:async()=>{
+    register: registerNativeUserHandler,
+    isTrusted: (event) => {
+      const e = event as IpcMainInvokeEvent;
+      return (
+        !e.sender.isDestroyed() &&
+        BrowserWindow.fromWebContents(e.sender) !== null &&
+        e.senderFrame === e.sender.mainFrame &&
+        Boolean(e.senderFrame && isTrustedJoyUrl(e.senderFrame.url, joyRendererEntry))
+      );
+    },
+    service: getNativeJobService,
+    restoreHistory: () =>
+      getNativeJoyService().ownsHardware
+        ? Promise.resolve(null)
+        : getNativeJobJournal().restoreTerminalState(),
+    recoveryInfo: () =>
+      getNativeJoyService().ownsHardware
+        ? Promise.resolve(null)
+        : getNativeJobJournal().recoveryInfo(),
+    canExport: () => !getNativeJoyService().ownsHardware && !legacyOwnsCutter(),
+    export: async () => {
       await getNativeJobJournal().readLatest();
-      const a=await dialog.showSaveDialog({title:'Export native pen-job diagnostics',defaultPath:'KindCut-native-pen-job-diagnostics.json',filters:[{name:'KindCut pen-job diagnostics',extensions:['json']}]});
-      if(a.canceled||!a.filePath)return{canceled:true};
-      if(getNativeJoyService().ownsHardware||legacyOwnsCutter())throw Error('Retire the cutter owner before export.');
-      await getNativeJobJournal().exportTo(a.filePath);return{canceled:false};
+      const a = await dialog.showSaveDialog({
+        title: 'Export native pen-job diagnostics',
+        defaultPath: 'KindCut-native-pen-job-diagnostics.json',
+        filters: [{ name: 'KindCut pen-job diagnostics', extensions: ['json'] }],
+      });
+      if (a.canceled || !a.filePath) return { canceled: true };
+      if (getNativeJoyService().ownsHardware || legacyOwnsCutter())
+        throw Error('Retire the cutter owner before export.');
+      await getNativeJobJournal().exportTo(a.filePath);
+      return { canceled: false };
     },
   });
   Menu.setApplicationMenu(createAppMenu());
-  logDiagnostics("info", "[KindCut diagnostics] App started", {
+  logDiagnostics('info', '[KindCut diagnostics] App started', {
     version: app.getVersion(),
     platform: process.platform,
     arch: process.arch,
@@ -1932,7 +2536,7 @@ app.whenReady().then(async () => {
     execPath: process.execPath,
     appPath: app.getAppPath(),
     resourcesPath: process.resourcesPath,
-    userDataPath: app.getPath("userData"),
+    userDataPath: app.getPath('userData'),
     logFilePath: getDiagnosticsLogFilePath(),
     slicebugLoggingEnabled,
   });
@@ -1940,30 +2544,33 @@ app.whenReady().then(async () => {
   const mainWindow = await createMainWindow();
   configureUpdates(mainWindow);
 
-  if (process.env.CRICUT_COMPANION_SMOKE_SLICEBUG === "1") {
+  if (process.env.CRICUT_COMPANION_SMOKE_SLICEBUG === '1') {
     console.log(JSON.stringify({ slicebug: await getSlicebugStatus() }));
     app.quit();
     return;
   }
 
-  if (process.env.CRICUT_COMPANION_SMOKE_PLAN === "1") {
+  if (process.env.CRICUT_COMPANION_SMOKE_PLAN === '1') {
     console.log(JSON.stringify({ plan: await generateSampleSlicebugPlan() }));
     app.quit();
     return;
   }
 
-  app.on("activate", () => {
+  app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       void createMainWindow();
     }
   });
 });
 
-app.on("window-all-closed", () => {
+app.on('window-all-closed', () => {
   app.quit();
 });
-app.on("will-quit", () => {nativeJobService?.dispose();nativeJoyService?.dispose();});
+app.on('will-quit', () => {
+  nativeJobService?.dispose();
+  nativeJoyService?.dispose();
+});
 
 if (isDevelopment) {
-  process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = "true";
+  process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 }

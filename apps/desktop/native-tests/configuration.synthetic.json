@@ -10,26 +10,10 @@
     "pressureRequest": 180,
     "nonXY": {
       "unit": "native_unverified",
-      "cutVelocity": [
-        9,
-        10,
-        11
-      ],
-      "moveVelocity": [
-        12,
-        13,
-        14
-      ],
-      "cutAcceleration": [
-        15,
-        16,
-        17
-      ],
-      "moveAcceleration": [
-        18,
-        19,
-        20
-      ]
+      "cutVelocity": [9, 10, 11],
+      "moveVelocity": [12, 13, 14],
+      "cutAcceleration": [15, 16, 17],
+      "moveAcceleration": [18, 19, 20]
     },
     "geometry": {
       "unit": "native_unverified",
@@ -44,31 +28,13 @@
       "lift_threshold": 1.0,
       "parallel_offset": 2.0,
       "lagging_offset": 3.0,
-      "nodes": [
-        1,
-        2,
-        3,
-        4,
-        5
-      ]
+      "nodes": [1, 2, 3, 4, 5]
     },
     "speeds": {
-      "cutVelocity_ips": [
-        1.0,
-        1.0
-      ],
-      "moveVelocity_ips": [
-        1.0,
-        1.0
-      ],
-      "cutAcceleration_ips2": [
-        1.0,
-        1.0
-      ],
-      "moveAcceleration_ips2": [
-        1.0,
-        1.0
-      ]
+      "cutVelocity_ips": [1.0, 1.0],
+      "moveVelocity_ips": [1.0, 1.0],
+      "cutAcceleration_ips2": [1.0, 1.0],
+      "moveAcceleration_ips2": [1.0, 1.0]
     }
   },
   "rows": [

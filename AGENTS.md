@@ -14,7 +14,8 @@ This repo is for a local-first cross-platform Cricut companion app. The target u
 ## Commands
 
 ```bash
-npm install
+npm ci
+npm run setup --workspace @cricut-companion/joy-runtime
 npm run typecheck
 npm run test
 npm run build
@@ -34,11 +35,14 @@ npm run dev
 - `packages/svg-preflight`: SVG validation/cleanup logic only.
 - `packages/ai-designer`: prompt contracts and AI output validation helpers.
 - `packages/slicebug-bridge`: command construction and subprocess boundaries only; no direct machine side effects without explicit caller confirmation.
-- `apps/desktop`: UI composition only.
+- `packages/joy-runtime`: app-owned Python/native protocol and compiler; independently validate trusted host requests.
+- `apps/desktop/src`: renderer composition and cohesive feature state; pure craft logic belongs in packages.
+- `apps/desktop/src/shell`: trusted Electron IPC, persistence, user authority and exclusive device/process adapters.
+- See `docs/architecture.md` for current renderer/host/worker and lifecycle ownership.
 
 ## Safety
 
-Never run `slicebug cut` or any machine-control command from this repo without explicit user approval. Tests should use command builders/fakes only.
+Never run `slicebug cut` or any machine-control command from this repo without explicit user approval. Tests should use command builders/fakes only. Refactoring and automated-test requests authorize software/inert verification, not a new physical device trial.
 
 ### Current native Joy development authorization
 

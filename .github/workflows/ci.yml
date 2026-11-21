@@ -5,8 +5,9 @@ on:
   push:
     branches:
       - main
-      - "feature/**"
-      - "codex/**"
+      - 'feature/**'
+      - 'codex/**'
+      - 'refactor/**'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -30,7 +31,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: '24'
           cache: npm
 
       - name: Install dependencies
@@ -46,7 +47,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
 
       - name: Set up Joy runtime Python environment
         run: npm run setup --workspace @cricut-companion/joy-runtime
@@ -60,16 +61,18 @@ jobs:
           New-Item -ItemType SymbolicLink -Force -Path packages/joy-runtime/.venv/bin/python -Target $python | Out-Null
           New-Item -ItemType SymbolicLink -Force -Path packages/joy-runtime/.venv/bin/python.exe -Target $python | Out-Null
 
+      - name: Formatting and test-policy checks
+        run: npm run test:format && npm run test:policy
+
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test full suite (POSIX)
-        if: runner.os != 'Windows'
-        run: npm run test
-
-      - name: Test Windows-supported contracts
-        if: runner.os == 'Windows'
-        run: node scripts/run-windows-release-tests.cjs
+      - name: Test all supported platform contracts
+        run: npm test
 
       - name: Build
         run: npm run build
+
+      - name: Verify compiled host and inert frozen SDK
+        if: runner.os == 'macOS'
+        run: npm run test:compiled-host && npm run test:runtime-inert

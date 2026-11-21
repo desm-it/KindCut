@@ -1,5 +1,66 @@
-import{it,expect}from'vitest';import{registerNativeJoyIpc}from'./native-joy-ipc';import{NativeJoyInlineIntent}from'./native-joy-inline-intent';
-function fixture(session:any=null,connected=false){const gate=new NativeJoyInlineIntent(),frame={},handlers=new Map<string,any>();let approvals=0,connects=0,lists=0,generation=0;const devices=[{name:'Joy',id:'01:02:03:04:05:06',paired:true,connected}],service={getStatus:async()=>({enabled:true,session}),loadingApprovalContext:()=>generation,connect:async()=>{connects++;return{};}}as any;registerNativeJoyIpc({register:(n,f)=>handlers.set(n,f),isTrusted:()=>true,cutterBusy:()=>false,service:()=>service,chooseCache:async()=>null,confirmImport:async()=>false,confirmHardware:async()=>{approvals++;return gate.approve('connect');},assertCurrent:a=>{gate.assertCurrent(a);},listDevices:async()=>{lists++;return devices;}});return{gate,frame,run:()=>{gate.record(frame,'connect','binding');return gate.run(frame,'connect','binding',()=>handlers.get('native-joy:connect-for-make')({},undefined));},stats:()=>({approvals,connects,lists})};}
-it('uses a genuine single-use approval exactly once for discovery and connection',async()=>{const f=fixture();await expect(f.run()).resolves.toMatchObject({status:'connected'});expect(f.stats()).toEqual({approvals:1,connects:1,lists:1});});
-it('does not exclude a paired Joy merely because macOS reports a baseband connection',async()=>{const f=fixture(null,true);await expect(f.run()).resolves.toMatchObject({status:'connected'});expect(f.stats().connects).toBe(1);});
-it('reuses an existing app session without device discovery or another connection',async()=>{const f=fixture({firmwareSelector:8});await expect(f.run()).resolves.toMatchObject({status:'connected'});expect(f.stats()).toEqual({approvals:1,connects:0,lists:0});});
+import { it, expect } from 'vitest';
+import { registerNativeJoyIpc } from './native-joy-ipc';
+import { NativeJoyInlineIntent } from './native-joy-inline-intent';
+function fixture(session: any = null, connected = false) {
+  const gate = new NativeJoyInlineIntent(),
+    frame = {},
+    handlers = new Map<string, any>();
+  let approvals = 0,
+    connects = 0,
+    lists = 0,
+    generation = 0;
+  const devices = [{ name: 'Joy', id: '01:02:03:04:05:06', paired: true, connected }],
+    service = {
+      getStatus: async () => ({ enabled: true, session }),
+      loadingApprovalContext: () => generation,
+      connect: async () => {
+        connects++;
+        return {};
+      },
+    } as any;
+  registerNativeJoyIpc({
+    register: (n, f) => handlers.set(n, f),
+    isTrusted: () => true,
+    cutterBusy: () => false,
+    service: () => service,
+    chooseCache: async () => null,
+    confirmImport: async () => false,
+    confirmHardware: async () => {
+      approvals++;
+      return gate.approve('connect');
+    },
+    assertCurrent: (a) => {
+      gate.assertCurrent(a);
+    },
+    listDevices: async () => {
+      lists++;
+      return devices;
+    },
+  });
+  return {
+    gate,
+    frame,
+    run: () => {
+      gate.record(frame, 'connect', 'binding');
+      return gate.run(frame, 'connect', 'binding', () =>
+        handlers.get('native-joy:connect-for-make')({}, undefined),
+      );
+    },
+    stats: () => ({ approvals, connects, lists }),
+  };
+}
+it('uses a genuine single-use approval exactly once for discovery and connection', async () => {
+  const f = fixture();
+  await expect(f.run()).resolves.toMatchObject({ status: 'connected' });
+  expect(f.stats()).toEqual({ approvals: 1, connects: 1, lists: 1 });
+});
+it('does not exclude a paired Joy merely because macOS reports a baseband connection', async () => {
+  const f = fixture(null, true);
+  await expect(f.run()).resolves.toMatchObject({ status: 'connected' });
+  expect(f.stats().connects).toBe(1);
+});
+it('reuses an existing app session without device discovery or another connection', async () => {
+  const f = fixture({ firmwareSelector: 8 });
+  await expect(f.run()).resolves.toMatchObject({ status: 'connected' });
+  expect(f.stats()).toEqual({ approvals: 1, connects: 0, lists: 0 });
+});

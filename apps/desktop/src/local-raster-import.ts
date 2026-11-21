@@ -28,15 +28,21 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, finiteValue));
 }
 
-export function normalizeRasterTraceOptions(options?: Partial<RasterTraceOptions> | null): RasterTraceOptions {
+export function normalizeRasterTraceOptions(
+  options?: Partial<RasterTraceOptions> | null,
+): RasterTraceOptions {
   return {
-    threshold: Math.round(clamp(options?.threshold ?? DEFAULT_RASTER_TRACE_OPTIONS.threshold, 0, 255)),
+    threshold: Math.round(
+      clamp(options?.threshold ?? DEFAULT_RASTER_TRACE_OPTIONS.threshold, 0, 255),
+    ),
     detail: Math.round(clamp(options?.detail ?? DEFAULT_RASTER_TRACE_OPTIONS.detail, 0, 100)),
     invert: Boolean(options?.invert ?? DEFAULT_RASTER_TRACE_OPTIONS.invert),
   };
 }
 
-export function mapRasterTraceOptions(options?: Partial<RasterTraceOptions> | null): RasterTraceBackendOptions {
+export function mapRasterTraceOptions(
+  options?: Partial<RasterTraceOptions> | null,
+): RasterTraceBackendOptions {
   const normalized = normalizeRasterTraceOptions(options);
   const detailRatio = normalized.detail / 100;
   return {
@@ -48,20 +54,22 @@ export function mapRasterTraceOptions(options?: Partial<RasterTraceOptions> | nu
 }
 
 export function isRasterImportFile(file: RasterImportFileLike): boolean {
-  return file.type === "image/png" || file.type === "image/jpeg" || RASTER_IMPORT_EXT_RE.test(file.name);
+  return (
+    file.type === 'image/png' || file.type === 'image/jpeg' || RASTER_IMPORT_EXT_RE.test(file.name)
+  );
 }
 
 export function rasterMimeType(file: RasterImportFileLike): string {
-  if (file.type === "image/png" || file.type === "image/jpeg") {
+  if (file.type === 'image/png' || file.type === 'image/jpeg') {
     return file.type;
   }
-  return file.name.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+  return file.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
 }
 
 export function stripImageExtension(fileName: string): string {
-  return fileName.replace(/\.(svg|png|jpe?g)$/i, "");
+  return fileName.replace(/\.(svg|png|jpe?g)$/i, '');
 }
 
 export function dataUrlToBase64(dataUrl: string): string {
-  return dataUrl.split(",", 2)[1] ?? "";
+  return dataUrl.split(',', 2)[1] ?? '';
 }

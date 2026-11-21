@@ -1,3 +1,16 @@
-import {it,expect} from 'vitest';import {nativeWorkspaceStrokeTools} from './native-joy-workspace-source';
-it('does not reject a pen design merely because an UNUSED blade color is configured',()=>{expect(nativeWorkspaceStrokeTools('<path stroke="#112233"/>',{'112233':'pen','ff0000':'fine_point_blade'})).toEqual({'#112233':{tool:'pen',operation:'draw'}});});
-it('rejects actually used missing/unsupported tool mappings',()=>{expect(()=>nativeWorkspaceStrokeTools('<path stroke="#112233"/>',{})).toThrow();expect(()=>nativeWorkspaceStrokeTools('<path stroke="#112233"/>',{'112233':'mystery'})).toThrow();});
+import { it, expect } from 'vitest';
+import { nativeWorkspaceStrokeTools } from './native-joy-workspace-source';
+it('does not reject a pen design merely because an UNUSED blade color is configured', () => {
+  expect(
+    nativeWorkspaceStrokeTools('<path stroke="#112233"/>', {
+      '112233': 'pen',
+      ff0000: 'fine_point_blade',
+    }),
+  ).toEqual({ '#112233': { tool: 'pen', operation: 'draw' } });
+});
+it('rejects actually used missing/unsupported tool mappings', () => {
+  expect(() => nativeWorkspaceStrokeTools('<path stroke="#112233"/>', {})).toThrow();
+  expect(() =>
+    nativeWorkspaceStrokeTools('<path stroke="#112233"/>', { '112233': 'mystery' }),
+  ).toThrow();
+});

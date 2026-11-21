@@ -1,137 +1,50 @@
-# Experimental KindCut Joy runtime
+# KindCut original-Joy runtime
 
-KindCut-owned Python/crypto + native IOBluetooth code, packaged into a standalone
-macOS executable. It does not execute SliceBug, CricutDevice or Design Space.
-The native backend is available on macOS without an environment-variable gate.
-Device operations still require an explicit user action. Mat load/unload requests
-are available; there are no native cutting/job/path APIs.
+App-owned Python/crypto and a native IOBluetooth bridge, frozen into a standalone macOS executable. It does not execute SliceBug, CricutDevice or Design Space. The native product workflow supports on-mat pen and fine-point blade jobs on the original Joy with supported firmware, including explicit CardMat and insert-card recipes. Other cutters and Smart/matless native work are not supported. Windows uses the separate legacy backend; Intel-Mac native compatibility is not established.
 
-## Build (macOS, verified on ARM64)
+## Build and software verification
+
+From the repository root:
 
 ```sh
-python3 -m venv packages/joy-runtime/.venv
-packages/joy-runtime/.venv/bin/python -m pip install -r packages/joy-runtime/requirements-build.txt
-npm run build --workspace @cricut-companion/joy-runtime
+npm ci
+npm run setup --workspace @cricut-companion/joy-runtime
+npm run check
 ```
 
-This compiles the native RFCOMM bridge, freezes Python/cryptography with
-PyInstaller, probes the resulting worker without hardware, and copies its own
-runtime folder into `apps/desktop/resources/joy`. macOS desktop packaging includes
-that folder in `Contents/Resources/joy`. Windows builds skip this experimental
-runtime; no Windows or Intel-Mac compatibility has been validated.
+Setup uses the pinned Python build requirements; Python3.12 is the supported CI/native test interpreter. The build compiles the RFCOMM bridge, freezes the runtime/profile/decoder resources, performs a hardware-free probe and copies the self-contained folder to `apps/desktop/resources/joy`. App packaging installs it at `Contents/Resources/joy`. Native freezing is skipped on non-macOS platforms; portable tests still run there.
 
-The generated artifact is self-contained; an end user does not need the build
-venv, Python installation, Ghidra, research evidence, SliceBug or a running Design
-Space for a provisioned session. Build tools/Xcode are developer prerequisites.
+The application does not require an end-user Python/venv, Ghidra, research archive or vendor installation. macOS builds require the documented developer/Xcode tools. `--probe` is metadata-only; the packaged Bluetooth helper's `--self-test` is also hardware-free. Neither authorizes a connection.
 
-Safe verification:
+Use the canonical platform-aware root test command for supported checks. The full inert suite runs on POSIX; Unix permission, Darwin framework-link and fcntl contracts are explicitly classified rather than faked on Windows. Compiled-host/frozen-runtime integration uses synthetic peers only.
 
-```sh
-apps/desktop/resources/joy/kindcut-joy-runtime --probe
-packages/joy-runtime/.venv/bin/python -W error::ResourceWarning -m unittest discover -s packages/joy-runtime/tests -v
-```
+## Runtime boundaries
 
-`--probe` imports the packaged crypto/runtime and reports capabilities without
-opening a connection. Native hardware-free `--self-test` is separately available
-in the bundled `_internal/bluetooth/joy_rfcomm` executable.
+- `worker.py`: private bounded JSON-lines dispatch, numeric request identities, allowlisted errors and EOF shutdown.
+- Offline planning/configuration: validates declared source/frame and exact saved recipes, builds immutable programs, and never borrows a live connection.
+- Session/crypto: model/firmware selection, source-bound initialization and the owned channel.
+- Loading/retained scope: sensor arming, grip/measurement/readiness, independent operation ownership and guarded retirement.
+- Job task/program: exact admission, immutable digest/source binding, ordered per-tool/per-pass data, fresh Go, retained completion and explicit End.
+- Native bridge: cached paired-device SDP and CFRunLoop-scheduled IOBluetooth operations; no process-name killing or generic transport fallback.
 
-## One-time provisioning
+The trusted Electron host provides user authority and validates snapshots/ownership; Python independently validates requests and execution context. The private worker is not a public network service. Keep independent admission even when contract types/fixtures are shared.
 
-**Normal Joy setup does not require provisioning import.** The app ships
-`profiles/cricut-joy.json` with two decoded machine-12 initialization records,
-exact firmware-selector bounds and transformation flags. The default connection
-uses this profile without reading old cache/Keychain material, even if an earlier
-import exists. Unknown firmware fails closed: no generic machine-7 fallback.
-Advanced import explicitly opts into an override for the current app session;
-restarting returns to the bundled default. No user address/account/AI credentials
-are included in the profile. The shared device initialization records are shipped
-under Joel's explicit authorization.
+## Bundled initialization versus device data
 
-The app asks for ONE JSON file: an existing cache containing `settings8_raw`, or
-a format-1 KindCut bundle containing `settings8` and `seedPrefixBase64`. It does
-not ask for, read, load or execute a Cricut helper. Unrelated cache fields are
-ignored. Malformed material fails closed.
+Normal setup uses the two machine-12 records in `runtime/profiles/cricut-joy.json`, with their exact selector bounds/transforms. Unknown firmware fails closed, never through a generic machine-7 fallback. `decoder-prefix.bin` is an authorized shared33-byte decoder constant, not a user account/device key. Runtime builds package those reviewed resources; they do not extract an installed helper.
 
-`decoder-prefix.bin` is a shipped 33-byte shared decoder constant, not a user's
-account/device key. Its inclusion is explicitly authorized by Joel and makes
-cache import independent of a Design Space installation. `seed_import.py`
-remains a developer research utility; it is not imported or included in the
-frozen worker. Runtime builds package the existing decoder resource and do not
-extract anything from an installed helper.
+On deliberate Make entry the host connects once or reuses its ready owner, reuses exact device/firmware calibration or explicitly reads and saves that device's stored pressure table, adopts the exact material/tool recipes and prepares. No advanced toggle or import is needed. Reading device data is not mechanical calibration, force certification or validated stock suitability. Loading, each tool Go and unloading remain separate user actions.
 
-After validating settings8, the private worker pipe returns the bundle ONLY to
-Electron main. Main protects it using Electron `safeStorage` and a private
-0700 directory / 0600 atomic file. No plaintext fallback is permitted. The
-renderer receives only a record count. After import, the source JSON is not
-needed during connection. Online refresh/login is not implemented. This is
-material/key provisioning, not an arbitrary calibration-settings importer.
+Per-device calibration and per-connection session keys remain local. Never put real keys/bundles on command lines, in environment variables, logs, tests, git or chat. Tests use labeled synthetic data; managed memory cannot promise secure erasure.
 
-Do not put the bundle on a command line, in environment variables, diagnostics,
-logs, tests, git or chat. Tests contain only explicitly synthetic values. Python
-and JavaScript managed memory cannot guarantee secure erasure.
+Advanced provisioning import is an explicit session override, not normal setup. It accepts a host-chosen existing cache/bundle, validates it in the private worker and protects it using Electron safeStorage and private atomic storage; the renderer receives only metadata. There is no plaintext fallback or automatic vendor-cache read. Restart returns to bundled initialization. Developer research utilities are not app runtime dependencies.
 
-## App interface and authority
+## App authority and recovery
 
-The preload exposes `cricutCompanion.nativeJoy`:
+Preload setup/status is local metadata. Device selection is paired-device metadata, not active inquiry. Current Make entry/setup is host-owned; the renderer cannot supply approval booleans, source paths or initialization bundles. Host state and one-use input receipts bind genuine actions to the current source/library/session. Cancellation checks every awaited stage, retires only its captured owner and quarantines failed retirement. Native and legacy owners are mutually exclusive.
 
-- `getSetupStatus()` — local metadata only; does not launch the worker.
-- `devices()` — paired original-Joy metadata through the app-owned native bridge;
-  no manual address entry, active inquiry or automatic connection. Pair new
-  devices once in macOS Bluetooth settings. A single Joy is selected automatically.
-- `mat('load'|'unload')` — trusted main-process roller-motion confirmation; requires
-  an initialized session. Device rejection remains visible without retry. An ACK
-  is not proof of physical mat presence or completed feeding.
-- `importProvisioning()` — main-process confirmation + one native file chooser;
-  renderer cannot supply paths or receive a bundle.
-- `connect(address)` — requires a native confirmation naming Bluetooth/
-  authentication, AES reset/key negotiation and
-  firmware/status reads. Renderer-provided approval flags are ignored.
-- `pollStatus()` — only for an approved, initialized session.
-- `disconnect()` — cancels pending work and closes the owned session.
+Interrupted jobs are observation-only: last-known diagnostics are not physical state, replay permission or a resumable cursor. Software cancellation/ACKs do not prove stopped motion. Keep action outcome, later cleanup failure and physical verification separate.
 
-Only the exact packaged main-frame renderer or configured loopback dev origin
-may invoke these IPC handlers. Existing and native cutter sessions block each
-other; a pending keychain read cannot start a connection after cancellation.
-App shutdown aborts the owned worker process group. No process-name killing.
+## Validation scope
 
-`worker.py --stdio` is a private JSON-lines protocol, not a public network server.
-It validates numeric request IDs, bounds input, redacts error text, rejects
-unapproved hardware operations, and closes on EOF. The Node client bounds
-responses, has a hard deadline, and does not silently restart after failure.
-
-## Validation boundaries
-
-**Current hardware proof (pass 18):** frozen runtime through the real Node service
-discovered Joy-C3D0, initialized firmware selector 8.164000001 from bundled record
-0, read encrypted status, accepted a load request, and returned an explicit
-unload rejection (device code 5) without losing synchronization. Imported-key reads
-were zero. No cutting or firmware-update command was sent. Physical mat insertion
-and completed feeding/unloading are not verified. Older statements below describe
-earlier checkpoints.
-
-The macOS bridge schedules SDK work with CFRunLoopPerformBlock rather than a
-main-dispatch block, allowing IOBluetooth callbacks to reenter the main run loop.
-It uses cached SDP records for paired devices instead of racing an asynchronous
-SDP query against RFCOMM open. A POSIX serial experiment was discarded; it is not
-part of the app. See `macos-joy-profiles-discovery-pass18.md` for current evidence.
-
-The packaged worker has passed a real Node-client probe and an isolated clean-
-environment import of the existing local cache in RAM (22 records), with only
-counts/booleans emitted. Neither original helper nor hardware was executed.
-No real imported bundle was persisted during development. Protected-store unit
-coverage uses an injected test cipher; actual OS Keychain interaction and native
-dialog display require a separate app smoke test. Hardware interoperability,
-reset-reply semantics and strict encrypted-status confirmation remain unverified.
-Settings now includes Auto/Native/SliceBug preference and a native setup panel
-with metadata, provisioning import and explicit connection/status/disconnect
-controls. Auto cutting requires confirmation to use SliceBug; Native-only cutting
-is blocked. No retry/fallback follows an uncertain operation. Native cutting
-itself remains unimplemented. Settings now separates Cutter and AI services into
-accessible tabs, preserving drafts while switching. Latest standalone validation
-also imported 22 real cached records while macOS denied helper-installation and
-research-helper reads and all network access. No keys were printed or persisted
-by that check. See pass-17 for current behavior; pass-16 is historical.
-
-Research provenance: `docs/research/cricut-native/evidence/joy-runtime/` and
-`macos-joy-initialization-pass14.md`. Promoted protocol/crypto/session source
-initially matches the already-tested research implementation byte-for-byte.
+Automated unit, contract, SDK and compiled-host/frozen-runtime tests are inert. Operator-observed successful basic pen/cut work and real-device onboarding are separate evidence; they do not certify every material, CardMat alignment, cut depth, physical calibration or fault/stopping outcome. Do not revive older inspection-only/trial restrictions as current product behavior. See `docs/native-joy.md` and `docs/architecture.md` for current workflow/support; historical/private research is provenance, never required for a clean build.

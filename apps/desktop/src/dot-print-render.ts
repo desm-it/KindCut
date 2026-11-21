@@ -2,7 +2,7 @@
 // dots (cached, so the canvas and the settings panel share one run) and turns
 // them into real pen paths for the cutter.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from 'react';
 import {
   DEFAULT_DOT_PRINT,
   DEFAULT_INK_PEN_COLORS,
@@ -13,11 +13,11 @@ import {
   dotPrintInks,
   dotStroke,
   generateDotPrint,
-} from "@cricut-companion/craft-core";
-import type { WorkspaceTool } from "./project-file";
-import { getPens, withPens } from "./project-file";
-import type { WorkspaceObject, WorkspacePathData } from "./workspace-objects";
-import { WORKSPACE_PX_PER_MM } from "./pen-fill-render";
+} from '@cricut-companion/craft-core';
+import type { WorkspaceTool } from './project-file';
+import { getPens, withPens } from './project-file';
+import type { WorkspaceObject, WorkspacePathData } from './workspace-objects';
+import { WORKSPACE_PX_PER_MM } from './pen-fill-render';
 
 /** Pictures are stored at most this size; that's finer than any useful pen-dot grid. */
 const MAX_STORED_IMAGE_PX = 800;
@@ -34,11 +34,11 @@ export function loadRasterImage(dataUrl: string): Promise<RasterImage> {
       const image = new Image();
       image.src = dataUrl;
       await image.decode();
-      const canvas = document.createElement("canvas");
+      const canvas = document.createElement('canvas');
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("Canvas is not available.");
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Canvas is not available.');
       context.drawImage(image, 0, 0);
       const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
       return { data, width, height };
@@ -56,10 +56,14 @@ export function useRasterImage(dataUrl: string | undefined): RasterImage | null 
     setImage(null);
     if (dataUrl) {
       loadRasterImage(dataUrl)
-        .then((loaded) => { if (alive) setImage(loaded); })
-        .catch((error) => console.error("[DotPrint] Could not read the picture:", error));
+        .then((loaded) => {
+          if (alive) setImage(loaded);
+        })
+        .catch((error) => console.error('[DotPrint] Could not read the picture:', error));
     }
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [dataUrl]);
   return image;
 }
@@ -79,7 +83,11 @@ export function dotPrintChannels(item: WorkspaceObject, image: RasterImage): Dot
   if (!item.dotPrint) return [];
   const size = dotPrintSizeMm(item);
   // Ink bleed only changes how dots look, not where they go, so it isn't part of the key.
-  const { inkBleed: _previewOnly, blackInkBleed: _blackPreviewOnly, ...placement } = item.dotPrint.settings;
+  const {
+    inkBleed: _previewOnly,
+    blackInkBleed: _blackPreviewOnly,
+    ...placement
+  } = item.dotPrint.settings;
   const key = JSON.stringify([size.width.toFixed(3), size.height.toFixed(3), placement]);
   let byKey = channelCache.get(image);
   if (!byKey) {
@@ -97,23 +105,32 @@ export function dotPrintChannels(item: WorkspaceObject, image: RasterImage): Dot
 }
 
 /** Reads a picture file and stores it downscaled, keeping transparency for PNGs. */
-export async function readDotPrintImageFile(file: File): Promise<{ dataUrl: string; width: number; height: number }> {
+export async function readDotPrintImageFile(
+  file: File,
+): Promise<{ dataUrl: string; width: number; height: number }> {
   const sourceUrl = URL.createObjectURL(file);
   try {
     const image = new Image();
     image.src = sourceUrl;
     await image.decode();
-    const scale = Math.min(1, MAX_STORED_IMAGE_PX / Math.max(image.naturalWidth, image.naturalHeight));
+    const scale = Math.min(
+      1,
+      MAX_STORED_IMAGE_PX / Math.max(image.naturalWidth, image.naturalHeight),
+    );
     const width = Math.max(1, Math.round(image.naturalWidth * scale));
     const height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const canvas = document.createElement("canvas");
+    const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Canvas is not available.");
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas is not available.');
     context.drawImage(image, 0, 0, width, height);
-    const keepAlpha = file.type === "image/png" || file.type === "image/webp";
-    return { dataUrl: canvas.toDataURL(keepAlpha ? "image/png" : "image/jpeg", 0.92), width, height };
+    const keepAlpha = file.type === 'image/png' || file.type === 'image/webp';
+    return {
+      dataUrl: canvas.toDataURL(keepAlpha ? 'image/png' : 'image/jpeg', 0.92),
+      width,
+      height,
+    };
   } finally {
     URL.revokeObjectURL(sourceUrl);
   }
@@ -123,12 +140,18 @@ export async function readDotPrintImageFile(file: File): Promise<{ dataUrl: stri
  * Makes sure the project has a pen for every ink, reusing pens that already
  * have the ink's colour, and returns the updated tools plus the pen per ink.
  */
-export function ensureInkPens(tools: WorkspaceTool[]): { tools: WorkspaceTool[]; pens: DotPrintSettings["pens"] } {
+export function ensureInkPens(tools: WorkspaceTool[]): {
+  tools: WorkspaceTool[];
+  pens: DotPrintSettings['pens'];
+} {
   const pens = getPens(tools);
   const added: WorkspaceTool[] = [];
   for (const [ink, color] of Object.entries(DEFAULT_INK_PEN_COLORS)) {
-    if (!pens.some((pen) => pen.color.toLowerCase() === color) && !added.some((pen) => pen.color === color)) {
-      added.push({ id: `pen-${ink}-${Date.now()}`, color, type: "pen" });
+    if (
+      !pens.some((pen) => pen.color.toLowerCase() === color) &&
+      !added.some((pen) => pen.color === color)
+    ) {
+      added.push({ id: `pen-${ink}-${Date.now()}`, color, type: 'pen' });
     }
   }
   return {
@@ -155,37 +178,45 @@ export function dotPrintToPaths(item: WorkspaceObject, image: RasterImage): Work
   const settings = item.dotPrint.settings;
   const sx = Math.abs(item.transform.scaleX || 1);
   const sy = Math.abs(item.transform.scaleY || 1);
-  const toFrame = (point: { x: number; y: number }) => ({ x: (point.x * WORKSPACE_PX_PER_MM) / sx, y: (point.y * WORKSPACE_PX_PER_MM) / sy });
+  const toFrame = (point: { x: number; y: number }) => ({
+    x: (point.x * WORKSPACE_PX_PER_MM) / sx,
+    y: (point.y * WORKSPACE_PX_PER_MM) / sy,
+  });
   const format = (value: number) => String(Math.round(value * 1000) / 1000);
   const paths: WorkspacePathData[] = [];
   for (const channel of dotPrintChannels(item, image)) {
-    const tipInFrame = (dotPrintInkTip(settings, channel.ink) * WORKSPACE_PX_PER_MM) / Math.min(sx, sy);
+    const tipInFrame =
+      (dotPrintInkTip(settings, channel.ink) * WORKSPACE_PX_PER_MM) / Math.min(sx, sy);
     for (let start = 0; start < channel.dots.length; start += DOTS_PER_PATH) {
       const d = channel.dots
         .slice(start, start + DOTS_PER_PATH)
         .map((dot) => {
           // Dot shapes are built in mm, then mapped, so they keep their real size.
           const { points, closed } = dotStroke(dot.x, dot.y, settings.dotStyle, 1);
-          return points.map((point, index) => {
-            const mapped = toFrame(point);
-            return `${index === 0 ? "M" : "L"}${format(mapped.x)} ${format(mapped.y)}`;
-          }).join("") + (closed ? "Z" : "");
+          return (
+            points
+              .map((point, index) => {
+                const mapped = toFrame(point);
+                return `${index === 0 ? 'M' : 'L'}${format(mapped.x)} ${format(mapped.y)}`;
+              })
+              .join('') + (closed ? 'Z' : '')
+          );
         })
-        .join("");
+        .join('');
       paths.push({
         id: `${item.id}-${channel.ink}-${start / DOTS_PER_PATH}`,
         d,
-        fill: "none",
+        fill: 'none',
         stroke: channel.color,
         strokeWidth: format(tipInFrame),
-        strokeLinecap: "round",
-        strokeLinejoin: "round",
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
       });
     }
   }
   return paths;
 }
 
-export function defaultDotPrintSettings(pens: DotPrintSettings["pens"]): DotPrintSettings {
+export function defaultDotPrintSettings(pens: DotPrintSettings['pens']): DotPrintSettings {
   return { ...DEFAULT_DOT_PRINT, pens: { ...pens } };
 }

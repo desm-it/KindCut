@@ -1,5 +1,43 @@
-import{it,expect}from'vitest';import{requireBladeJob}from'./joy-blade-job';import f from'../../native-tests/blade-trial.synthetic.json';
-it('admits multi-path non-square source with its explicit saved recipe',()=>{const p=structuredClone(f.plan);p.groups[0]!.paths[0]!.steps[1]!.points[0]!.x+=10;p.groups[0]!.paths.push({...structuredClone(p.groups[0]!.paths[0]!),id:'second'});expect(()=>requireBladeJob(p,f.settings,f.pressures)).not.toThrow();});
-it('does not hardcode material 211 or three passes',()=>{const p=structuredClone(f.plan);p.material.id=218;expect(()=>requireBladeJob(p,{...f.settings,materialId:218},[223])).not.toThrow();});
-it('admits only explicitly authorized canonical CardMat geometry',()=>{const p:any=structuredClone(f.plan);p.mat={widthIn:4.5,heightIn:6.25,mode:'card'};p.material.widthIn=4.5;p.material.heightIn=6.25;expect(()=>requireBladeJob(p,f.settings,f.pressures)).not.toThrow();for(const [mat,ok] of [[{widthIn:4.5,heightIn:6.25},false],[{widthIn:4.5,heightIn:6.25,mode:'other'},false],[{widthIn:4.4,heightIn:6.25,mode:'card'},false],[{widthIn:4.5,heightIn:6.5,mode:'card'},false]] as const){const q:any=structuredClone(p);q.mat=mat;expect(()=>requireBladeJob(q,f.settings,f.pressures)).toThrow();}});
-it.each(['nonfinite','extra','wrongtool','badrecipe','badframe'])('rejects invalid source %s',mode=>{const p:any=structuredClone(f.plan),s:any=structuredClone(f.settings);if(mode==='nonfinite')p.groups[0].paths[0].steps[0].points[0].x=NaN;if(mode==='extra')p.groups[0].paths[0].steps[0].points[0].approved=true;if(mode==='wrongtool')s.tool='pen';if(mode==='badframe')p.coordinateFrame='unknown';expect(()=>requireBladeJob(p,s,mode==='badrecipe'?[224]:f.pressures)).toThrow();});
+import { it, expect } from 'vitest';
+import { requireBladeJob } from './joy-blade-job';
+import f from '../../native-tests/blade-trial.synthetic.json';
+it('admits multi-path non-square source with its explicit saved recipe', () => {
+  const p = structuredClone(f.plan);
+  p.groups[0]!.paths[0]!.steps[1]!.points[0]!.x += 10;
+  p.groups[0]!.paths.push({ ...structuredClone(p.groups[0]!.paths[0]!), id: 'second' });
+  expect(() => requireBladeJob(p, f.settings, f.pressures)).not.toThrow();
+});
+it('does not hardcode material 211 or three passes', () => {
+  const p = structuredClone(f.plan);
+  p.material.id = 218;
+  expect(() => requireBladeJob(p, { ...f.settings, materialId: 218 }, [223])).not.toThrow();
+});
+it('admits only explicitly authorized canonical CardMat geometry', () => {
+  const p: any = structuredClone(f.plan);
+  p.mat = { widthIn: 4.5, heightIn: 6.25, mode: 'card' };
+  p.material.widthIn = 4.5;
+  p.material.heightIn = 6.25;
+  expect(() => requireBladeJob(p, f.settings, f.pressures)).not.toThrow();
+  for (const [mat, ok] of [
+    [{ widthIn: 4.5, heightIn: 6.25 }, false],
+    [{ widthIn: 4.5, heightIn: 6.25, mode: 'other' }, false],
+    [{ widthIn: 4.4, heightIn: 6.25, mode: 'card' }, false],
+    [{ widthIn: 4.5, heightIn: 6.5, mode: 'card' }, false],
+  ] as const) {
+    const q: any = structuredClone(p);
+    q.mat = mat;
+    expect(() => requireBladeJob(q, f.settings, f.pressures)).toThrow();
+  }
+});
+it.each(['nonfinite', 'extra', 'wrongtool', 'badrecipe', 'badframe'])(
+  'rejects invalid source %s',
+  (mode) => {
+    const p: any = structuredClone(f.plan),
+      s: any = structuredClone(f.settings);
+    if (mode === 'nonfinite') p.groups[0].paths[0].steps[0].points[0].x = NaN;
+    if (mode === 'extra') p.groups[0].paths[0].steps[0].points[0].approved = true;
+    if (mode === 'wrongtool') s.tool = 'pen';
+    if (mode === 'badframe') p.coordinateFrame = 'unknown';
+    expect(() => requireBladeJob(p, s, mode === 'badrecipe' ? [224] : f.pressures)).toThrow();
+  },
+);

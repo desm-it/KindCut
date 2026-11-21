@@ -1,6 +1,6 @@
-import type { WorkspaceObject, WorkspacePathData } from "./workspace-objects";
-import type { WorkspaceBounds } from "./workspace-utils";
-import { getWorkspaceSelectionBounds } from "./workspace-utils";
+import type { WorkspaceObject, WorkspacePathData } from './workspace-objects';
+import type { WorkspaceBounds } from './workspace-utils';
+import { getWorkspaceSelectionBounds } from './workspace-utils';
 
 export function createWorkspaceGroup(input: {
   id: string;
@@ -25,9 +25,9 @@ export function createWorkspaceGroup(input: {
   );
   return {
     id: input.id,
-    type: "group",
-    kind: "image",
-    sourceKind: "image",
+    type: 'group',
+    kind: 'image',
+    sourceKind: 'image',
     fileName: input.label,
     fileSize: input.fileSize,
     sizeCopy: `${Math.round(bounds.width)} × ${Math.round(bounds.height)} px`,
@@ -39,9 +39,11 @@ export function createWorkspaceGroup(input: {
 }
 
 // A group is one object with one fill setting, so it can only keep a fill all its members agree on.
-function sharedPenFill(items: WorkspaceObject[]): WorkspaceObject["penFill"] {
+function sharedPenFill(items: WorkspaceObject[]): WorkspaceObject['penFill'] {
   const [first, ...rest] = items.map((item) => JSON.stringify(item.penFill ?? null));
-  return first && first !== "null" && rest.every((fill) => fill === first) ? (JSON.parse(first) as WorkspaceObject["penFill"]) : undefined;
+  return first && first !== 'null' && rest.every((fill) => fill === first)
+    ? (JSON.parse(first) as WorkspaceObject['penFill'])
+    : undefined;
 }
 
 export function ungroupWorkspaceObject(input: {
@@ -49,7 +51,7 @@ export function ungroupWorkspaceObject(input: {
   idPrefix: string;
   labelForIndex: (index: number) => string;
 }): WorkspaceObject[] {
-  if (input.group.type !== "group") {
+  if (input.group.type !== 'group') {
     return [];
   }
 
@@ -83,9 +85,9 @@ export function ungroupWorkspaceObject(input: {
       dashed: input.group.dashed ? { ...input.group.dashed } : undefined,
     };
     if (cleanedPaths.length === 1) {
-      return { ...base, type: "path" as const, paths: [cleanedPaths[0]!] as [WorkspacePathData] };
+      return { ...base, type: 'path' as const, paths: [cleanedPaths[0]!] as [WorkspacePathData] };
     }
-    return { ...base, type: "group" as const, paths: cleanedPaths };
+    return { ...base, type: 'group' as const, paths: cleanedPaths };
   });
 }
 
@@ -99,7 +101,7 @@ export function splitPathData(d: string): string[] {
 
 // A single path object that contains 2+ subpaths can be broken into separate objects.
 export function isCompoundPathItem(item: WorkspaceObject): boolean {
-  return item.type === "path" && splitPathData(item.paths[0]?.d ?? "").length > 1;
+  return item.type === 'path' && splitPathData(item.paths[0]?.d ?? '').length > 1;
 }
 
 // Break a compound single-path object (e.g. an AI-traced design) into one object per
@@ -112,7 +114,7 @@ export function splitCompoundPathItem(input: {
 }): WorkspaceObject[] {
   const { item } = input;
   const path = item.paths[0];
-  if (item.type !== "path" || !path) {
+  if (item.type !== 'path' || !path) {
     return [];
   }
   const subpaths = splitPathData(path.d);
@@ -121,7 +123,7 @@ export function splitCompoundPathItem(input: {
   }
   return subpaths.map((d, index) => ({
     id: `${input.idPrefix}-${index}`,
-    type: "path" as const,
+    type: 'path' as const,
     kind: item.kind,
     sourceKind: item.sourceKind,
     // The split pieces are no longer the named shape (if any).
@@ -131,7 +133,7 @@ export function splitCompoundPathItem(input: {
     sizeCopy: item.sizeCopy,
     frame: { ...item.frame },
     transform: { ...item.transform },
-    paths: [{ ...path, id: "path-1", d }] as [WorkspacePathData],
+    paths: [{ ...path, id: 'path-1', d }] as [WorkspacePathData],
     penFill: item.penFill ? { ...item.penFill } : undefined,
     dashed: item.dashed ? { ...item.dashed } : undefined,
   }));
@@ -146,8 +148,10 @@ function getGroupedPathTransform(
     `translate(${formatNumber(item.transform.x - bounds.left)} ${formatNumber(item.transform.y - bounds.top)})`,
     `rotate(${formatNumber(item.transform.rotation)})`,
     `scale(${formatNumber(item.transform.scaleX)} ${formatNumber(item.transform.scaleY)})`,
-    pathTransform ?? "",
-  ].filter(Boolean).join(" ");
+    pathTransform ?? '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 function formatNumber(value: number): string {

@@ -1,4 +1,43 @@
-import{it,expect}from'vitest';import{JoyConfigurationService}from'./joy-configuration-service';import{emptyLibrary}from'./joy-configuration-store';
-it('explains the missing saved device calibration without creating a fake one or touching the worker',async()=>{let io=0;const s=new JoyConfigurationService({store:{load:async()=>emptyLibrary(),transact:async f=>f(emptyLibrary())},offline:async()=>{io++;throw Error('No worker');},capture:async()=>{io++;throw Error('No capture');}});await expect(s.ensureMakeSelection(535,['pen','fine_point_blade'])).rejects.toThrow(/saved Joy calibration.*Settings/);expect(io).toBe(0);});
+import { it, expect } from 'vitest';
+import { JoyConfigurationService } from './joy-configuration-service';
+import { emptyLibrary } from './joy-configuration-store';
+it('explains the missing saved device calibration without creating a fake one or touching the worker', async () => {
+  let io = 0;
+  const s = new JoyConfigurationService({
+    store: { load: async () => emptyLibrary(), transact: async (f) => f(emptyLibrary()) },
+    offline: async () => {
+      io++;
+      throw Error('No worker');
+    },
+    capture: async () => {
+      io++;
+      throw Error('No capture');
+    },
+  });
+  await expect(s.ensureMakeSelection(535, ['pen', 'fine_point_blade'])).rejects.toThrow(
+    /saved Joy calibration.*Settings/,
+  );
+  expect(io).toBe(0);
+});
 
-it('keeps setup guidance outside a transaction that intentionally sanitizes callback failures',async()=>{const s=new JoyConfigurationService({store:{load:async()=>emptyLibrary(),transact:async f=>{try{return await f(emptyLibrary());}catch{throw Error('Library operation unavailable');}}},offline:async()=>{throw Error('No worker');},capture:async()=>{throw Error('No capture');}});await expect(s.ensureMakeSelection(535,['pen'])).rejects.toThrow(/saved Joy calibration/);});
+it('keeps setup guidance outside a transaction that intentionally sanitizes callback failures', async () => {
+  const s = new JoyConfigurationService({
+    store: {
+      load: async () => emptyLibrary(),
+      transact: async (f) => {
+        try {
+          return await f(emptyLibrary());
+        } catch {
+          throw Error('Library operation unavailable');
+        }
+      },
+    },
+    offline: async () => {
+      throw Error('No worker');
+    },
+    capture: async () => {
+      throw Error('No capture');
+    },
+  });
+  await expect(s.ensureMakeSelection(535, ['pen'])).rejects.toThrow(/saved Joy calibration/);
+});

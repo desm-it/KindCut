@@ -1,38 +1,822 @@
-.native-make__preview-heading,.native-make__preview-caption{display:none!important}
-.native-make__icon-plan .cut-step__tile{cursor:default}
-.native-make__icon-plan .cut-step__tile:focus-visible{outline:2px solid #1e8b55;outline-offset:3px}
+/* Native Make structural styles have one owner; shared cut primitives remain global. */
 
-.native-make__preview .native-make__mat-wrap { position:relative; display:block; height:auto; max-width:100%; margin:12px auto; background:#a8c98d; border-radius:8px; box-shadow:0 3px 12px #29392420; }
-.native-make__mat-art { position:absolute; display:grid; place-items:center; }
-.native-make__preview .native-make__mat { height:100%; width:100%; max-width:100%; max-height:100%; object-fit:contain; border:0; border-radius:0; box-shadow:none;  }
-.native-make__preview .native-make__mat-art img,.native-make__preview .native-make__mat-art svg { width:100%; height:100%; max-width:100%; max-height:100%; }
-@media(max-width:720px){.native-make__preview .native-make__mat-wrap{transform:scale(.8);transform-origin:top center;margin-bottom:-58px;}}
-
-.native-make__preview .native-make__mat-wrap--card { background:#c2e1ef; }
-.native-make__card-backing { inset:0; width:100%; height:100%; border-radius:8px; }
-.native-make__card-backing .workpiece-mat__label { font-size:12px; right:8px; }
-.native-make__card-backing .workpiece-mat__arrow { font-size:16px; }
-.native-make__card-paper { position:absolute; left:0; top:0; pointer-events:none; }
-.native-make__mat-art>.native-make__mat { position:relative; z-index:1; }
-.native-make__preview .native-make__card-guides { position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; overflow:visible; }
-.native-make__card-guide { stroke:rgba(46,100,132,.5); stroke-width:1; stroke-dasharray:3 3; vector-effect:non-scaling-stroke; }
-
-.native-make__workspace,.native-make__workspace>* { min-width:0; max-width:100%; }
-.native-make__icon-plan { min-width:0; width:100%; max-width:100%; }
-.native-make__plan-scroll { box-sizing:border-box; width:100%; min-width:0; max-width:100%; overflow-x:auto; overflow-y:hidden; overscroll-behavior:contain; padding:4px 2px 8px; scrollbar-width:thin; }
-.native-make__icon-plan .native-make__plan-scroll .cut-steps { box-sizing:border-box; width:max-content; min-width:100%; }
-.native-make__icon-plan .native-make__plan-scroll .cut-step { flex:1 0 76px; min-width:76px; max-width:104px; }
-.cut-modal__body.native-make__body { overflow-x:hidden; overflow-y:auto; }
-
-.native-make .native-make__material-kinds { grid-template-columns:repeat(3,minmax(0,1fr)); }
-.native-make .native-make__material-kind { min-width:0; flex-direction:column; gap:5px; padding:8px 5px; text-align:center; }
-.native-make__vinyl-type { display:grid; gap:5px; font-size:12px; color:#5e6557; }
-.native-make__vinyl-type select { width:100%; min-width:0; padding:8px 10px; border:1px solid #dce0d5; border-radius:8px; background:#fff; color:inherit; font:inherit; }
-
-.native-make__card-options { display:grid; gap:8px; }
-.native-make__card-sizes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
-.native-make__card-sizes button { display:grid; gap:3px; padding:7px 3px; border:1px solid #dce0d5; border-radius:8px; background:#fff; font:inherit; font-size:11px; color:#5e6557; }
-.native-make__card-sizes button[aria-pressed=true] { border-color:#73915e; background:#edf3e5; color:#3b5830; }
-.native-make__card-sizes span { font-size:10px; }
-.native-make__corner-toggle { display:flex; align-items:center; gap:7px; font-size:12px; }
-.native-make__corner-toggle input { accent-color:#73915e; }
+.cut-modal.native-make {
+  width: min(960px, 94vw);
+  max-height: calc(100vh - 40px);
+}
+.native-make .cut-modal__header {
+  padding: 18px 24px 14px;
+  flex-shrink: 0;
+}
+.native-make .cut-modal__header p {
+  margin: 5px 0 0;
+  font-size: 0.76rem;
+  color: #78716a;
+}
+.cut-modal__body.native-make__body {
+  display: block;
+  padding: 12px 24px;
+  min-height: 0;
+  overflow: auto;
+}
+.native-make__workspace {
+  display: grid;
+  grid-template-columns: minmax(200px, 0.85fr) minmax(340px, 1.15fr);
+  gap: 28px;
+  align-items: start;
+}
+.native-make__preview {
+  border-radius: 12px;
+  background: #f4f5f0;
+  padding: 16px;
+  position: sticky;
+  top: 0;
+}
+.native-make__preview-heading {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 0.78rem;
+  color: #746d64;
+}
+.native-make__preview-heading strong {
+  color: #364638;
+}
+.native-make__mat-wrap {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  height: min(440px, 50vh);
+  margin: 12px 0;
+}
+.native-make__mat {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  border: 8px solid #b6c5a6;
+  border-top-width: 22px;
+  border-radius: 5px;
+  box-shadow: 0 3px 12px #29392420;
+}
+.native-make__preview-caption {
+  max-width: 250px;
+  margin: 2px 0;
+  text-align: center;
+  color: #78716a;
+  font-size: 0.73rem;
+  line-height: 1.5;
+}
+.native-make__plan.cut-modal__info {
+  gap: 8px;
+  min-width: 0;
+}
+.native-make__material-lock {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.native-make__material {
+  display: grid;
+  gap: 5px;
+}
+.native-make__material label {
+  line-height: 1.3;
+  margin: 0;
+}
+.native-make__material select {
+  height: 34px;
+  box-sizing: border-box;
+}
+.native-make__material label,
+.native-make__tools h3,
+.native-make__job h3 {
+  font-size: 0.82rem;
+  font-weight: 750;
+  color: #393d32;
+  margin: 0 0 4px;
+}
+.native-make select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #d8dcd1;
+  border-radius: 7px;
+  color: #3e4337;
+  background: #fff;
+  font: inherit;
+  font-size: 0.8rem;
+}
+.native-make__tools [role='tablist'] {
+  display: grid;
+  gap: 8px;
+}
+.native-make__tool {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 12px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #dce0d5;
+  border-radius: 10px;
+  cursor: pointer;
+  color: #46483f;
+}
+.native-make__tool:hover {
+  background: #f7f9f2;
+}
+.native-make__tool--selected {
+  border-color: #6d8b52;
+  box-shadow: 0 0 0 1px #6d8b52;
+  background: #f6f9f1;
+}
+.native-make__tool:focus-visible {
+  outline: 3px solid #acc893;
+  outline-offset: 2px;
+}
+.native-make__tool-number {
+  font-size: 0.75rem;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e7ecdf;
+  color: #506442;
+  font-weight: 700;
+}
+.native-make__tool-icon {
+  width: 30px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+.native-make__tool-icon svg {
+  max-width: 30px;
+  max-height: 34px;
+}
+.native-make__tool-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  line-height: 1.3;
+}
+.native-make__tool-copy strong {
+  font-size: 0.84rem;
+}
+.native-make__tool-copy span {
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.native-make__tool-copy small {
+  font-size: 0.72rem;
+  color: #7b7f71;
+}
+.native-make__connection {
+  border-top: 1px solid #e8e9e1;
+  padding-top: 12px;
+  font-size: 0.8rem;
+}
+.native-make__connection-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.native-make__icon-plan [role='tablist'] {
+  display: block;
+  overflow-x: auto;
+  padding: 3px 3px 8px;
+}
+.native-make__icon-plan .cut-steps {
+  min-width: max-content;
+  margin: 6px 0 0;
+  padding-top: 16px;
+}
+.native-make__icon-plan .cut-step {
+  min-width: 58px;
+}
+.native-make__icon-plan .cut-step small {
+  font-size: 10px;
+  max-width: 90px;
+}
+.native-make__tool-preview {
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.native-make__tool-preview:hover {
+  background: #f5f8ef;
+}
+.native-make__tool-preview--selected {
+  outline: 2px solid #8a6843;
+  outline-offset: 3px;
+  opacity: 1 !important;
+}
+.native-make__tool-preview:focus-visible {
+  outline: 3px solid #8dadd0;
+  outline-offset: 3px;
+}
+.native-make__stage-glyph {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 34px;
+}
+.native-make__stage-glyph svg {
+  width: 29px;
+  height: 29px;
+}
+.native-make__stage-glyph--large {
+  width: 100px;
+  height: 105px;
+}
+.native-make__stage-glyph--large svg {
+  width: 86px;
+  height: 86px;
+}
+.native-make__stage-mat {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 36px;
+}
+.native-make__stage-mat .native-make__feed-arrow {
+  position: absolute;
+  right: -2px;
+  top: 7px;
+  width: 15px;
+  height: 24px;
+}
+.native-make__stage-mat--large {
+  width: 110px;
+  height: 108px;
+}
+.native-make__stage-mat--large .native-make__feed-arrow {
+  right: 3px;
+  top: 32px;
+  width: 29px;
+  height: 44px;
+}
+.native-make__current-step {
+  min-height: 140px;
+  padding: 10px 0 4px;
+}
+.native-make__current-step .cut-detail__visual {
+  min-height: 106px;
+}
+.native-make__job > h3 {
+  display: none;
+}
+.native-make__full-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #fff;
+  border: 1px solid #d4dccd;
+  border-radius: 20px;
+  padding: 5px 9px;
+  color: #53614d;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.native-make__full-preview.is-selected {
+  background: #e7eedf;
+  border-color: #94a780;
+  color: #364e31;
+}
+.native-make__full-preview svg {
+  width: 16px;
+  height: 16px;
+}
+.native-make__full-preview:focus-visible {
+  outline: 3px solid #8dadd0;
+  outline-offset: 2px;
+}
+.native-make__preview img.native-make__mat {
+  object-fit: contain;
+}
+@media (prefers-reduced-motion: reduce) {
+  .native-make .cut-step--active .cut-step__tile {
+    animation: none;
+  }
+}
+.native-make__steps {
+  display: flex;
+  gap: 4px;
+  list-style: none;
+  margin: 4px 0 16px;
+  padding: 0;
+}
+.native-make__steps li {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #8a948a;
+  font-size: 10px;
+}
+.native-make__steps li span {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #ecede7;
+  font-size: 10px;
+  font-weight: 650;
+}
+.native-make__steps li.is-current {
+  color: #3f654e;
+}
+.native-make__steps li.is-current span {
+  color: #fff;
+  background: #456e56;
+}
+.native-make__progress {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+.native-make__progress progress {
+  width: 100%;
+  height: 7px;
+  accent-color: #456e56;
+}
+.native-make__progress span {
+  font-size: 12px;
+  color: #627264;
+}
+.native-make__connected,
+.native-make__ready {
+  color: #50723b;
+}
+.native-make__muted {
+  color: #8a8a7d;
+  font-size: 0.76rem;
+}
+.native-make__device-row {
+  display: flex;
+  gap: 8px;
+}
+.native-make__device-row select {
+  flex: 1;
+}
+.native-make__device-row .cut-modal__btn {
+  white-space: nowrap;
+}
+.native-make__connect-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.native-make__connect-row small {
+  font-size: 0.71rem;
+  color: #8a8379;
+}
+.native-make__job {
+  padding-top: 12px;
+  border-top: 1px solid #e8e9e1;
+}
+.native-make__job p {
+  font-size: 0.77rem;
+  line-height: 1.45;
+  margin: 7px 0;
+}
+.native-make__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.native-make .cut-modal__btn {
+  font-size: 0.78rem;
+  padding: 8px 12px;
+  white-space: normal;
+}
+.native-make__safety {
+  color: #7b766c;
+  font-size: 0.7rem !important;
+}
+.native-make__instruction {
+  background: #f2f5eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.native-make__advanced,
+.native-make__diagnostics {
+  font-size: 0.73rem;
+  color: #827b70;
+  margin-top: 8px;
+}
+.native-make summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.native-make details[open] {
+  max-width: 100%;
+}
+.native-make__advanced[open] {
+  padding: 10px;
+  border: 1px solid #e6e8df;
+  border-radius: 8px;
+}
+.native-make__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+.native-make__footer details {
+  max-width: 75%;
+  font-size: 0.73rem;
+  color: #827b70;
+}
+.native-make__footer p {
+  line-height: 1.5;
+}
+.native-make__footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
+}
+.native-make__footer-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.native-make__icon-plan .cut-steps {
+  display: flex;
+  grid-template-columns: none;
+  gap: 10px;
+  align-items: start;
+  min-width: max-content;
+  margin: 8px 0 0;
+  padding: 8px 2px;
+}
+.native-make__icon-plan .cut-step {
+  min-width: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.native-make__icon-plan .cut-step__tile {
+  box-sizing: border-box;
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+.native-make__icon-plan .native-make__stage-glyph {
+  width: 54px;
+  height: 54px;
+}
+.native-make__icon-plan .native-make__stage-glyph svg {
+  width: 50px;
+  height: 50px;
+  max-width: 100%;
+  max-height: 100%;
+}
+.native-make__icon-plan .native-make__stage-mat {
+  width: 54px;
+  height: 58px;
+}
+.native-make__icon-plan .native-make__stage-mat .native-make__feed-arrow {
+  right: -6px;
+  top: 12px;
+  width: 23px;
+  height: 34px;
+}
+.native-make__icon-plan .cut-step small {
+  font-size: 10px;
+  max-width: 100%;
+  text-align: center;
+}
+.native-make__footer-action:empty {
+  display: none;
+}
+.native-make [role='alert'] {
+  padding: 9px 11px;
+  border-radius: 7px;
+  background: #fff1e6;
+  color: #8b4d2d;
+  font-size: 0.76rem;
+}
+@media (max-width: 720px) {
+  .native-make__workspace {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .native-make__preview {
+    position: static;
+  }
+  .native-make__mat-wrap {
+    height: 220px;
+  }
+  .cut-modal__body.native-make__body {
+    padding: 14px;
+  }
+}
+.native-make__icon-plan .cut-step::before {
+  top: 34px;
+}
+.native-make__icon-plan .cut-step__tile .mat-icon {
+  transform: none;
+}
+.native-make__icon-plan .cut-step__label {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  font-size: 11px;
+  line-height: 15px;
+  text-align: center;
+}
+.native-make__current-step .native-make__stage-glyph--large {
+  width: 100px;
+  height: 105px;
+}
+.native-make__current-step .native-make__stage-glyph--large svg {
+  width: 86px;
+  height: 86px;
+}
+.native-make__material-label {
+  display: block;
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  font-weight: 750;
+  color: #393d32;
+}
+.native-make__material-kinds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+.native-make__material-kind {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 56px;
+  padding: 8px 5px;
+  border: 1px solid #dce0d5;
+  border-radius: 10px;
+  background: #fff;
+  color: #5e6557;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 0;
+  flex-direction: column;
+  text-align: center;
+}
+.native-make__material-kind.is-selected {
+  border-color: #73915e;
+  background: #edf3e5;
+  color: #3b5830;
+  box-shadow: inset 0 0 0 1px #73915e;
+}
+.native-make__material-kind .material-icon {
+  width: 30px;
+  height: 30px;
+}
+.native-make__paper-weights {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 9px;
+}
+.native-make__weight-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 65px;
+  padding: 8px;
+  border: 1px solid #dce0d5;
+  border-radius: 9px;
+  color: #777e6f;
+  background: #fafbf7;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.native-make__weight-option[aria-checked='true'] {
+  color: #3b5830;
+  border-color: #73915e;
+  background: #edf3e5;
+  box-shadow: inset 0 0 0 1px #73915e;
+}
+.native-make__material-kind:focus-visible,
+.native-make__weight-option:focus-visible {
+  outline: 3px solid #8dadd0;
+  outline-offset: 2px;
+}
+.native-make__job--seamless {
+  position: relative;
+}
+.native-make__job--seamless > .native-make__actions:empty {
+  display: none;
+  margin: 0;
+}
+.native-make__job--seamless > .native-make__actions:not(:empty) {
+  position: absolute;
+  top: 12px;
+  right: 0;
+  margin: 0;
+}
+.native-make__preview-heading,
+.native-make__preview-caption {
+  display: none !important;
+}
+.native-make__icon-plan .cut-step__tile {
+  cursor: default;
+}
+.native-make__icon-plan .cut-step__tile:focus-visible {
+  outline: 2px solid #1e8b55;
+  outline-offset: 3px;
+}
+.native-make__preview .native-make__mat-wrap {
+  position: relative;
+  display: block;
+  height: auto;
+  max-width: 100%;
+  margin: 12px auto;
+  background: #a8c98d;
+  border-radius: 8px;
+  box-shadow: 0 3px 12px #29392420;
+}
+.native-make__mat-art {
+  position: absolute;
+  display: grid;
+  place-items: center;
+}
+.native-make__preview .native-make__mat {
+  height: 100%;
+  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.native-make__preview .native-make__mat-art img,
+.native-make__preview .native-make__mat-art svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+@media (max-width: 720px) {
+  .native-make__preview .native-make__mat-wrap {
+    transform: scale(0.8);
+    transform-origin: top center;
+    margin-bottom: -58px;
+  }
+}
+.native-make__preview .native-make__mat-wrap--card {
+  background: #c2e1ef;
+}
+.native-make__card-backing {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+}
+.native-make__card-backing .workpiece-mat__label {
+  font-size: 12px;
+  right: 8px;
+}
+.native-make__card-backing .workpiece-mat__arrow {
+  font-size: 16px;
+}
+.native-make__card-paper {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+.native-make__mat-art > .native-make__mat {
+  position: relative;
+  z-index: 1;
+}
+.native-make__preview .native-make__card-guides {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+}
+.native-make__card-guide {
+  stroke: rgba(46, 100, 132, 0.5);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+.native-make__workspace,
+.native-make__workspace > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.native-make__icon-plan {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+.native-make__plan-scroll {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior: contain;
+  padding: 4px 2px 8px;
+  scrollbar-width: thin;
+}
+.native-make__icon-plan .native-make__plan-scroll .cut-steps {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+}
+.native-make__icon-plan .native-make__plan-scroll .cut-step {
+  flex: 1 0 76px;
+  min-width: 76px;
+  max-width: 104px;
+}
+.cut-modal__body.native-make__body {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.native-make__vinyl-type {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  color: #5e6557;
+}
+.native-make__vinyl-type select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #dce0d5;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+.native-make__card-options {
+  display: grid;
+  gap: 8px;
+}
+.native-make__card-sizes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+.native-make__card-sizes button {
+  display: grid;
+  gap: 3px;
+  padding: 7px 3px;
+  border: 1px solid #dce0d5;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 11px;
+  color: #5e6557;
+}
+.native-make__card-sizes button[aria-pressed='true'] {
+  border-color: #73915e;
+  background: #edf3e5;
+  color: #3b5830;
+}
+.native-make__card-sizes span {
+  font-size: 10px;
+}
+.native-make__corner-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+.native-make__corner-toggle input {
+  accent-color: #73915e;
+}

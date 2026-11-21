@@ -1,9 +1,92 @@
-import {it,expect}from'vitest';
-import {renderToStaticMarkup}from'react-dom/server';
-import {compileNativeMakeDesign,NativeMakePreview,NativeMakeToolPlans}from'./native-make-design';
-const source={svg:'<svg xmlns="http://www.w3.org/2000/svg" width="432" height="1152" viewBox="0 0 432 1152"><path fill="none" stroke="#112233" d="M40 40 L60 40"/><path fill="none" stroke="#445566" d="M80 80 L110 80 L110 110 Z"/></svg>',materialId:211,mat:{widthIn:4.5,heightIn:12},strokeTools:{'#112233':{tool:'pen' as const,operation:'draw' as const},'#445566':{tool:'fine_point_blade' as const,operation:'cut' as const}}};
-it('retains every tool path separately for a selectable design preview',()=>{const d=compileNativeMakeDesign(source);expect(d.tools.map(t=>t.tool)).toEqual(['pen','fine_point_blade']);expect(d.tools.map(t=>t.paths.length)).toEqual([1,1]);expect(d.widthPt).toBe(324);expect(d.heightPt).toBe(864);});
-it('dims other tool paths in a complete preview',()=>{const d=compileNativeMakeDesign(source);const html=renderToStaticMarkup(<NativeMakePreview design={d} selected={1} language="en"/>);expect(html).toContain('Cut preview');expect(html).toContain('viewBox="0 0 324 864"');expect(html).toContain('d="M 60 60 L 82.5 60 L 82.5 82.5 Z"');expect(html).toContain('#112233');expect(html).toContain('opacity="0.18"');expect(html).not.toContain('dangerouslySetInnerHTML');});
-it('renders hover-only tool tiles with saved passes and no hardware actions',()=>{const d=compileNativeMakeDesign(source);const h=renderToStaticMarkup(<NativeMakeToolPlans design={d} selected={0} onHover={()=>{}} language="en" workflow={{actionIndex:0,actionCount:2,containsBlade:true,actions:[{tool:'pen',profileId:'p',profileName:'Saved pen',passCount:1,pressureRequests:[100]},{tool:'fine_point_blade',profileId:'b',profileName:'Saved blade',passCount:3,pressureRequests:[223,223,223]}]}}/>);expect(h).not.toContain('role="tablist"');expect(h.match(/tabindex="0"/g)).toHaveLength(3);expect(h).toContain('class="native-make__plan-scroll"');expect(h).toContain('role="region"');expect(h).not.toContain('<button');expect(h).toContain('3 passes');expect(h).toContain('data-step-kind="cut"');expect(h).toContain('native-make__tool-preview--selected');expect(h).toContain('Load mat');expect(h).not.toContain('data-native-intent');});
+import { it, expect } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import {
+  compileNativeMakeDesign,
+  NativeMakePreview,
+  NativeMakeToolPlans,
+} from './native-make-design';
+const source = {
+  svg: '<svg xmlns="http://www.w3.org/2000/svg" width="432" height="1152" viewBox="0 0 432 1152"><path fill="none" stroke="#112233" d="M40 40 L60 40"/><path fill="none" stroke="#445566" d="M80 80 L110 80 L110 110 Z"/></svg>',
+  materialId: 211,
+  mat: { widthIn: 4.5, heightIn: 12 },
+  strokeTools: {
+    '#112233': { tool: 'pen' as const, operation: 'draw' as const },
+    '#445566': { tool: 'fine_point_blade' as const, operation: 'cut' as const },
+  },
+};
+it('retains every tool path separately for a selectable design preview', () => {
+  const d = compileNativeMakeDesign(source);
+  expect(d.tools.map((t) => t.tool)).toEqual(['pen', 'fine_point_blade']);
+  expect(d.tools.map((t) => t.paths.length)).toEqual([1, 1]);
+  expect(d.widthPt).toBe(324);
+  expect(d.heightPt).toBe(864);
+});
+it('dims other tool paths in a complete preview', () => {
+  const d = compileNativeMakeDesign(source);
+  const html = renderToStaticMarkup(<NativeMakePreview design={d} selected={1} language="en" />);
+  expect(html).toContain('Cut preview');
+  expect(html).toContain('viewBox="0 0 324 864"');
+  expect(html).toContain('d="M 60 60 L 82.5 60 L 82.5 82.5 Z"');
+  expect(html).toContain('#112233');
+  expect(html).toContain('opacity="0.18"');
+  expect(html).not.toContain('dangerouslySetInnerHTML');
+});
+it('renders hover-only tool tiles with saved passes and no hardware actions', () => {
+  const d = compileNativeMakeDesign(source);
+  const h = renderToStaticMarkup(
+    <NativeMakeToolPlans
+      design={d}
+      selected={0}
+      onHover={() => {}}
+      language="en"
+      workflow={{
+        actionIndex: 0,
+        actionCount: 2,
+        containsBlade: true,
+        actions: [
+          {
+            tool: 'pen',
+            profileId: 'p',
+            profileName: 'Saved pen',
+            passCount: 1,
+            pressureRequests: [100],
+          },
+          {
+            tool: 'fine_point_blade',
+            profileId: 'b',
+            profileName: 'Saved blade',
+            passCount: 3,
+            pressureRequests: [223, 223, 223],
+          },
+        ],
+      }}
+    />,
+  );
+  expect(h).not.toContain('role="tablist"');
+  expect(h.match(/tabindex="0"/g)).toHaveLength(3);
+  expect(h).toContain('class="native-make__plan-scroll"');
+  expect(h).toContain('role="region"');
+  expect(h).not.toContain('<button');
+  expect(h).toContain('3 passes');
+  expect(h).toContain('data-step-kind="cut"');
+  expect(h).toContain('native-make__tool-preview--selected');
+  expect(h).toContain('Load mat');
+  expect(h).not.toContain('data-native-intent');
+});
 
-it('preview-only raw filled circle is visible without treating it as executable configuration',()=>{const raw={...source,previewOnly:true as const,svg:source.svg.replace('width="432" height="1152" viewBox="0 0 432 1152"','width="4.5in" height="12in" viewBox="0 0 360 960"').replace('M40 40 L60 40','M40 40 A10 10 0 1 1 60 40 A10 10 0 1 1 40 40 Z').replace('fill="none" stroke="#112233"','fill="#112233" stroke="#112233"')};const d=compileNativeMakeDesign(raw);expect(d.tools).toHaveLength(2);expect(d.tools[0]!.paths[0]!.steps.some(s=>s.op==='C')).toBe(true);});
+it('preview-only raw filled circle is visible without treating it as executable configuration', () => {
+  const raw = {
+    ...source,
+    previewOnly: true as const,
+    svg: source.svg
+      .replace(
+        'width="432" height="1152" viewBox="0 0 432 1152"',
+        'width="4.5in" height="12in" viewBox="0 0 360 960"',
+      )
+      .replace('M40 40 L60 40', 'M40 40 A10 10 0 1 1 60 40 A10 10 0 1 1 40 40 Z')
+      .replace('fill="none" stroke="#112233"', 'fill="#112233" stroke="#112233"'),
+  };
+  const d = compileNativeMakeDesign(raw);
+  expect(d.tools).toHaveLength(2);
+  expect(d.tools[0]!.paths[0]!.steps.some((s) => s.op === 'C')).toBe(true);
+});

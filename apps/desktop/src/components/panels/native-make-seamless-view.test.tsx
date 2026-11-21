@@ -1,3 +1,51 @@
-import{it,expect}from'vitest';import{renderToStaticMarkup}from'react-dom/server';import{NativeJoyJobView}from'./NativeJoyJobPanel';import{NativeJoySetupView}from'./NativeJoySetupPanel';import{initialJobPanel}from'./native-joy-job-controller';
-it('has no separate prepare/load controls or generic safety tagline in the guided body',()=>{const h=renderToStaticMarkup(<NativeJoyJobView compact seamless available setup={{enabled:true,runtimeAvailable:true,session:{}}as any} state={{...initialJobPanel(),preview:{tool:'fine_point_blade'}as any}} onAction={()=>{}}/>);expect(h).not.toContain('Prepare design');expect(h).not.toContain('>Load mat</button>');expect(h).not.toContain('Keep hands');expect(h).not.toContain('native-make__instruction');expect(h).toContain('data-stage-kind="load"');});
-it('hides find/connect controls and a sole device selector while preserving multiple-device choice',()=>{const devices=[{id:'01:02:03:04:05:06',name:'Joy',paired:true,connected:false}],props:any={compact:true,seamless:true,language:'en',setup:{session:null},busy:false,address:'',error:'',message:'',height:12,onHeight:()=>{},onAddress:()=>{},onAction:()=>{}};const one=renderToStaticMarkup(<NativeJoySetupView {...props} devices={devices}/>);expect(one).not.toContain('<select');expect(one).not.toContain('<button');expect(one).not.toContain('Find Joy');const two=renderToStaticMarkup(<NativeJoySetupView {...props} devices={[...devices,{...devices[0]!,id:'11:22:33:44:55:66'}]}/>);expect(two).toContain('<select');expect(two).not.toContain('<button');});
+import { it, expect } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { NativeJoyJobView } from './NativeJoyJobPanel';
+import { NativeJoySetupView } from './NativeJoySetupPanel';
+import { initialJobPanel } from './native-joy-job-controller';
+it('has no separate prepare/load controls or generic safety tagline in the guided body', () => {
+  const h = renderToStaticMarkup(
+    <NativeJoyJobView
+      compact
+      seamless
+      available
+      setup={{ enabled: true, runtimeAvailable: true, session: {} } as any}
+      state={{ ...initialJobPanel(), preview: { tool: 'fine_point_blade' } as any }}
+      onAction={() => {}}
+    />,
+  );
+  expect(h).not.toContain('Prepare design');
+  expect(h).not.toContain('>Load mat</button>');
+  expect(h).not.toContain('Keep hands');
+  expect(h).not.toContain('native-make__instruction');
+  expect(h).toContain('data-stage-kind="load"');
+});
+it('hides find/connect controls and a sole device selector while preserving multiple-device choice', () => {
+  const devices = [{ id: '01:02:03:04:05:06', name: 'Joy', paired: true, connected: false }],
+    props: any = {
+      compact: true,
+      seamless: true,
+      language: 'en',
+      setup: { session: null },
+      busy: false,
+      address: '',
+      error: '',
+      message: '',
+      height: 12,
+      onHeight: () => {},
+      onAddress: () => {},
+      onAction: () => {},
+    };
+  const one = renderToStaticMarkup(<NativeJoySetupView {...props} devices={devices} />);
+  expect(one).not.toContain('<select');
+  expect(one).not.toContain('<button');
+  expect(one).not.toContain('Find Joy');
+  const two = renderToStaticMarkup(
+    <NativeJoySetupView
+      {...props}
+      devices={[...devices, { ...devices[0]!, id: '11:22:33:44:55:66' }]}
+    />,
+  );
+  expect(two).toContain('<select');
+  expect(two).not.toContain('<button');
+});

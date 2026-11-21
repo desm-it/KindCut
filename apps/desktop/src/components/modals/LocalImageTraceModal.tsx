@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import type { Language } from "../../i18n";
+import { useEffect, useRef, useState } from 'react';
+import type { Language } from '../../i18n';
 import {
   DEFAULT_RASTER_TRACE_OPTIONS,
   normalizeRasterTraceOptions,
   type RasterTraceOptions,
-} from "../../local-raster-import";
-import { aiSvgPreviewSrc } from "../../utils/svg-normalize";
+} from '../../local-raster-import';
+import { aiSvgPreviewSrc } from '../../utils/svg-normalize';
 
 export type LocalRasterImport = {
   fileName: string;
@@ -15,9 +15,7 @@ export type LocalRasterImport = {
 };
 
 type TracePhase =
-  | { type: "tracing" }
-  | { type: "ready"; svg: string }
-  | { type: "error"; message: string };
+  { type: 'tracing' } | { type: 'ready'; svg: string } | { type: 'error'; message: string };
 
 export function LocalImageTraceModal({
   language,
@@ -32,13 +30,15 @@ export function LocalImageTraceModal({
   onImport: (source: LocalRasterImport, svg: string) => Promise<void> | void;
   onClose: () => void;
 }) {
-  const nl = language === "nl";
-  const [phase, setPhase] = useState<TracePhase>({ type: "tracing" });
+  const nl = language === 'nl';
+  const [phase, setPhase] = useState<TracePhase>({ type: 'tracing' });
   const [latestSvg, setLatestSvg] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [displayPct, setDisplayPct] = useState(8);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [traceOptions, setTraceOptions] = useState<RasterTraceOptions>(DEFAULT_RASTER_TRACE_OPTIONS);
+  const [traceOptions, setTraceOptions] = useState<RasterTraceOptions>(
+    DEFAULT_RASTER_TRACE_OPTIONS,
+  );
   const [retryNonce, setRetryNonce] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -93,7 +93,7 @@ export function LocalImageTraceModal({
     requestIdRef.current = requestId;
     clearDebounce();
     clearTimer();
-    setPhase({ type: "tracing" });
+    setPhase({ type: 'tracing' });
     setDisplayPct(8);
 
     debounceRef.current = setTimeout(() => {
@@ -105,12 +105,15 @@ export function LocalImageTraceModal({
           clearTimer();
           setDisplayPct(100);
           setLatestSvg(svg);
-          setPhase({ type: "ready", svg });
+          setPhase({ type: 'ready', svg });
         } catch (error) {
           if (requestIdRef.current !== requestId) return;
           clearTimer();
           setDisplayPct(0);
-          setPhase({ type: "error", message: error instanceof Error ? error.message : String(error) });
+          setPhase({
+            type: 'error',
+            message: error instanceof Error ? error.message : String(error),
+          });
         }
       })();
     }, delayMs);
@@ -121,7 +124,7 @@ export function LocalImageTraceModal({
     try {
       await onImport(source, svg);
     } catch (error) {
-      setPhase({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      setPhase({ type: 'error', message: error instanceof Error ? error.message : String(error) });
     } finally {
       setImporting(false);
     }
@@ -143,27 +146,57 @@ export function LocalImageTraceModal({
     };
   }, [source, traceOptions, retryNonce]);
 
-  const isTracing = phase.type === "tracing";
+  const isTracing = phase.type === 'tracing';
   const isBusy = isTracing || importing;
-  const progressPct = phase.type === "ready" ? 100 : displayPct;
-  const previewSvg = phase.type === "ready" ? phase.svg : latestSvg;
+  const progressPct = phase.type === 'ready' ? 100 : displayPct;
+  const previewSvg = phase.type === 'ready' ? phase.svg : latestSvg;
   const originalSrc = `data:${source.mimeType};base64,${source.base64}`;
   const statusLabel = importing
-    ? nl ? "Afbeelding importeren..." : "Importing image..."
+    ? nl
+      ? 'Afbeelding importeren...'
+      : 'Importing image...'
     : isTracing
-    ? settingsOpen ? (nl ? "Voorbeeld bijwerken..." : "Updating preview...") : (nl ? "Afbeelding vectoriseren..." : "Vectorizing image...")
-    : phase.type === "ready"
-      ? nl ? "Klaar - bekijk en importeer de tracering" : "Ready - review and import the trace"
-      : nl ? "Vectoriseren mislukt" : "Vectorizing failed";
+      ? settingsOpen
+        ? nl
+          ? 'Voorbeeld bijwerken...'
+          : 'Updating preview...'
+        : nl
+          ? 'Afbeelding vectoriseren...'
+          : 'Vectorizing image...'
+      : phase.type === 'ready'
+        ? nl
+          ? 'Klaar - bekijk en importeer de tracering'
+          : 'Ready - review and import the trace'
+        : nl
+          ? 'Vectoriseren mislukt'
+          : 'Vectorizing failed';
 
   return (
-    <div className="cut-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !isBusy) onClose(); }}>
+    <div
+      className="cut-modal-backdrop"
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !isBusy) onClose();
+      }}
+    >
       <div className="cut-modal cut-modal--narrow" onKeyDown={(event) => event.stopPropagation()}>
         <div className="cut-modal__header">
-          <h2 className="cut-modal__title">{nl ? "Afbeelding importeren" : "Import image"}</h2>
+          <h2 className="cut-modal__title">{nl ? 'Afbeelding importeren' : 'Import image'}</h2>
           {!isBusy ? (
-            <button type="button" className="cut-modal__close" onClick={onClose} aria-label={nl ? "Sluiten" : "Close"}>
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            <button
+              type="button"
+              className="cut-modal__close"
+              onClick={onClose}
+              aria-label={nl ? 'Sluiten' : 'Close'}
+            >
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              >
+                <path d="M3 3l10 10M13 3L3 13" />
+              </svg>
             </button>
           ) : null}
         </div>
@@ -179,7 +212,10 @@ export function LocalImageTraceModal({
               <span>{statusLabel}</span>
             </div>
             <div className="ai-modal__progress-bar-track">
-              <div className="ai-modal__progress-bar-fill" style={{ width: `${progressPct}%`, transition: "width 0.4s ease" }} />
+              <div
+                className="ai-modal__progress-bar-fill"
+                style={{ width: `${progressPct}%`, transition: 'width 0.4s ease' }}
+              />
             </div>
             <div className="ai-modal__progress-pct">{Math.round(progressPct)}%</div>
           </div>
@@ -190,9 +226,17 @@ export function LocalImageTraceModal({
             onClick={() => setSettingsOpen((open) => !open)}
             aria-expanded={settingsOpen}
           >
-            <span>{nl ? "Trace-instellingen" : "Trace settings"}</span>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d={settingsOpen ? "M4 10l4-4 4 4" : "M4 6l4 4 4-4"} />
+            <span>{nl ? 'Trace-instellingen' : 'Trace settings'}</span>
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d={settingsOpen ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'} />
             </svg>
           </button>
 
@@ -200,7 +244,7 @@ export function LocalImageTraceModal({
             <div className="local-trace__settings">
               <label className="local-trace__range">
                 <span className="local-trace__range-head">
-                  <span>{nl ? "Drempel" : "Threshold"}</span>
+                  <span>{nl ? 'Drempel' : 'Threshold'}</span>
                   <strong>{traceOptions.threshold}</strong>
                 </span>
                 <input
@@ -210,17 +254,19 @@ export function LocalImageTraceModal({
                   step="1"
                   value={traceOptions.threshold}
                   disabled={importing}
-                  onChange={(event) => updateTraceOptions({ threshold: Number(event.currentTarget.value) })}
+                  onChange={(event) =>
+                    updateTraceOptions({ threshold: Number(event.currentTarget.value) })
+                  }
                 />
                 <span className="local-trace__range-scale">
-                  <span>{nl ? "Minder vulling" : "Less fill"}</span>
-                  <span>{nl ? "Meer vulling" : "More fill"}</span>
+                  <span>{nl ? 'Minder vulling' : 'Less fill'}</span>
+                  <span>{nl ? 'Meer vulling' : 'More fill'}</span>
                 </span>
               </label>
 
               <label className="local-trace__range">
                 <span className="local-trace__range-head">
-                  <span>{nl ? "Detail" : "Detail"}</span>
+                  <span>{nl ? 'Detail' : 'Detail'}</span>
                   <strong>{traceOptions.detail}</strong>
                 </span>
                 <input
@@ -230,11 +276,13 @@ export function LocalImageTraceModal({
                   step="1"
                   value={traceOptions.detail}
                   disabled={importing}
-                  onChange={(event) => updateTraceOptions({ detail: Number(event.currentTarget.value) })}
+                  onChange={(event) =>
+                    updateTraceOptions({ detail: Number(event.currentTarget.value) })
+                  }
                 />
                 <span className="local-trace__range-scale">
-                  <span>{nl ? "Schoner" : "Cleaner"}</span>
-                  <span>{nl ? "Meer detail" : "More detail"}</span>
+                  <span>{nl ? 'Schoner' : 'Cleaner'}</span>
+                  <span>{nl ? 'Meer detail' : 'More detail'}</span>
                 </span>
               </label>
 
@@ -244,57 +292,85 @@ export function LocalImageTraceModal({
                     type="checkbox"
                     checked={traceOptions.invert}
                     disabled={importing}
-                    onChange={(event) => updateTraceOptions({ invert: event.currentTarget.checked })}
+                    onChange={(event) =>
+                      updateTraceOptions({ invert: event.currentTarget.checked })
+                    }
                   />
-                  <span>{nl ? "Omkeren" : "Invert"}</span>
+                  <span>{nl ? 'Omkeren' : 'Invert'}</span>
                 </label>
-                <button type="button" className="local-trace__reset" disabled={importing} onClick={resetTraceOptions}>
-                  {nl ? "Reset" : "Reset"}
+                <button
+                  type="button"
+                  className="local-trace__reset"
+                  disabled={importing}
+                  onClick={resetTraceOptions}
+                >
+                  {nl ? 'Reset' : 'Reset'}
                 </button>
               </div>
             </div>
           ) : null}
 
-          <div className={`ai-modal__previews${previewSvg ? " ai-modal__previews--dual" : ""}`}>
+          <div className={`ai-modal__previews${previewSvg ? ' ai-modal__previews--dual' : ''}`}>
             <div className="ai-modal__preview-col">
               <img
                 src={originalSrc}
                 className="ai-modal__preview-img"
-                alt={nl ? "Originele afbeelding" : "Original image"}
+                alt={nl ? 'Originele afbeelding' : 'Original image'}
               />
-              <span className="ai-modal__preview-label">
-                {nl ? "Origineel" : "Original"}
-              </span>
+              <span className="ai-modal__preview-label">{nl ? 'Origineel' : 'Original'}</span>
             </div>
             {previewSvg ? (
-              <div className={`ai-modal__preview-col${isTracing ? " local-trace__preview-col--updating" : ""}`}>
+              <div
+                className={`ai-modal__preview-col${isTracing ? ' local-trace__preview-col--updating' : ''}`}
+              >
                 <img
                   src={aiSvgPreviewSrc(previewSvg)}
                   className="ai-modal__preview-img"
-                  alt={nl ? "Vectortracering" : "Vector trace"}
+                  alt={nl ? 'Vectortracering' : 'Vector trace'}
                 />
                 <span className="ai-modal__preview-label">
-                  {isTracing ? (nl ? "Vector tracering bijwerken" : "Updating vector trace") : (nl ? "Vector tracering" : "Vector trace")}
+                  {isTracing
+                    ? nl
+                      ? 'Vector tracering bijwerken'
+                      : 'Updating vector trace'
+                    : nl
+                      ? 'Vector tracering'
+                      : 'Vector trace'}
                 </span>
               </div>
             ) : null}
           </div>
 
-          {phase.type === "error" ? <p className="ai-modal__error">{phase.message}</p> : null}
+          {phase.type === 'error' ? <p className="ai-modal__error">{phase.message}</p> : null}
         </div>
 
         <div className="cut-modal__footer">
-          <button type="button" className="cut-modal__btn cut-modal__btn--secondary" disabled={isBusy} onClick={onClose}>
-            {nl ? "Annuleren" : "Cancel"}
+          <button
+            type="button"
+            className="cut-modal__btn cut-modal__btn--secondary"
+            disabled={isBusy}
+            onClick={onClose}
+          >
+            {nl ? 'Annuleren' : 'Cancel'}
           </button>
-          {phase.type === "error" ? (
-            <button type="button" className="cut-modal__btn cut-modal__btn--secondary" disabled={isBusy} onClick={() => setRetryNonce((value) => value + 1)}>
-              {nl ? "Opnieuw" : "Retry"}
+          {phase.type === 'error' ? (
+            <button
+              type="button"
+              className="cut-modal__btn cut-modal__btn--secondary"
+              disabled={isBusy}
+              onClick={() => setRetryNonce((value) => value + 1)}
+            >
+              {nl ? 'Opnieuw' : 'Retry'}
             </button>
           ) : null}
-          {phase.type === "ready" ? (
-            <button type="button" className="cut-modal__btn cut-modal__btn--primary" disabled={isBusy} onClick={() => void handleImport(phase.svg)}>
-              {importing ? (nl ? "Importeren..." : "Importing...") : (nl ? "Importeren" : "Import")}
+          {phase.type === 'ready' ? (
+            <button
+              type="button"
+              className="cut-modal__btn cut-modal__btn--primary"
+              disabled={isBusy}
+              onClick={() => void handleImport(phase.svg)}
+            >
+              {importing ? (nl ? 'Importeren...' : 'Importing...') : nl ? 'Importeren' : 'Import'}
             </button>
           ) : null}
         </div>
